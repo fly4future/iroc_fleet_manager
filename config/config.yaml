@@ -1,0 +1,2 @@
+main_timer_rate: 100.0 # [Hz]
+no_message_timeout: 5.0 # [s]
