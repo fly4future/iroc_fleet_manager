@@ -34,6 +34,7 @@ add_action_files(
 # messages
 add_message_files(DIRECTORY msg FILES
   WaypointMissionRobot.msg
+  WaypointMissionInfo.msg
   )
 
 generate_messages(
