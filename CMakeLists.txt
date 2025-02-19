@@ -15,6 +15,7 @@ set(CATKIN_DEPENDENCIES
   mrs_lib
   mrs_mission_manager
   actionlib
+  actionlib_msgs
   )
 
 set(LIBRARIES
@@ -23,6 +24,23 @@ set(LIBRARIES
 
 find_package(catkin REQUIRED COMPONENTS
   ${CATKIN_DEPENDENCIES}
+  )
+
+#actions
+add_action_files(
+  DIRECTORY action 
+  FILES WaypointMissionManagement.action
+  )
+# messages
+add_message_files(DIRECTORY msg FILES
+  WaypointMissionRobot.msg
+  )
+
+generate_messages(
+  DEPENDENCIES 
+  actionlib_msgs 
+  mrs_msgs
+  std_msgs
   )
 
 catkin_package(

@@ -17,6 +17,7 @@
   <depend>nodelet</depend>
   <depend>sensor_msgs</depend>
   <depend>actionlib</depend>
+  <depend>actionlib_msgs</depend>
   <depend>mrs_msgs</depend>
   <depend>mrs_robot_diagnostics</depend>
   <depend>mrs_lib</depend>
