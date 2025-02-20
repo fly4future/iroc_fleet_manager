@@ -16,6 +16,7 @@ set(CATKIN_DEPENDENCIES
   mrs_mission_manager
   actionlib
   actionlib_msgs
+  genmsg
   )
 
 set(LIBRARIES
@@ -50,9 +51,8 @@ catkin_package(
   )
 
 include_directories(
-  INCLUDE_DIRS include
-  ${catkin_INCLUDE_DIRS}
   include
+  ${catkin_INCLUDE_DIRS}
   )
 
 # IROCMissionManagement
