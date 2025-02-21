@@ -38,6 +38,11 @@ private:
   ros::NodeHandle nh_;
   bool is_initialized_ = false;
 
+  struct result_t
+  {
+    bool        success;
+    std::string message;
+  };
 
   // | ---------------------- ROS subscribers --------------------- |
   
@@ -48,20 +53,30 @@ private:
   void       timerMain(const ros::TimerEvent& event);
   void       timerFeedback(const ros::TimerEvent& event);
 
-  // | ----------------- action client callbacks ---------------- |
+  // | ----------------- mission management action server stuff  ---------------- |
 
   typedef actionlib::SimpleActionServer<iroc_mission_management::WaypointMissionManagementAction> MissionManagementServer;
-  void                                                                              actionCallbackGoal();
-  void                                                                              actionCallbackPreempt();
-  void                                                                              actionPublishFeedback(void);
-  std::unique_ptr<MissionManagementServer>                                          mission_management_server_ptr;
 
+  void                                                           actionCallbackGoal();
+  void                                                           actionCallbackPreempt();
+  void                                                           actionPublishFeedback(void);
+  std::unique_ptr<MissionManagementServer>                       mission_management_server_ptr;
   typedef iroc_mission_management::WaypointMissionManagementGoal ActionServerGoal;
   ActionServerGoal                                               action_server_goal_;
   std::recursive_mutex                                           action_server_mutex_;
 
 
+  // | ----------------- mission manager action client stuff ---------------- |
   std::vector<std::unique_ptr<MissionManagerClient>> action_clients_ptrs_;
+  
+  void waypointMissionActiveCallback(const std::string& robot_name);
+  void waypointMissionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
+                                   const std::string& robot_name);
+  void waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
+
+  // | ------------------ Additional functions ------------------ |
+  result_t startActionClients(const ActionServerGoal& goal);
+
 };
 //}
 
@@ -118,14 +133,6 @@ void IROCMissionManagement::onInit() {
   mission_management_server_ptr->registerPreemptCallback(boost::bind(&IROCMissionManagement::actionCallbackPreempt, this));
   mission_management_server_ptr->start();
 
-
-  /* // | --------------------- action clients --------------------- | */
-  //TODO this will be created when receiving a goal
-  const std::string waypoint_action_client_topic = nh_.resolveName("ac/waypoint_mission");
-  auto action_client_ptr_                = std::make_unique<MissionManagerClient>(waypoint_action_client_topic, false);
-  action_clients_ptrs_.push_back(std::move(action_client_ptr_));
-  ROS_INFO("[IROCBridge]: Created action client on topic \'ac/waypoint_mission\' -> \'%s\'", waypoint_action_client_topic.c_str());
-
   // | --------------------- finish the init -------------------- |
 
   ROS_INFO("[IROCMissionManagement]: initialized");
@@ -162,6 +169,71 @@ void IROCMissionManagement::timerFeedback([[maybe_unused]] const ros::TimerEvent
 // |                  acition client callbacks                  |
 // --------------------------------------------------------------
 
+/* waypointMissionActiveCallback //{ */
+
+void IROCMissionManagement::waypointMissionActiveCallback(const std::string& robot_name) {
+  ROS_INFO_STREAM("[IROCMissionManagement]: Action server on robot " << robot_name << " is processing the goal.");
+}
+
+//}
+
+/* waypointMissionDoneCallback //{ */
+
+void IROCMissionManagement::waypointMissionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
+    const std::string& robot_name) {
+  if (result == NULL) {
+    ROS_WARN("[IROCMissionManagement]: Probably mission_manager died, and action server connection was lost!, reconnection is not currently handled, if mission manager was restarted need to upload a new mission!");
+    /* const json json_msg = { */
+    /*   {"robot_name", robot_name}, */
+    /*   {"mission_result", "Mission manager died in ongoing mission"}, */
+    /*   {"mission_success", false}, */
+    /* }; */
+    /* sendJsonMessage("WaypointMissionDone", json_msg); */
+  } else {
+    if (result->success) {
+      ROS_INFO_STREAM("[IROCMissionManagement]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
+          << result->message << "\"");
+    } else {
+      ROS_ERROR_STREAM("[IROCMissionManagement]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
+          << result->message << "\"");
+    }
+
+    /* const json json_msg = { */
+    /*   {"robot_name", robot_name}, */
+    /*   {"mission_result", result->message}, */
+    /*   {"mission_success", result->success}, */
+    /* }; */
+    /* sendJsonMessage("WaypointMissionDone", json_msg); */
+  }
+}
+
+//}
+
+/* waypointMissionFeedbackCallback //{ */
+
+void IROCMissionManagement::waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
+  ROS_INFO_STREAM("[IROCMissionManagement]: Feedback from " << robot_name << " action: \"" << feedback->message << "\"" << " goal_idx: " << feedback->goal_idx
+                                                 << " distance_to_closest_goal: " << feedback->distance_to_closest_goal << " goal_estimated_arrival_time: "
+                                                 << feedback->goal_estimated_arrival_time << " goal_progress: " << feedback->goal_progress
+                                                 << " distance_to_finish: " << feedback->distance_to_finish << " finish_estimated_arrival_time: " 
+                                                 << feedback->finish_estimated_arrival_time  << " mission_progress: " << feedback->mission_progress);
+  
+  /* const json json_msg = { */
+  /*     {"robot_name", robot_name}, */
+  /*     {"mission_state", feedback->message}, */
+  /*     {"current_goal", feedback->goal_idx}, */
+  /*     {"distance_to_goal", feedback->distance_to_closest_goal}, */
+  /*     {"goal_estimated_arrival_time", feedback->goal_estimated_arrival_time}, */
+  /*     {"goal_progress", feedback->goal_progress}, */
+  /*     {"distance_to_finish", feedback->distance_to_finish}, */
+  /*     {"finish_estimated_arrival_time", feedback->finish_estimated_arrival_time}, */
+  /*     {"mission_progress", feedback->mission_progress}, */
+  /* }; */
+  /* sendJsonMessage("WaypointMissionFeedback", json_msg); */
+}
+
+//}
+
 // | ---------------------- action server callbacks --------------------- |
 
 /*  actionCallbackGoal()//{ */
@@ -180,6 +252,34 @@ void IROCMissionManagement::actionCallbackGoal() {
     mission_management_server_ptr->setAborted(action_server_result);
     return;
   }
+
+  const auto result = startActionClients(*new_action_server_goal);
+
+  /* if (result.success) { */
+
+  /*   for (const auto& client : action_clients_ptrs_) { */
+
+  /*     if (!client->isServerConnected()) { */
+  /*           /1* ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n"; *1/ */
+  /*           ROS_ERROR_STREAM("[IROCMissionManagement]: Action server from robot : is not connected. Check the mrs_mission_manager node."); */
+  /*      } */
+
+  /*      if (!client->getState().isDone()) { */
+  /*           /1* ss << "Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n"; *1/ */
+  /*           ROS_ERROR_STREAM("[IROCMissionManagement]: Mission on robot is already running. Terminate the previous one, or wait until it is finished.\n"); */
+  /*      } */
+  /*   } */
+
+  /*   /1* MissionManagerActionServerGoal action_goal; *1/ */
+  /*   /1* action_goal.frame_id           = robot.frame_id; *1/ */
+  /*   /1* action_goal.height_id          = robot.height_id; *1/ */ 
+  /*   /1* action_goal.terminal_action    = robot.terminal_action; *1/ */ 
+  /*   /1* action_goal.points             = robot.points; *1/ */
+
+     
+  /* } */
+
+  /* auto robots = new_action_server_goal->robots; */
 
   action_server_goal_ = *new_action_server_goal;
 }
@@ -232,6 +332,59 @@ void IROCMissionManagement::actionPublishFeedback() {
 // --------------------------------------------------------------
 // |                     callbacks                              |
 // --------------------------------------------------------------
+
+// | -------------------- support functions ------------------- |
+
+/* startActionClients() //{ */
+
+IROCMissionManagement::result_t IROCMissionManagement::startActionClients(const ActionServerGoal& goal){
+
+  std::stringstream ss;
+  bool success = true;
+
+  for (const auto& robot : goal.robots) {
+    const std::string waypoint_action_client_topic = "/" + robot.name + nh_.resolveName("ac/waypoint_mission");
+    auto action_client_ptr                = std::make_unique<MissionManagerClient>(waypoint_action_client_topic, false);
+
+    if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
+      ROS_ERROR("[IROCMissionManagement]: Server connection failed for robot %s ", robot.name.c_str());
+      continue;
+    }
+
+    ROS_INFO("[IROCMissionManagement]: Created action client on topic \'ac/waypoint_mission\' -> \'%s\'", waypoint_action_client_topic.c_str());
+
+    MissionManagerActionServerGoal action_goal;
+    action_goal.frame_id           = robot.frame_id;
+    action_goal.height_id          = robot.height_id; 
+    action_goal.terminal_action    = robot.terminal_action; 
+    action_goal.points             = robot.points;
+
+    if (!action_client_ptr->isServerConnected()) {
+      ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n";
+      ROS_ERROR_STREAM("[IROCMissionManagement]: Action server from robot :" + robot.name + "is not connected. Check the mrs_mission_manager node.");
+      success = false;
+    }
+
+    if (!action_client_ptr->getState().isDone()) {
+      ss << "Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n";
+      ROS_ERROR_STREAM("[IROCMissionManagement]: Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n");
+      success = false;
+    }
+
+    action_client_ptr->sendGoal(
+      action_goal, std::bind(&IROCMissionManagement::waypointMissionDoneCallback, this, std::placeholders::_1, std::placeholders::_2, robot.name),
+      std::bind(&IROCMissionManagement::waypointMissionActiveCallback, this, robot.name),
+      std::bind(&IROCMissionManagement::waypointMissionFeedbackCallback, this, std::placeholders::_1, robot.name));
+
+    //Save the action client pointer
+    action_clients_ptrs_.emplace_back(std::move(action_client_ptr));
+    
+  }
+
+ return {true, "success"};
+}
+
+//}
 
 }  // namespace iroc_mission_management
 
