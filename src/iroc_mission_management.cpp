@@ -15,6 +15,7 @@
 /* custom msgs of MRS group */
 #include <mrs_mission_manager/waypointMissionAction.h>
 #include <iroc_mission_management/WaypointMissionManagementAction.h>
+#include <iroc_mission_management/WaypointMissionRobotFeedback.h>
 #include <unistd.h>
 #include <iostream>
 
@@ -44,8 +45,6 @@ private:
     std::string message;
   };
 
-  // | ---------------------- ROS subscribers --------------------- |
-  
   // | ----------------------- main timer ----------------------- |
 
   ros::Timer timer_main_;
@@ -73,6 +72,10 @@ private:
   void waypointMissionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
                                    const std::string& robot_name);
   void waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
+
+  //Mission feedback
+  std::map<std::string, mrs_mission_manager::waypointMissionFeedback> aggregated_feedback_;
+  std::mutex feedback_mutex_;
 
   // | ------------------ Additional functions ------------------ |
   result_t startActionClients(const ActionServerGoal& goal);
@@ -212,6 +215,12 @@ void IROCMissionManagement::waypointMissionDoneCallback(const SimpleClientGoalSt
 /* waypointMissionFeedbackCallback //{ */
 
 void IROCMissionManagement::waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
+
+  {
+    std::scoped_lock lck(feedback_mutex_);
+    aggregated_feedback_[robot_name] = *feedback; 
+  }
+
   ROS_INFO_STREAM("[IROCMissionManagement]: Feedback from " << robot_name << " action: \"" << feedback->message << "\"" << " goal_idx: " << feedback->goal_idx
                                                  << " distance_to_closest_goal: " << feedback->distance_to_closest_goal << " goal_estimated_arrival_time: "
                                                  << feedback->goal_estimated_arrival_time << " goal_progress: " << feedback->goal_progress
@@ -320,9 +329,34 @@ void IROCMissionManagement::actionCallbackPreempt() {
 void IROCMissionManagement::actionPublishFeedback() {
   std::scoped_lock lock(action_server_mutex_);
 
+  //Get the aggregated feedback from the robots in ongoing mission
+  std::vector<iroc_mission_management::WaypointMissionRobotFeedback> robots_feedback;
+  {
+    std::scoped_lock lck(feedback_mutex_);
+    
+    iroc_mission_management::WaypointMissionRobotFeedback robot_feedback;
+    //Fill the robots feedback vector
+    for (const auto& [robot_name, fb] : aggregated_feedback_) {
+      robot_feedback.name = robot_name;
+      robot_feedback.message = fb.message;  
+      robot_feedback.goal_idx = fb.goal_idx;
+      robot_feedback.distance_to_finish =fb.distance_to_finish;
+      robot_feedback.goal_estimated_arrival_time = fb.goal_estimated_arrival_time;
+      robot_feedback.mission_progress = fb.mission_progress;
+      robot_feedback.distance_to_closest_goal  = fb.distance_to_closest_goal;
+      robot_feedback.finish_estimated_arrival_time = fb.finish_estimated_arrival_time;
+      robot_feedback.goal_progress = fb.goal_progress;
+      robots_feedback.emplace_back(robot_feedback);
+    }
+  }
+
   if (mission_management_server_ptr->isActive()) {
     iroc_mission_management::WaypointMissionManagementFeedback action_server_feedback;
     action_server_feedback.info.message = "I am active";
+    //TODO compute the average from all the robots and some state processing 
+    action_server_feedback.info.progress = 100; 
+    action_server_feedback.info.state = iroc_mission_management::WaypointMissionInfo::STATE_EXECUTING;
+    action_server_feedback.info.robots_feedback = robots_feedback;
     mission_management_server_ptr->publishFeedback(action_server_feedback);
   }
 }
@@ -348,6 +382,7 @@ IROCMissionManagement::result_t IROCMissionManagement::startActionClients(const 
 
     if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
       ROS_ERROR("[IROCMissionManagement]: Server connection failed for robot %s ", robot.name.c_str());
+      success = false;
       continue;
     }
 
@@ -381,7 +416,7 @@ IROCMissionManagement::result_t IROCMissionManagement::startActionClients(const 
     
   }
 
- return {true, "success"};
+ return {success, "success"};
 }
 
 //}
