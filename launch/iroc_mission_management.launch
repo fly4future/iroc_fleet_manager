@@ -35,7 +35,7 @@
       <remap from="~svc/mission_activation" to="/mission_manager/mission_activation" />
       <remap from="~svc/mission_pausing" to="/mission_manager/mission_pausing" />
 
-      <!-- Services -->
+      <!-- Action client -->
       <remap from="~ac/waypoint_mission" to="/mission_manager" />
 
     </node>

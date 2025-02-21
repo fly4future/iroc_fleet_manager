@@ -25,8 +25,8 @@ namespace iroc_mission_management
 
 using namespace actionlib;
 
-/* typedef SimpleActionClient<mrs_mission_manager::waypointMissionAction> MissionManagerClient; */
-/* typedef mrs_mission_manager::waypointMissionGoal                       ActionServerGoal; */
+typedef SimpleActionClient<mrs_mission_manager::waypointMissionAction> MissionManagerClient;
+typedef mrs_mission_manager::waypointMissionGoal                       MissionManagerActionServerGoal;
 
 /* class IROCMissionManagement //{ */
 
@@ -61,7 +61,7 @@ private:
   std::recursive_mutex                                           action_server_mutex_;
 
 
-
+  std::vector<std::unique_ptr<MissionManagerClient>> action_clients_ptrs_;
 };
 //}
 
@@ -117,6 +117,14 @@ void IROCMissionManagement::onInit() {
   mission_management_server_ptr->registerGoalCallback(boost::bind(&IROCMissionManagement::actionCallbackGoal, this));
   mission_management_server_ptr->registerPreemptCallback(boost::bind(&IROCMissionManagement::actionCallbackPreempt, this));
   mission_management_server_ptr->start();
+
+
+  /* // | --------------------- action clients --------------------- | */
+  //TODO this will be created when receiving a goal
+  const std::string waypoint_action_client_topic = nh_.resolveName("ac/waypoint_mission");
+  auto action_client_ptr_                = std::make_unique<MissionManagerClient>(waypoint_action_client_topic, false);
+  action_clients_ptrs_.push_back(std::move(action_client_ptr_));
+  ROS_INFO("[IROCBridge]: Created action client on topic \'ac/waypoint_mission\' -> \'%s\'", waypoint_action_client_topic.c_str());
 
   // | --------------------- finish the init -------------------- |
 
