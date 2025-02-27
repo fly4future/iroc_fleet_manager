@@ -215,7 +215,10 @@ void IROCMissionManagement::timerMain([[maybe_unused]] const ros::TimerEvent& ev
       bool any_failure = std::any_of(mission_handlers_.aggregated_results.begin(), mission_handlers_.aggregated_results.end(), [](const auto& pair) {return !pair.second.success;});
       if (any_failure) {
         ROS_WARN("[IROCMissionManagement]: Early failure detected, aborting mission.");
-        mission_management_server_ptr_->setAborted();
+        iroc_mission_management::WaypointMissionManagementResult action_server_result;
+        action_server_result.success = false;
+        action_server_result.message = "Early failure detected, aborting mission";
+        mission_management_server_ptr_->setAborted(action_server_result);
         cancelRobotClients(); 
         clearMissionHandlers();
         active_mission_ = false;
@@ -230,10 +233,13 @@ void IROCMissionManagement::timerMain([[maybe_unused]] const ros::TimerEvent& ev
           iroc_mission_management::WaypointMissionManagementResult action_server_result;
           action_server_result.success = true;
           action_server_result.message = "All robots finished successfully, mission finished";
-          mission_management_server_ptr_->setSucceeded();
+          mission_management_server_ptr_->setSucceeded(action_server_result);
         } else {
           ROS_INFO("[IROCMissionManagement]: Not all robots finished successfully, finishing mission. ");
-          mission_management_server_ptr_->setAborted();
+          iroc_mission_management::WaypointMissionManagementResult action_server_result;
+          action_server_result.success = false;
+          action_server_result.message = "Not all robots finished successfully, finishing mission";
+          mission_management_server_ptr_->setAborted(action_server_result);
         }
           cancelRobotClients(); 
           clearMissionHandlers();
@@ -330,41 +336,23 @@ void IROCMissionManagement::waypointMissionActiveCallback(const std::string& rob
 
 void IROCMissionManagement::waypointMissionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
     const std::string& robot_name) {
-  std::scoped_lock lock(action_server_mutex_);
-  if (result == NULL) {
-    ROS_WARN("[IROCMissionManagement]: Probably mission_manager died, and action server connection was lost!, reconnection is not currently handled, if mission manager was restarted need to upload a new mission!");
-    /* const json json_msg = { */
-    /*   {"robot_name", robot_name}, */
-    /*   {"mission_result", "Mission manager died in ongoing mission"}, */
-    /*   {"mission_success", false}, */
-    /* }; */
-    /* sendJsonMessage("WaypointMissionDone", json_msg); */
-  } else {
-    if (result->success) {
-      ROS_INFO_STREAM("[IROCMissionManagement]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
-          << result->message << "\"");
-    } else {
-      ROS_ERROR_STREAM("[IROCMissionManagement]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
-          << result->message << "\"");
-    }
-    
-  /* if (!result->success) { */
-  /*     iroc_mission_management::WaypointMissionManagementResult action_server_result; */
-  /*     action_server_result.success = false; */
-  /*     action_server_result.message = result->message; */
-  /*     ROS_ERROR("[IROCMissionManagement]: mission aborted"); */
-  /*     mission_management_server_ptr_->setAborted(action_server_result); */
-  /*     return; */
-  /* } */
 
-    mission_handlers_.aggregated_results[robot_name] = *result;
-    /* const json json_msg = { */
-    /*   {"robot_name", robot_name}, */
-    /*   {"mission_result", result->message}, */
-    /*   {"mission_success", result->success}, */
-    /* }; */
-    /* sendJsonMessage("WaypointMissionDone", json_msg); */
+  if (!active_mission_) {
+    return;
   }
+
+  std::scoped_lock lock(action_server_mutex_);
+  if (result == NULL) 
+    ROS_WARN("[IROCMissionManagement]: Probably mission_manager died, and action server connection was lost!, reconnection is not currently handled, if mission manager was restarted need to upload a new mission!");
+
+  if (result->success) {
+    ROS_INFO_STREAM("[IROCMissionManagement]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
+          << result->message << "\"");
+  } else {
+    ROS_ERROR_STREAM("[IROCMissionManagement]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
+          << result->message << "\"");
+  }
+  mission_handlers_.aggregated_results[robot_name] = *result;
 }
 
 //}
@@ -372,6 +360,11 @@ void IROCMissionManagement::waypointMissionDoneCallback(const SimpleClientGoalSt
 /* waypointMissionFeedbackCallback //{ */
 
 void IROCMissionManagement::waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
+  
+  if (!active_mission_) {
+
+    return;
+  }
 
   {
     std::scoped_lock lck(mission_handlers_.feedback_mtx);
@@ -415,39 +408,14 @@ void IROCMissionManagement::actionCallbackGoal() {
       action_server_result.message = result.message;
       ROS_ERROR("[IROCMissionManagement]: Failed to start all robot clients,  mission aborted");
       mission_management_server_ptr_->setAborted(action_server_result);
+      cancelRobotClients(); 
       clearMissionHandlers();
       return;
   }
-  else {
-    active_mission_ = true;
-    action_server_goal_ = *new_action_server_goal;
-  }
 
-  /* if (result.success) { */
+  active_mission_ = true;
+  action_server_goal_ = *new_action_server_goal;
 
-  /*   for (const auto& client : action_clients_ptrs_) { */
-
-  /*     if (!client->isServerConnected()) { */
-  /*           /1* ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n"; *1/ */
-  /*           ROS_ERROR_STREAM("[IROCMissionManagement]: Action server from robot : is not connected. Check the mrs_mission_manager node."); */
-  /*      } */
-
-  /*      if (!client->getState().isDone()) { */
-  /*           /1* ss << "Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n"; *1/ */
-  /*           ROS_ERROR_STREAM("[IROCMissionManagement]: Mission on robot is already running. Terminate the previous one, or wait until it is finished.\n"); */
-  /*      } */
-  /*   } */
-
-  /*   /1* MissionManagerActionServerGoal action_goal; *1/ */
-  /*   /1* action_goal.frame_id           = robot.frame_id; *1/ */
-  /*   /1* action_goal.height_id          = robot.height_id; *1/ */ 
-  /*   /1* action_goal.terminal_action    = robot.terminal_action; *1/ */ 
-  /*   /1* action_goal.points             = robot.points; *1/ */
-
-     
-  /* } */
-
-  /* auto robots = new_action_server_goal->robots; */
 }
 
 //}
@@ -536,8 +504,9 @@ IROCMissionManagement::result_t IROCMissionManagement::startRobotClients(const A
 
       if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
         ROS_ERROR("[IROCMissionManagement]: Server connection failed for robot %s ", robot.name.c_str());
+        ss << "Action server from robot: " + robot.name + " failed to connect. Check the mrs_mission_manager node.\n";
         success = false;
-        continue;
+        return {success, ss.str()};
       }
 
       ROS_INFO("[IROCMissionManagement]: Created action client on topic \'ac/waypoint_mission\' -> \'%s\'", waypoint_action_client_topic.c_str());
@@ -552,12 +521,14 @@ IROCMissionManagement::result_t IROCMissionManagement::startRobotClients(const A
         ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n";
         ROS_ERROR_STREAM("[IROCMissionManagement]: Action server from robot :" + robot.name + "is not connected. Check the mrs_mission_manager node.");
         success = false;
+        return {success, ss.str()};
       }
 
       if (!action_client_ptr->getState().isDone()) {
         ss << "Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n";
         ROS_ERROR_STREAM("[IROCMissionManagement]: Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n");
         success = false;
+        return {success, ss.str()};
       }
 
       action_client_ptr->sendGoal(
@@ -582,8 +553,12 @@ IROCMissionManagement::result_t IROCMissionManagement::startRobotClients(const A
 
       mission_handlers_.handlers.emplace_back(std::move(robot_handler));
     }
+
+
+    //Send the goals in the created clients
   }
- return {success, "success"};
+ ss << "Successfully started robot all robot clients";
+ return {success, ss.str()};
 }
 
 //}
@@ -602,6 +577,9 @@ IROCMissionManagement::ActionServerFeedback IROCMissionManagement::processAggreg
   }
 
   auto mission_progress = std::accumulate(robots_progress.begin(), robots_progress.end(), 0.0) / robots_progress.size();
+
+  
+  /* auto all_success = std::all_of(mission_handlers_.aggregated_feedbacks.begin(), mission_handlers_.aggregated_feedbacks.end(), [](const auto& pair) { return pair.second.message;}); */
 
   action_server_feedback.info.progress = mission_progress;
   action_server_feedback.info.message = "I am active";
