@@ -101,12 +101,13 @@ private:
   //Mission feedback
   /* std::map<std::string, mrs_mission_manager::waypointMissionFeedback> aggregated_feedback_; */
   /* std::map<std::string, mrs_mission_manager::waypointMissionResult>   aggregated_result_; */
-  std::mutex feedback_mutex_;
+  /* std::mutex feedback_mutex_; */
 
   // | ------------------ Additional functions ------------------ |
   result_t startRobotClients(const ActionServerGoal& goal);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_mission_management::WaypointMissionRobotFeedback>& robots_feedback);
   void clearMissionHandlers();
+  void cancelRobotClients();
 
   // some helper method overloads
   template <typename Svc_T>
@@ -215,6 +216,7 @@ void IROCMissionManagement::timerMain([[maybe_unused]] const ros::TimerEvent& ev
       if (any_failure) {
         ROS_WARN("[IROCMissionManagement]: Early failure detected, aborting mission.");
         mission_management_server_ptr_->setAborted();
+        cancelRobotClients(); 
         clearMissionHandlers();
         active_mission_ = false;
         return;
@@ -233,6 +235,7 @@ void IROCMissionManagement::timerMain([[maybe_unused]] const ros::TimerEvent& ev
           ROS_INFO("[IROCMissionManagement]: Not all robots finished successfully, finishing mission. ");
           mission_management_server_ptr_->setAborted();
         }
+          cancelRobotClients(); 
           clearMissionHandlers();
           active_mission_ = false;
       } 
@@ -248,7 +251,10 @@ void IROCMissionManagement::timerFeedback([[maybe_unused]] const ros::TimerEvent
     ROS_WARN_THROTTLE(1, "[MissionManager]: Waiting for nodelet initialization");
     return;
   }
-  actionPublishFeedback();
+
+  if (active_mission_) {
+    actionPublishFeedback();
+  }
 }
 //}
 
@@ -324,7 +330,7 @@ void IROCMissionManagement::waypointMissionActiveCallback(const std::string& rob
 
 void IROCMissionManagement::waypointMissionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
     const std::string& robot_name) {
-  std::scoped_lock lock(action_server_mutex_, mission_handlers_.mtx);
+  std::scoped_lock lock(action_server_mutex_);
   if (result == NULL) {
     ROS_WARN("[IROCMissionManagement]: Probably mission_manager died, and action server connection was lost!, reconnection is not currently handled, if mission manager was restarted need to upload a new mission!");
     /* const json json_msg = { */
@@ -368,7 +374,7 @@ void IROCMissionManagement::waypointMissionDoneCallback(const SimpleClientGoalSt
 void IROCMissionManagement::waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
 
   {
-    /* std::scoped_lock lck(mission_handlers_.mtx); */
+    std::scoped_lock lck(mission_handlers_.feedback_mtx);
     mission_handlers_.aggregated_feedbacks[robot_name] = *feedback; 
   }
 
@@ -483,7 +489,7 @@ void IROCMissionManagement::actionPublishFeedback() {
   //Get the aggregated feedback from the robots in ongoing mission
   std::vector<iroc_mission_management::WaypointMissionRobotFeedback> robots_feedback;
   {
-    std::scoped_lock lck(mission_handlers_.mtx);
+    std::scoped_lock lck(mission_handlers_.feedback_mtx);
     iroc_mission_management::WaypointMissionRobotFeedback robot_feedback;
     //Fill the robots feedback vector
     for (const auto& [robot_name, fb] : mission_handlers_.aggregated_feedbacks) {
@@ -617,6 +623,23 @@ void IROCMissionManagement::clearMissionHandlers(){
   mission_handlers_.handlers.clear();
   mission_handlers_.aggregated_feedbacks.clear();
   mission_handlers_.aggregated_results.clear();
+}
+
+//}
+
+/* cancelRobotClients() //{ */
+
+void IROCMissionManagement::cancelRobotClients(){
+  std::scoped_lock lock(mission_handlers_.mtx);
+  for (auto& rh : mission_handlers_.handlers) {
+    const auto action_client_state = rh.action_client_ptr->getState(); 
+    if (action_client_state.isDone()) {
+      ROS_INFO_STREAM_THROTTLE(1.0, "[IROCMissionManagement]: Robot \"" << rh.robot_name << "\" mission done. Skipping cancel command.");
+    } else {
+      ROS_INFO_STREAM_THROTTLE(1.0, "[IROCMissionManagement]: Cancelling \"" << rh.robot_name << "\" mission.");
+      rh.action_client_ptr->cancelGoal();
+    }
+  }
 }
 
 //}
