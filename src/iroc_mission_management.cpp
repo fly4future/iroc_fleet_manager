@@ -98,11 +98,6 @@ private:
                                    const std::string& robot_name);
   void waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
 
-  //Mission feedback
-  /* std::map<std::string, mrs_mission_manager::waypointMissionFeedback> aggregated_feedback_; */
-  /* std::map<std::string, mrs_mission_manager::waypointMissionResult>   aggregated_result_; */
-  /* std::mutex feedback_mutex_; */
-
   // | ------------------ Additional functions ------------------ |
   result_t startRobotClients(const ActionServerGoal& goal);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_mission_management::WaypointMissionRobotFeedback>& robots_feedback);
@@ -188,7 +183,6 @@ void IROCMissionManagement::onInit() {
   ROS_INFO("[IROCMissionManagement]: --------------------");
 
   is_initialized_ = true;
-
 }
 
 //}
@@ -212,6 +206,7 @@ void IROCMissionManagement::timerMain([[maybe_unused]] const ros::TimerEvent& ev
     if (active_mission_) {
       std::scoped_lock lock(mission_handlers_.mtx);
 
+      //Check if any missions aborted early
       bool any_failure = std::any_of(mission_handlers_.aggregated_results.begin(), mission_handlers_.aggregated_results.end(), [](const auto& pair) {return !pair.second.success;});
       if (any_failure) {
         ROS_WARN("[IROCMissionManagement]: Early failure detected, aborting mission.");
@@ -253,6 +248,7 @@ void IROCMissionManagement::timerMain([[maybe_unused]] const ros::TimerEvent& ev
 
 /* timerFeedback() //{ */
 void IROCMissionManagement::timerFeedback([[maybe_unused]] const ros::TimerEvent& event) {
+  
   if (!is_initialized_) {
     ROS_WARN_THROTTLE(1, "[MissionManager]: Waiting for nodelet initialization");
     return;
@@ -306,6 +302,10 @@ bool IROCMissionManagement::changeMissionStateCallback(mrs_msgs::String::Request
             rh.action_client_ptr->cancelGoal();
           }
         }
+    } else {
+      ROS_WARN_STREAM_THROTTLE(1.0, "Bad type.");
+      res.success = false;
+      res.message = "Unsupported type";
     }
   
   } else {
@@ -362,7 +362,6 @@ void IROCMissionManagement::waypointMissionDoneCallback(const SimpleClientGoalSt
 void IROCMissionManagement::waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
   
   if (!active_mission_) {
-
     return;
   }
 
@@ -370,14 +369,7 @@ void IROCMissionManagement::waypointMissionFeedbackCallback(const mrs_mission_ma
     std::scoped_lock lck(mission_handlers_.feedback_mtx);
     mission_handlers_.aggregated_feedbacks[robot_name] = *feedback; 
   }
-
-  /* ROS_INFO_STREAM("[IROCMissionManagement]: Feedback from " << robot_name << " action: \"" << feedback->message << "\"" << " goal_idx: " << feedback->goal_idx */
-  /*                                                << " distance_to_closest_goal: " << feedback->distance_to_closest_goal << " goal_estimated_arrival_time: " */
-  /*                                                << feedback->goal_estimated_arrival_time << " goal_progress: " << feedback->goal_progress */
-  /*                                                << " distance_to_finish: " << feedback->distance_to_finish << " finish_estimated_arrival_time: " */ 
-  /*                                                << feedback->finish_estimated_arrival_time  << " mission_progress: " << feedback->mission_progress); */
-  
-  }
+}
 
 //}
 
@@ -390,7 +382,6 @@ void IROCMissionManagement::actionCallbackGoal() {
   boost::shared_ptr<const iroc_mission_management::WaypointMissionManagementGoal> new_action_server_goal = mission_management_server_ptr_->acceptNewGoal();
   ROS_INFO_STREAM("[IROCMissionManagement]: Action server received a new goal: \n" << *new_action_server_goal);
  
-  ROS_INFO("[IROCMissionManagement]: ");
   if (!is_initialized_) {
     iroc_mission_management::WaypointMissionManagementResult action_server_result;
     action_server_result.success = false;
@@ -400,6 +391,7 @@ void IROCMissionManagement::actionCallbackGoal() {
     return;
   }
 
+  //Start each robot action/service clients with mission_manager 
   const auto result = startRobotClients(*new_action_server_goal);
 
   if (!result.success) {
@@ -415,7 +407,6 @@ void IROCMissionManagement::actionCallbackGoal() {
 
   active_mission_ = true;
   action_server_goal_ = *new_action_server_goal;
-
 }
 
 //}
@@ -433,7 +424,8 @@ void IROCMissionManagement::actionCallbackPreempt() {
       action_server_result.message = "Preempted by client";
       ROS_WARN_STREAM("[IROCMissionManagement]: " << action_server_result.message);
       mission_management_server_ptr_->setPreempted(action_server_result);
-
+      cancelRobotClients();
+      clearMissionHandlers();
     } else {
       ROS_INFO("[IROCMissionManagement]: Cancel toggled for ActionServer.");
 
@@ -441,6 +433,8 @@ void IROCMissionManagement::actionCallbackPreempt() {
       action_server_result.success = false;
       action_server_result.message = "Mission stopped.";
       mission_management_server_ptr_->setAborted(action_server_result);
+      cancelRobotClients();
+      clearMissionHandlers();
       ROS_INFO("[IROCMissionManagement]: Mission stopped.");
 
     }
@@ -454,7 +448,7 @@ void IROCMissionManagement::actionCallbackPreempt() {
 void IROCMissionManagement::actionPublishFeedback() {
   std::scoped_lock lock(action_server_mutex_);
 
-  //Get the aggregated feedback from the robots in ongoing mission
+  //Collect the feedback from active robots in the mission 
   std::vector<iroc_mission_management::WaypointMissionRobotFeedback> robots_feedback;
   {
     std::scoped_lock lck(mission_handlers_.feedback_mtx);
@@ -482,10 +476,6 @@ void IROCMissionManagement::actionPublishFeedback() {
 
 //}
 
-// --------------------------------------------------------------
-// |                     callbacks                              |
-// --------------------------------------------------------------
-
 // | -------------------- support functions ------------------- |
 
 /* startRobotClients() //{ */
@@ -498,10 +488,12 @@ IROCMissionManagement::result_t IROCMissionManagement::startRobotClients(const A
   std::scoped_lock lck(mission_handlers_.mtx);
   {
     mission_handlers_.handlers.reserve(goal.robots.size());
+    //Initialize the robots received in the goal request
     for (const auto& robot : goal.robots) {
       const std::string waypoint_action_client_topic = "/" + robot.name + nh_.resolveName("ac/waypoint_mission");
       auto action_client_ptr                = std::make_unique<MissionManagerClient>(waypoint_action_client_topic, false);
 
+      //Need to wait for server
       if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
         ROS_ERROR("[IROCMissionManagement]: Server connection failed for robot %s ", robot.name.c_str());
         ss << "Action server from robot: " + robot.name + " failed to connect. Check the mrs_mission_manager node.\n";
@@ -531,6 +523,7 @@ IROCMissionManagement::result_t IROCMissionManagement::startRobotClients(const A
         return {success, ss.str()};
       }
 
+      //Seng the goal to robot in mission_manager
       action_client_ptr->sendGoal(
         action_goal, std::bind(&IROCMissionManagement::waypointMissionDoneCallback, this, std::placeholders::_1, std::placeholders::_2, robot.name),
         std::bind(&IROCMissionManagement::waypointMissionActiveCallback, this, robot.name),
@@ -551,11 +544,9 @@ IROCMissionManagement::result_t IROCMissionManagement::startRobotClients(const A
       robot_handler.sc_robot_activation = sc_robot_activation;
       robot_handler.sc_robot_pausing    = sc_robot_pausing;
 
+      //Save robot clients in mission handler
       mission_handlers_.handlers.emplace_back(std::move(robot_handler));
     }
-
-
-    //Send the goals in the created clients
   }
  ss << "Successfully started robot all robot clients";
  return {success, ss.str()};
@@ -576,17 +567,24 @@ IROCMissionManagement::ActionServerFeedback IROCMissionManagement::processAggreg
     robots_progress.emplace_back(rbf.mission_progress);
   }
 
+  //Get average of active robots progress for the general progress
   auto mission_progress = std::accumulate(robots_progress.begin(), robots_progress.end(), 0.0) / robots_progress.size();
 
-  
-  /* auto all_success = std::all_of(mission_handlers_.aggregated_feedbacks.begin(), mission_handlers_.aggregated_feedbacks.end(), [](const auto& pair) { return pair.second.message;}); */
+  //TODO mission message based on the messages from all robots? 
+  //TODO manage the mission based on the message received from each robot, validate if all loaded, executing, etc..
+  // Checks if ALL messages are exactly "MISSION_LOADED"
+  auto all_loaded = std::all_of(
+    mission_handlers_.aggregated_feedbacks.begin(),
+    mission_handlers_.aggregated_feedbacks.end(),
+    [](const auto& pair) { 
+        return pair.second.message == "MISSION_LOADED";  
+    }
+  );
 
   action_server_feedback.info.progress = mission_progress;
-  action_server_feedback.info.message = "I am active";
-  action_server_feedback.info.state = iroc_mission_management::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED;
+  action_server_feedback.info.message = all_loaded ? "MISSION_LOADED" : "ERROR";
+  action_server_feedback.info.state = all_loaded ? iroc_mission_management::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED: iroc_mission_management::WaypointMissionInfo::STATE_ERROR;
   action_server_feedback.info.robots_feedback = robots_feedback;
-
-  //TODO manage the mission based on the message received from each robot, validate if all loaded, executing, etc..
 
   return action_server_feedback; 
 }
@@ -596,7 +594,6 @@ IROCMissionManagement::ActionServerFeedback IROCMissionManagement::processAggreg
 /* clearMissionHandlers() //{ */
 
 void IROCMissionManagement::clearMissionHandlers(){
-
   std::scoped_lock lock(mission_handlers_.mtx);
   mission_handlers_.handlers.clear();
   mission_handlers_.aggregated_feedbacks.clear();
@@ -653,9 +650,7 @@ IROCMissionManagement::result_t IROCMissionManagement::callService(ros::ServiceC
   req.data = val;
   return callService<svc_t>(sc, req);
 }
-
 //}
-
 }  // namespace iroc_mission_management
 
 #include <pluginlib/class_list_macros.h>
