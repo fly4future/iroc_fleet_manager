@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15.0)
-project(iroc_mission_management)
+project(iroc_fleet_manager)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,7 +20,7 @@ set(CATKIN_DEPENDENCIES
   )
 
 set(LIBRARIES
-  IROCMissionManagement
+  IROCFleetManager
   )
 
 find_package(catkin REQUIRED COMPONENTS
@@ -30,7 +30,7 @@ find_package(catkin REQUIRED COMPONENTS
 #actions
 add_action_files(
   DIRECTORY action 
-  FILES WaypointMissionManagement.action
+  FILES WaypointFleetManager.action
   )
 # messages
 add_message_files(DIRECTORY msg FILES
@@ -56,20 +56,20 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   )
 
-# IROCMissionManagement
+# IROCFleetManager
 
 ## Declare a C++ library
-add_library(IROCMissionManagement
-  src/iroc_mission_management.cpp
+add_library(IROCFleetManager
+  src/iroc_fleet_manager.cpp
   )
 
-add_dependencies(IROCMissionManagement
+add_dependencies(IROCFleetManager
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
   )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(IROCMissionManagement
+target_link_libraries(IROCFleetManager
   ${catkin_LIBRARIES}
   )
 

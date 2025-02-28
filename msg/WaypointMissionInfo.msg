@@ -1,7 +1,7 @@
 string message
 string state
 float64 progress
-iroc_mission_management/WaypointMissionRobotFeedback[] robots_feedback
+iroc_fleet_manager/WaypointMissionRobotFeedback[] robots_feedback
 
 string STATE_TRAJECTORIES_LOADED = trajectories_loaded
 string STATE_EXECUTING = mission_executing 

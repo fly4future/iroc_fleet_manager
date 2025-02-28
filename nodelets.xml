@@ -1,5 +1,5 @@
-<library path="lib/libIROCMissionManagement">
-  <class name="iroc_mission_management/IROCMissionManagement" type="iroc_mission_management::IROCMissionManagement" base_class_type="nodelet::Nodelet">
-    <description>RosMissionFleetManagement nodelet</description>
+<library path="lib/libIROCFleetManager">
+  <class name="iroc_fleet_manager/IROCFleetManager" type="iroc_fleet_manager::IROCFleetManager" base_class_type="nodelet::Nodelet">
+    <description>RosMissionFleetManager nodelet</description>
   </class>
 </library>

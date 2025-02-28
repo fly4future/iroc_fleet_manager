@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
 
-  <name>iroc_mission_management</name>
+  <name>iroc_fleet_manager</name>
   <version>1.0.0</version>
   <description>Node for handling fleet mission execution</description>
 
