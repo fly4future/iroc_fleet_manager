@@ -101,6 +101,7 @@ private:
   // | ------------------ Additional functions ------------------ |
   result_t startRobotClients(const ActionServerGoal& goal);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback);
+  std::tuple<std::string, std::string> processFeedbackMsg();
   void clearMissionHandlers();
   void cancelRobotClients();
 
@@ -466,11 +467,11 @@ void IROCFleetManager::actionPublishFeedback() {
       robot_feedback.goal_progress = fb.goal_progress;
       robots_feedback.emplace_back(robot_feedback);
     }
-  }
-
-  if (mission_management_server_ptr_->isActive()) {
-    auto action_server_feedback = processAggregatedFeedbackInfo(robots_feedback);
-    mission_management_server_ptr_->publishFeedback(action_server_feedback);
+  
+    if (mission_management_server_ptr_->isActive()) {
+      auto action_server_feedback = processAggregatedFeedbackInfo(robots_feedback);
+      mission_management_server_ptr_->publishFeedback(action_server_feedback);
+    }
   }
 }
 
@@ -570,9 +571,23 @@ IROCFleetManager::ActionServerFeedback IROCFleetManager::processAggregatedFeedba
   //Get average of active robots progress for the general progress
   auto mission_progress = std::accumulate(robots_progress.begin(), robots_progress.end(), 0.0) / robots_progress.size();
 
-  //TODO mission message based on the messages from all robots? 
-  //TODO manage the mission based on the message received from each robot, validate if all loaded, executing, etc..
   // Checks if ALL messages are exactly "MISSION_LOADED"
+  auto [message , state] = processFeedbackMsg();
+
+  action_server_feedback.info.progress = mission_progress;
+  action_server_feedback.info.message = message; 
+  action_server_feedback.info.state = state; 
+  action_server_feedback.info.robots_feedback = robots_feedback;
+
+  return action_server_feedback; 
+}
+
+//}
+
+/* processFeedbackMsg() //{ */
+
+std::tuple<std::string, std::string> IROCFleetManager::processFeedbackMsg(){
+
   auto all_loaded = std::all_of(
     mission_handlers_.aggregated_feedbacks.begin(),
     mission_handlers_.aggregated_feedbacks.end(),
@@ -581,12 +596,46 @@ IROCFleetManager::ActionServerFeedback IROCFleetManager::processAggregatedFeedba
     }
   );
 
-  action_server_feedback.info.progress = mission_progress;
-  action_server_feedback.info.message = all_loaded ? "MISSION_LOADED" : "ERROR";
-  action_server_feedback.info.state = all_loaded ? iroc_fleet_manager::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED: iroc_fleet_manager::WaypointMissionInfo::STATE_ERROR;
-  action_server_feedback.info.robots_feedback = robots_feedback;
+  if (all_loaded) 
+    return std::make_tuple("All missions loaded",iroc_fleet_manager::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED);
 
-  return action_server_feedback; 
+  auto all_executing = std::all_of(
+    mission_handlers_.aggregated_feedbacks.begin(),
+    mission_handlers_.aggregated_feedbacks.end(),
+    [](const auto& pair) { 
+        return pair.second.message == "EXECUTING";  
+    }
+  );
+
+  if (all_executing) 
+    return std::make_tuple("Robots executing mission", iroc_fleet_manager::WaypointMissionInfo::STATE_EXECUTING);
+
+  auto all_paused = std::all_of(
+    mission_handlers_.aggregated_feedbacks.begin(),
+    mission_handlers_.aggregated_feedbacks.end(),
+    [](const auto& pair) { 
+        return pair.second.message == "PAUSED";  
+    }
+  );
+
+  if (all_paused) 
+    return std::make_tuple("All robots paused", iroc_fleet_manager::WaypointMissionInfo::STATE_PAUSED);
+
+  auto any_idle = std::any_of(
+    mission_handlers_.aggregated_feedbacks.begin(),
+    mission_handlers_.aggregated_feedbacks.end(),
+    [](const auto& pair) { 
+        return pair.second.message == "IDLE";  
+    }
+  );
+
+  if (any_idle) 
+    return std::make_tuple("One robot is idle, check mission_manager", iroc_fleet_manager::WaypointMissionInfo::STATE_ERROR);
+    
+
+  return std::make_tuple("Not defined message", iroc_fleet_manager::WaypointMissionInfo::STATE_INVALID);
+
+
 }
 
 //}
