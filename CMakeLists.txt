@@ -38,7 +38,10 @@ add_message_files(DIRECTORY msg FILES
   WaypointMissionRobotFeedback.msg
   WaypointMissionInfo.msg
   )
-
+# messages
+add_service_files(DIRECTORY srv FILES
+  ChangeRobotMissionStateSrv.srv
+  )
 generate_messages(
   DEPENDENCIES 
   actionlib_msgs 
