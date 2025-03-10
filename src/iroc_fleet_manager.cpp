@@ -272,54 +272,56 @@ void IROCFleetManager::timerFeedback([[maybe_unused]] const ros::TimerEvent& eve
 bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res) {
   std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
   ROS_INFO_STREAM("[IROCFleetManager]: Received mission activation request");
-  
+
   std::stringstream ss;
   bool success = true;
   if (mission_management_server_ptr_->isActive()) {
     if (req.value == "start") {
-      ROS_INFO_STREAM_THROTTLE(1.0, "Calling mission activation.");
-        for (auto& rh : fleet_mission_handlers_.handlers) {
-          const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_activation);
-          if (!resp.success) { 
-              success = false; 
-              ss << "Call for robot \"" << rh.robot_name << "\" was not successful with message: " << resp.message << "\n";
-          }
+      ROS_INFO_STREAM("Calling mission activation.");
+      for (auto& rh : fleet_mission_handlers_.handlers) {
+        const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_activation);
+        if (!resp.success) { 
+          success = false; 
+          ss << "Call for robot \"" << rh.robot_name << "\" was not successful with message: " << resp.message << "\n";
         }
+      }
     } else if (req.value == "pause") {
-       ROS_INFO_STREAM_THROTTLE(1.0, "Calling mission pausing.");
-        for (auto& rh : fleet_mission_handlers_.handlers) {
-          const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_pausing);
-          if (!resp.success) { 
-              success = false; 
-              ss << "Call for robot \"" << rh.robot_name << "\" was not successful with message: " << resp.message << "\n";
-          }
+      ROS_INFO_STREAM("Calling mission pausing.");
+      for (auto& rh : fleet_mission_handlers_.handlers) {
+        const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_pausing);
+        if (!resp.success) { 
+          success = false; 
+          ss << "Call for robot \"" << rh.robot_name << "\" was not successful with message: " << resp.message << "\n";
         }
+      }
     } else if (req.value == "stop") {
-      ROS_INFO_STREAM_THROTTLE(1.0, "Calling mission pausing.");
-        for (auto& rh : fleet_mission_handlers_.handlers) {
-          const auto action_client_state = rh.action_client_ptr->getState(); 
-          if (action_client_state.isDone()) {
-            ss << "robot \"" << rh.robot_name << "\" mission done, skipping\n";
-            success = false;
-            ROS_ERROR_STREAM_THROTTLE(1.0, "[IROCBridge]: Robot \"" << rh.robot_name << "\" mission done. Skipping.");
-          } else {
-            ROS_INFO_STREAM_THROTTLE(1.0, "[IROCBridge]: Cancelling \"" << rh.robot_name << "\" mission.");
-            rh.action_client_ptr->cancelGoal();
-          }
+      ROS_INFO_STREAM("Calling mission pausing.");
+      for (auto& rh : fleet_mission_handlers_.handlers) {
+        const auto action_client_state = rh.action_client_ptr->getState(); 
+        if (action_client_state.isDone()) {
+          ss << "robot \"" << rh.robot_name << "\" mission done, skipping\n";
+          ROS_ERROR_STREAM("[IROCFleetManager]: Robot \"" << rh.robot_name << "\" mission done. Skipping.");
+        } else {
+          ROS_INFO_STREAM("[IROCFleetManager]: Cancelling \"" << rh.robot_name << "\" mission.");
+          rh.action_client_ptr->cancelGoal();
         }
+      }
     } else {
-      ROS_WARN_STREAM_THROTTLE(1.0, "Bad type.");
-      res.success = false;
-      res.message = "Unsupported type";
+      success = false;
+      ss << "Unsupported type\n";
     }
-  
+
   } else {
-   res.success = false;
-   res.message = "No active mission.";
-   ROS_WARN_THROTTLE(1.0, "[IROCFleetManager]: %s", res.message.c_str());
+    success = false;
+    ss << "No active mission.\n";
   }
   res.success = success;
   res.message = ss.str();
+  if (res.success){
+    ROS_INFO("[IROCFleetManager]: %s", res.message.c_str());
+  }else{
+    ROS_WARN("[IROCFleetManager]: %s", res.message.c_str());
+  };
   return true;
 }
 
@@ -334,54 +336,61 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
   std::stringstream ss;
   auto* rh_ptr = findRobotHandler(req.robot_name, fleet_mission_handlers_);
   if (rh_ptr == nullptr) {
-         ss << "robot \"" << req.robot_name << "\" not found, skipping\n";
-         ROS_ERROR_STREAM_THROTTLE(1.0, "[IROCBridge]: Robot \"" << req.robot_name << "\" not found. Skipping.");
-         res.message = ss.str();
-         res.success = false;
-         return true;
+    ss << "robot \"" << req.robot_name << "\" not found as a part of the mission, skipping\n";
+    ROS_ERROR_STREAM("[IROCFleetManager]: Robot \"" << req.robot_name << "\" not found as a part of the mission. Skipping.");
+    res.message = ss.str();
+    res.success = false;
+    return true;
   }
 
   bool success = true;
   if (mission_management_server_ptr_->isActive()) {
     if (req.type == "start") {
-      ROS_INFO_STREAM_THROTTLE(1.0, "Calling mission pausing for robot: " << req.robot_name << ".");
+      ROS_INFO_STREAM("Calling mission pausing for robot: " << req.robot_name << ".");
       const auto resp = callService<std_srvs::Trigger>(rh_ptr->sc_robot_activation);
       if (!resp.success) { 
         success = false; 
         ss << "Call for robot \"" << req.robot_name << "\" was not successful with message: " << resp.message << "\n";
+      } else {
+        ss << "Call successful.\n";
       }
     } else if (req.type == "pause") {
-       ROS_INFO_STREAM_THROTTLE(1.0, "Calling mission pausing for robot: " << req.robot_name << ".");
-       const auto resp = callService<std_srvs::Trigger>(rh_ptr->sc_robot_pausing);
-       if (!resp.success) { 
-         success = false; 
-         ss << "Call for robot \"" << req.robot_name << "\" was not successful with message: " << resp.message << "\n";
-       }
+      ROS_INFO_STREAM("Calling mission pausing for robot: " << req.robot_name << ".");
+      const auto resp = callService<std_srvs::Trigger>(rh_ptr->sc_robot_pausing);
+      if (!resp.success) { 
+        success = false; 
+        ss << "Call for robot \"" << req.robot_name << "\" was not successful with message: " << resp.message << "\n";
+      } else {
+        ss << "Call successful.\n";
+      }
     } else if (req.type == "stop") {
-      ROS_INFO_STREAM_THROTTLE(1.0, "Calling mission pausing.");
+      ROS_INFO_STREAM("Calling mission pausing.");
       const auto action_client_state = rh_ptr->action_client_ptr->getState(); 
       if (action_client_state.isDone()) {
         ss << "robot \"" << rh_ptr->robot_name << "\" mission done, skipping\n";
         success = false;
-        ROS_ERROR_STREAM_THROTTLE(1.0, "[IROCBridge]: Robot \"" << rh_ptr->robot_name << "\" mission done. Skipping.");
+        ROS_ERROR_STREAM("[IROCFleetManager]: Robot \"" << rh_ptr->robot_name << "\" mission done. Skipping.");
       } else {
-        ROS_INFO_STREAM_THROTTLE(1.0, "[IROCBridge]: Cancelling \"" << rh_ptr->robot_name << "\" mission.");
+        ss << "Call successful.\n";
+        ROS_INFO_STREAM("[IROCFleetManager]: Cancelling \"" << rh_ptr->robot_name << "\" mission.");
         rh_ptr->action_client_ptr->cancelGoal();
       }
     } else {
-      ROS_WARN_STREAM_THROTTLE(1.0, "Bad type.");
-      res.success = false;
-      res.message = "Unsupported type";
+      success = false;
+      ss << "Unsupported type\n";
     }
-  
+
   } else {
     success = false;
-    ss << "No active mission";
-   ROS_WARN_STREAM_THROTTLE(1.0, "[IROCFleetManager]: " << ss.str());
+    ss << "No active mission\n";
   }
-
   res.success = success;
   res.message = ss.str();
+  if (res.success){
+    ROS_INFO("[IROCFleetManager]: %s", res.message.c_str());
+  }else{
+    ROS_WARN("[IROCFleetManager]: %s", res.message.c_str());
+  };
   return true;
 }
 
