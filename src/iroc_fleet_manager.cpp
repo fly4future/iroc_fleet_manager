@@ -207,7 +207,8 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
     return;
   }
 
-  bool all_success = false;
+  bool all_success     = false;
+  bool got_all_results = false;
   {
     if (active_mission_) {
       std::scoped_lock lock(fleet_mission_handlers_.mtx);
@@ -228,29 +229,35 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
         return;
       }
 
+
+      got_all_results = std::all_of(fleet_mission_handlers_.handlers.begin(),
+            fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
+            return handler.got_result;});
+
       //Finish mission when we get all the robots result
-      /* if (fleet_mission_handlers_.aggregated_results.size() == fleet_mission_handlers_.handlers.size()) { */
+      if (got_all_results) {
 
-        /* all_success = std::all_of(fleet_mission_handlers_.handlers.begin(), */
-        /*     fleet_mission_handlers_.handlers.end(), [](const auto& handler) { return handler.result.success;}); */
+        all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
+            fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
+            return handler.result.success;});
 
-        /* if (all_success) { */
-        /*   ROS_INFO("[IROCFleetManager]: All robots finished successfully, finishing mission."); */ 
-        /*   iroc_fleet_manager::WaypointFleetManagerResult action_server_result; */
-        /*   action_server_result.success = true; */
-        /*   action_server_result.messages.emplace_back("All robots finished successfully, mission finished"); */
-        /*   mission_management_server_ptr_->setSucceeded(action_server_result); */
-        /* } else { */
-        /*   ROS_INFO("[IROCFleetManager]: Not all robots finished successfully, finishing mission. "); */
-        /*   iroc_fleet_manager::WaypointFleetManagerResult action_server_result; */
-        /*   action_server_result.success = false; */
-        /*   action_server_result.messages.emplace_back("Not all robots finished successfully, finishing mission"); */
-        /*   mission_management_server_ptr_->setAborted(action_server_result); */
-        /* } */
-        /*   cancelRobotClients(); */ 
-        /*   clearMissionHandlers(); */
-        /*   active_mission_ = false; */
-       
+        if (all_success) {
+          ROS_INFO("[IROCFleetManager]: All robots finished successfully, finishing mission."); 
+          iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+          action_server_result.success = true;
+          action_server_result.messages.emplace_back("All robots finished successfully, mission finished");
+          mission_management_server_ptr_->setSucceeded(action_server_result);
+        } else {
+          ROS_INFO("[IROCFleetManager]: Not all robots finished successfully, finishing mission. ");
+          iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+          action_server_result.success = false;
+          action_server_result.messages.emplace_back("Not all robots finished successfully, finishing mission");
+          mission_management_server_ptr_->setAborted(action_server_result);
+        }
+          cancelRobotClients(); 
+          clearMissionHandlers();
+          active_mission_ = false;
+      } 
     }
   }
 }
