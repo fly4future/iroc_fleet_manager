@@ -91,7 +91,6 @@ private:
   struct fleet_mission_handlers_t
   {
     std::recursive_mutex                                                mtx;
-    std::recursive_mutex                                                feedback_mtx;
     std::vector<robot_mission_handler_t>                                handlers;
   } fleet_mission_handlers_;
 
@@ -430,7 +429,6 @@ void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& 
     return;
   }
 
-  /* std::scoped_lock lock(action_server_mutex_); */
   if (result == NULL) 
     ROS_WARN("[IROCFleetManager]: Probably mission_manager died, and action server connection was lost!, reconnection is not currently handled, if mission manager was restarted need to upload a new mission!");
 
@@ -443,13 +441,11 @@ void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& 
   }
 
   {
-    std::scoped_lock lck(fleet_mission_handlers_.feedback_mtx);
+    std::scoped_lock lck(fleet_mission_handlers_.mtx);
     auto* rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
     rh_ptr->result = *result;
     rh_ptr->got_result = true;
   }
-
-  /* fleet_mission_handlers_.aggregated_results[robot_name] = *result; */
 }
 
 //}
@@ -463,7 +459,7 @@ void IROCFleetManager::waypointMissionFeedbackCallback(const mrs_mission_manager
   }
 
   {
-    std::scoped_lock lck(fleet_mission_handlers_.feedback_mtx);
+    std::scoped_lock lck(fleet_mission_handlers_.mtx);
     auto* rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
     rh_ptr->feedback = *feedback;
   }
@@ -597,6 +593,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
     fleet_mission_handlers_.handlers.reserve(goal.robots.size());
     //Initialize the robots received in the goal request
     for (const auto& robot : goal.robots) {
+      bool success = true;
       std::stringstream ss;
       const std::string waypoint_action_client_topic = "/" + robot.name + nh_.resolveName("ac/waypoint_mission");
       auto action_client_ptr                = std::make_unique<MissionManagerClient>(waypoint_action_client_topic, false);
@@ -607,6 +604,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
         ss << "Action server from robot: " + robot.name + " failed to connect. Check the mrs_mission_manager node.\n";
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
+        success = false;
       }
 
       ROS_INFO("[IROCFleetManager]: Created action client on topic \'ac/waypoint_mission\' -> \'%s\'", waypoint_action_client_topic.c_str());
@@ -621,6 +619,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
         ROS_ERROR_STREAM("[IROCFleetManager]: Action server from robot :" + robot.name + " is not connected. Check the mrs_mission_manager node.");
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
+        success = false;
       }
 
       if (!action_client_ptr->getState().isDone()) {
@@ -628,6 +627,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
         ROS_ERROR_STREAM("[IROCFleetManager]: Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n");
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
+        success = false;
       }
 
       //Seng the goal to robot in mission_manager
@@ -646,6 +646,11 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
         ROS_INFO_STREAM("[IROCFleetManagerDebug]: result: " << ss.str());
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
+        success = false;
+      }
+
+      if (!success) {
+        continue;
       }
       //Save the ros service clients from mission_manager
       const std::string mission_activation_client_topic = "/" + robot.name + nh_.resolveName("svc/mission_activation");
@@ -663,6 +668,9 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
       robot_handler.sc_robot_pausing    = sc_robot_pausing;
       //Save robot clients in mission handler
       fleet_mission_handlers_.handlers.emplace_back(std::move(robot_handler));
+      ss << "Mission on robot: " + robot.name + " was successfully processed"; 
+      robot_results[robot.name].message = ss.str();
+      robot_results[robot.name].success = true; 
     }
   }
 
