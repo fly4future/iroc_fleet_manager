@@ -247,7 +247,7 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
           action_server_result.messages.emplace_back("All robots finished successfully, mission finished");
           mission_management_server_ptr_->setSucceeded(action_server_result);
         } else {
-          ROS_INFO("[IROCFleetManager]: Not all robots finished successfully, finishing mission. ");
+          ROS_WARN("[IROCFleetManager]: Not all robots finished successfully, finishing mission. ");
           iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
           action_server_result.success = false;
           action_server_result.messages.emplace_back("Not all robots finished successfully, finishing mission");
@@ -439,7 +439,7 @@ void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& 
     ROS_INFO_STREAM("[IROCFleetManager]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
           << result->message << "\"");
   } else {
-    ROS_ERROR_STREAM("[IROCFleetManager]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
+    ROS_WARN_STREAM("[IROCFleetManager]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
           << result->message << "\"");
   }
 
@@ -483,7 +483,7 @@ void IROCFleetManager::actionCallbackGoal() {
     iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
     action_server_result.success = false;
     action_server_result.messages.emplace_back("Not initialized yet");
-    ROS_ERROR("[IROCFleetManager]: not initialized yet");
+    ROS_WARN("[IROCFleetManager]: not initialized yet");
     mission_management_server_ptr_->setAborted(action_server_result);
     return;
   }
@@ -502,7 +502,7 @@ void IROCFleetManager::actionCallbackGoal() {
         std::stringstream ss;
         if (!result.second.success) {
           ss << result.first << " failed with response: " << result.second.message;
-          ROS_ERROR_STREAM("[IROCFleetManager]: Failure starting robot clients: " << ss.str());
+          ROS_WARN_STREAM("[IROCFleetManager]: Failure starting robot clients: " << ss.str());
           action_server_result.messages.emplace_back(ss.str()); 
         }
       }
@@ -603,7 +603,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
 
       //Need to wait for server
       if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
-        ROS_ERROR("[IROCFleetManager]: Server connection failed for robot %s ", robot.name.c_str());
+        ROS_WARN("[IROCFleetManager]: Server connection failed for robot %s ", robot.name.c_str());
         ss << "Action server from robot: " + robot.name + " failed to connect. Check the mrs_mission_manager node.\n";
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
@@ -619,7 +619,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
 
       if (!action_client_ptr->isServerConnected()) {
         ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n";
-        ROS_ERROR_STREAM("[IROCFleetManager]: Action server from robot :" + robot.name + " is not connected. Check the mrs_mission_manager node.");
+        ROS_WARN_STREAM("[IROCFleetManager]: Action server from robot :" + robot.name + " is not connected. Check the mrs_mission_manager node.");
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
         success = false;
@@ -627,7 +627,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
 
       if (!action_client_ptr->getState().isDone()) {
         ss << "Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n";
-        ROS_ERROR_STREAM("[IROCFleetManager]: Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n");
+        ROS_WARN_STREAM("[IROCFleetManager]: Mission on robot: " + robot.name + " already running. Terminate the previous one, or wait until it is finished.\n");
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
         success = false;
