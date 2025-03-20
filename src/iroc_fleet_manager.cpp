@@ -104,7 +104,6 @@ private:
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback);
   std::tuple<std::string, std::string> processFeedbackMsg();
   robot_mission_handler_t* findRobotHandler(const std::string& robot_name, fleet_mission_handlers_t& mission_handlers); 
-  void clearMissionHandlers();
   void cancelRobotClients();
 
   // some helper method overloads
@@ -225,10 +224,9 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
         iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
         action_server_result.success = false;
         action_server_result.messages.emplace_back("Early failure detected, aborting mission");
+        active_mission_ = false;
         mission_management_server_ptr_->setAborted(action_server_result);
         cancelRobotClients(); 
-        clearMissionHandlers();
-        active_mission_ = false;
         ROS_INFO("[IROCFleetManager]: Mission aborted.");
         return;
       }
@@ -253,10 +251,9 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
           iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
           action_server_result.success = false;
           action_server_result.messages.emplace_back("Not all robots finished successfully, finishing mission");
+          active_mission_ = false;
           mission_management_server_ptr_->setAborted(action_server_result);
           cancelRobotClients();
-          clearMissionHandlers();
-          active_mission_ = false;
           return;
         }
 
@@ -265,7 +262,7 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
         action_server_result.success = true;
         action_server_result.messages.emplace_back("All robots finished successfully, mission finished");
         mission_management_server_ptr_->setSucceeded(action_server_result);
-        clearMissionHandlers();
+        cancelRobotClients();
         active_mission_ = false;
       } 
     }
@@ -295,7 +292,7 @@ void IROCFleetManager::timerFeedback([[maybe_unused]] const ros::TimerEvent& eve
 bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res) {
   std::scoped_lock lock(action_server_mutex_,fleet_mission_handlers_.mtx);
 
-  ROS_INFO_STREAM("[IROCFleetManager]: Received a  " << req.value<< " request for the fleet");
+  ROS_INFO_STREAM("[IROCFleetManager]: Received a " << req.value<< " request for the fleet");
   std::stringstream ss;
   bool success = true;
   if (mission_management_server_ptr_->isActive()) {
@@ -357,7 +354,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
 
 bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request& req, iroc_fleet_manager::ChangeRobotMissionStateSrv::Response& res) {
   std::scoped_lock lock(action_server_mutex_,fleet_mission_handlers_.mtx);
-  ROS_INFO_STREAM("[IROCFleetManager]: Received " << req.type << " request for " << req.robot_name);
+  ROS_INFO_STREAM("[IROCFleetManager]: Received a " << req.type << " request for " << req.robot_name);
   std::stringstream ss;
   auto* rh_ptr = findRobotHandler(req.robot_name, fleet_mission_handlers_);
   if (rh_ptr == nullptr) {
@@ -461,7 +458,6 @@ void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& 
     auto* rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
     rh_ptr->result = *result;
     rh_ptr->got_result = true;
-    ROS_INFO_STREAM("[IROCFleetManager]: Saved " << robot_name << " result.");
   }
 }
 
@@ -523,7 +519,7 @@ void IROCFleetManager::actionCallbackGoal() {
       action_server_result.success = false;
       mission_management_server_ptr_->setAborted(action_server_result);
       cancelRobotClients(); 
-      clearMissionHandlers();
+      ROS_INFO("[IROCFleetManager]: Mission Aborted.");
       return;
   }
   ROS_INFO("[IROCFleetManager]: Succesfully sent the goal to robots in mission.");
@@ -547,16 +543,15 @@ void IROCFleetManager::actionCallbackPreempt() {
       ROS_WARN_STREAM("[IROCFleetManager]: Preempted by the client");
       mission_management_server_ptr_->setPreempted(action_server_result);
       cancelRobotClients();
-      clearMissionHandlers();
     } else {
       ROS_INFO("[IROCFleetManager]: Cancel toggled for ActionServer.");
 
       iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
       action_server_result.success = false;
       action_server_result.messages.emplace_back("Mission stopped.");
+      active_mission_ = false;
       mission_management_server_ptr_->setAborted(action_server_result);
       cancelRobotClients();
-      clearMissionHandlers();
       ROS_INFO("[IROCFleetManager]: Mission stopped.");
     }
   }
@@ -790,29 +785,20 @@ IROCFleetManager::robot_mission_handler_t* IROCFleetManager::findRobotHandler(co
 }
 //}
 
-/* clearMissionHandlers() //{ */
-
-void IROCFleetManager::clearMissionHandlers(){
-  std::scoped_lock lock(fleet_mission_handlers_.mtx);
-  fleet_mission_handlers_.handlers.clear();
-}
-
-//}
-
 /* cancelRobotClients() //{ */
 
 void IROCFleetManager::cancelRobotClients(){
   std::scoped_lock lock(fleet_mission_handlers_.mtx);
   for (auto& rh : fleet_mission_handlers_.handlers) {
     const auto action_client_state = rh.action_client_ptr->getState(); 
-    if (action_client_state.isDone()) {
-      ROS_INFO_STREAM_THROTTLE(1.0, "[IROCFleetManager]: Robot \"" << rh.robot_name << "\" mission done. Skipping cancel command.");
-    } else {
-      ROS_INFO_STREAM_THROTTLE(1.0, "[IROCFleetManager]: Cancelling \"" << rh.robot_name << "\" mission.");
+    if (!action_client_state.isDone()) {
+      ROS_WARN_STREAM("[IROCFleetManager]:\"" << rh.robot_name << "\" has an active mission, canceling...");
       rh.action_client_ptr->cancelGoal();
       rh.action_client_ptr->waitForResult(ros::Duration(1.0));
     }
   }
+  //Clear the robot handlers
+  fleet_mission_handlers_.handlers.clear();
 }
 
 //}
