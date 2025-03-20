@@ -300,7 +300,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
   bool success = true;
   if (mission_management_server_ptr_->isActive()) {
     if (req.value == "start") {
-      ROS_INFO_STREAM("Calling mission activation.");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission activation.");
       for (auto& rh : fleet_mission_handlers_.handlers) {
         const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_activation);
         if (!resp.success) { 
@@ -310,7 +310,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
         }
       }
     } else if (req.value == "pause") {
-      ROS_INFO_STREAM("Calling mission pausing.");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission pausing.");
       for (auto& rh : fleet_mission_handlers_.handlers) {
         const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_pausing);
         if (!resp.success) { 
@@ -320,7 +320,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
         }
       }
     } else if (req.value == "stop") {
-      ROS_INFO_STREAM("Calling mission pausing.");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission pausing.");
       for (auto& rh : fleet_mission_handlers_.handlers) {
         const auto action_client_state = rh.action_client_ptr->getState(); 
         if (action_client_state.isDone()) {
@@ -329,6 +329,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
         } else {
           ROS_INFO_STREAM("[IROCFleetManager]: Cancelling \"" << rh.robot_name << "\" mission.");
           rh.action_client_ptr->cancelGoal();
+          rh.action_client_ptr->waitForResult(ros::Duration(1.0));
         }
       }
     } else {
@@ -370,7 +371,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
   bool success = true;
   if (mission_management_server_ptr_->isActive()) {
     if (req.type == "start") {
-      ROS_INFO_STREAM("Calling mission pausing for robot: " << req.robot_name << ".");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission pausing for robot: " << req.robot_name << ".");
       const auto resp = callService<std_srvs::Trigger>(rh_ptr->sc_robot_activation);
       if (!resp.success) { 
         success = false; 
@@ -380,7 +381,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
         ss << "Call successful.\n";
       }
     } else if (req.type == "pause") {
-      ROS_INFO_STREAM("Calling mission pausing for robot: " << req.robot_name << ".");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission pausing for robot: " << req.robot_name << ".");
       const auto resp = callService<std_srvs::Trigger>(rh_ptr->sc_robot_pausing);
       if (!resp.success) { 
         success = false; 
@@ -390,7 +391,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
         ss << "Call successful.\n";
       }
     } else if (req.type == "stop") {
-      ROS_INFO_STREAM("Calling mission pausing.");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission pausing.");
       const auto action_client_state = rh_ptr->action_client_ptr->getState(); 
       if (action_client_state.isDone()) {
         ss << "robot \"" << rh_ptr->robot_name << "\" mission done, skipping\n";
@@ -400,6 +401,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
         ss << "Call successful.\n";
         ROS_INFO_STREAM("[IROCFleetManager]: Cancelling \"" << rh_ptr->robot_name << "\" mission.");
         rh_ptr->action_client_ptr->cancelGoal();
+        rh_ptr->action_client_ptr->waitForResult(ros::Duration(1.0));
       }
     } else {
       success = false;
@@ -791,7 +793,7 @@ IROCFleetManager::robot_mission_handler_t* IROCFleetManager::findRobotHandler(co
 /* clearMissionHandlers() //{ */
 
 void IROCFleetManager::clearMissionHandlers(){
-  /* std::scoped_lock lock(fleet_mission_handlers_.mtx); */
+  std::scoped_lock lock(fleet_mission_handlers_.mtx);
   fleet_mission_handlers_.handlers.clear();
 }
 
@@ -800,7 +802,7 @@ void IROCFleetManager::clearMissionHandlers(){
 /* cancelRobotClients() //{ */
 
 void IROCFleetManager::cancelRobotClients(){
-  /* std::scoped_lock lock(fleet_mission_handlers_.mtx); */
+  std::scoped_lock lock(fleet_mission_handlers_.mtx);
   for (auto& rh : fleet_mission_handlers_.handlers) {
     const auto action_client_state = rh.action_client_ptr->getState(); 
     if (action_client_state.isDone()) {
@@ -808,6 +810,7 @@ void IROCFleetManager::cancelRobotClients(){
     } else {
       ROS_INFO_STREAM_THROTTLE(1.0, "[IROCFleetManager]: Cancelling \"" << rh.robot_name << "\" mission.");
       rh.action_client_ptr->cancelGoal();
+      rh.action_client_ptr->waitForResult(ros::Duration(1.0));
     }
   }
 }
