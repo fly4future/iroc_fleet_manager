@@ -41,9 +41,9 @@ public:
 
 private:
   ros::NodeHandle nh_;
-  bool is_initialized_               = false;
-  std::atomic_bool action_finished_  = false;
-  std::atomic_bool active_mission_   = false;
+  bool is_initialized_                      = false;
+  std::atomic_bool active_mission_          = false;
+  std::atomic_bool active_mission_change_   = false;
   struct result_t
   {
     bool        success;
@@ -198,74 +198,74 @@ void IROCFleetManager::onInit() {
 /* timerMain() //{ */
 
 void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) {
-  
-  std::scoped_lock lock(action_server_mutex_);
+
   if (!is_initialized_) {
     ROS_WARN_THROTTLE(1, "[iroc_fleet_manager]: Waiting for nodelet initialization");
     return;
   }
 
+  //Activate based on asynchronous service call which locks the action server and fleet_mission_handler mutexes
+  if (active_mission_change_ || !active_mission_) {
+    return;
+  }
+
+  std::scoped_lock lock(action_server_mutex_);
   bool all_success     = false;
   bool got_all_results = false;
   bool any_failure     = false;
   {
-    if (active_mission_) {
+    {
+      std::scoped_lock lock(fleet_mission_handlers_.mtx);
+      //Check if any missions aborted early
+      any_failure = std::any_of(fleet_mission_handlers_.handlers.begin(),
+          fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
+          return handler.got_result && !handler.result.success;});
+    }
 
-      {
-        std::scoped_lock lock(fleet_mission_handlers_.mtx);
-        //Check if any missions aborted early
-        any_failure = std::any_of(fleet_mission_handlers_.handlers.begin(),
-        fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
-        return handler.got_result && !handler.result.success;});
-      }
+    if (any_failure) {
+      ROS_WARN("[IROCFleetManager]: Early failure detected, aborting mission.");
+      iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      action_server_result.success = false;
+      action_server_result.messages.emplace_back("Early failure detected, aborting mission");
+      active_mission_ = false;
+      mission_management_server_ptr_->setAborted(action_server_result);
+      cancelRobotClients(); 
+      ROS_INFO("[IROCFleetManager]: Mission aborted.");
+      return;
+    }
 
-      if (any_failure) {
-        ROS_WARN("[IROCFleetManager]: Early failure detected, aborting mission.");
+    {
+      std::scoped_lock lock(fleet_mission_handlers_.mtx);
+      got_all_results = std::all_of(fleet_mission_handlers_.handlers.begin(),
+          fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
+          return handler.got_result;});
+
+      all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
+          fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
+          return handler.result.success;});
+    }
+
+    //Finish mission when we get all the robots result
+    if (got_all_results) {
+      if (!all_success) {
+        ROS_WARN("[IROCFleetManager]: Not all robots finished successfully, finishing mission. ");
         iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
         action_server_result.success = false;
-        action_server_result.messages.emplace_back("Early failure detected, aborting mission");
+        action_server_result.messages.emplace_back("Not all robots finished successfully, finishing mission");
         active_mission_ = false;
         mission_management_server_ptr_->setAborted(action_server_result);
-        cancelRobotClients(); 
-        ROS_INFO("[IROCFleetManager]: Mission aborted.");
+        cancelRobotClients();
         return;
       }
 
-      {
-      std::scoped_lock lock(fleet_mission_handlers_.mtx);
-      got_all_results = std::all_of(fleet_mission_handlers_.handlers.begin(),
-            fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
-            return handler.got_result;});
-
-      all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
-            fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
-            return handler.result.success;});
-      }
-
-      //Finish mission when we get all the robots result
-      if (got_all_results)\
-      {
-        if (!all_success)
-        {
-          ROS_WARN("[IROCFleetManager]: Not all robots finished successfully, finishing mission. ");
-          iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
-          action_server_result.success = false;
-          action_server_result.messages.emplace_back("Not all robots finished successfully, finishing mission");
-          active_mission_ = false;
-          mission_management_server_ptr_->setAborted(action_server_result);
-          cancelRobotClients();
-          return;
-        }
-
-        ROS_INFO("[IROCFleetManager]: All robots finished successfully, finishing mission."); 
-        iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
-        action_server_result.success = true;
-        action_server_result.messages.emplace_back("All robots finished successfully, mission finished");
-        mission_management_server_ptr_->setSucceeded(action_server_result);
-        cancelRobotClients();
-        active_mission_ = false;
-      } 
-    }
+      ROS_INFO("[IROCFleetManager]: All robots finished successfully, finishing mission."); 
+      iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      action_server_result.success = true;
+      action_server_result.messages.emplace_back("All robots finished successfully, mission finished");
+      active_mission_ = false;
+      mission_management_server_ptr_->setSucceeded(action_server_result);
+      cancelRobotClients();
+    } 
   }
 }
 
@@ -278,10 +278,14 @@ void IROCFleetManager::timerFeedback([[maybe_unused]] const ros::TimerEvent& eve
     ROS_WARN_THROTTLE(1, "[MissionManager]: Waiting for nodelet initialization");
     return;
   }
-
-  if (active_mission_) {
-    actionPublishFeedback();
+  
+  //Activate based on asynchronous service call which locks the action server and fleet_mission_handler mutexes
+  if (active_mission_change_ || !active_mission_) {
+    return;
   }
+
+  actionPublishFeedback();
+ 
 }
 //}
 
@@ -290,6 +294,8 @@ void IROCFleetManager::timerFeedback([[maybe_unused]] const ros::TimerEvent& eve
 /*  changeFleetMissionStateCallback()//{ */
 
 bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res) {
+
+  active_mission_change_ = true;
   std::scoped_lock lock(action_server_mutex_,fleet_mission_handlers_.mtx);
 
   ROS_INFO_STREAM("[IROCFleetManager]: Received a " << req.value<< " request for the fleet");
@@ -317,7 +323,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
         }
       }
     } else if (req.value == "stop") {
-      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission pausing.");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission stopping.");
       for (auto& rh : fleet_mission_handlers_.handlers) {
         const auto action_client_state = rh.action_client_ptr->getState(); 
         if (action_client_state.isDone()) {
@@ -345,6 +351,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
   }else{
     ROS_WARN("[IROCFleetManager]: Failure: %s", res.message.c_str());
   };
+  active_mission_change_ = false;
   return true;
 }
 
@@ -353,6 +360,8 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
 /*  changeRobotMissionStateCallback()//{ */
 
 bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request& req, iroc_fleet_manager::ChangeRobotMissionStateSrv::Response& res) {
+
+  active_mission_change_ = true;
   std::scoped_lock lock(action_server_mutex_,fleet_mission_handlers_.mtx);
   ROS_INFO_STREAM("[IROCFleetManager]: Received a " << req.type << " request for " << req.robot_name);
   std::stringstream ss;
@@ -388,7 +397,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
         ss << "Call successful.\n";
       }
     } else if (req.type == "stop") {
-      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission pausing.");
+      ROS_INFO_STREAM("[IROCFleetManager]: Calling mission stopping.");
       const auto action_client_state = rh_ptr->action_client_ptr->getState(); 
       if (action_client_state.isDone()) {
         ss << "robot \"" << rh_ptr->robot_name << "\" mission done, skipping\n";
@@ -416,6 +425,8 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
   }else{
     ROS_WARN("[IROCFleetManager]: Failure: %s", res.message.c_str());
   };
+
+  active_mission_change_ = false;
   return true;
 }
 
