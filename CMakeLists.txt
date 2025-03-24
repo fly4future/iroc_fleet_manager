@@ -21,6 +21,7 @@ set(CATKIN_DEPENDENCIES
 
 set(LIBRARIES
   IROCFleetManager
+  IROCAutonomyTestManager
   )
 
 find_package(catkin REQUIRED COMPONENTS
@@ -73,6 +74,23 @@ add_dependencies(IROCFleetManager
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(IROCFleetManager
+  ${catkin_LIBRARIES}
+  )
+
+# IROCAutonomyTestManager
+
+## Declare a C++ library
+add_library(IROCAutonomyTestManager
+  src/iroc_autonomy_test.cpp
+  )
+
+add_dependencies(IROCAutonomyTestManager
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  )
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(IROCAutonomyTestManager
   ${catkin_LIBRARIES}
   )
 
