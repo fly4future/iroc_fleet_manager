@@ -29,13 +29,14 @@ find_package(catkin REQUIRED COMPONENTS
   )
 
 #actions
-add_action_files(
-  DIRECTORY action 
-  FILES WaypointFleetManager.action
+add_action_files(DIRECTORY action FILES 
+  WaypointFleetManager.action
+  AutonomyTest.action
   )
 # messages
 add_message_files(DIRECTORY msg FILES
   WaypointMissionRobot.msg
+  AutonomyTestRobot.msg
   WaypointMissionRobotFeedback.msg
   WaypointMissionInfo.msg
   )
