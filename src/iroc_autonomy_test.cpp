@@ -100,7 +100,7 @@ private:
 
   // | ------------------ Additional functions ------------------ |
   std::map<std::string, IROCAutonomyTestManager::result_t> startRobotClients(const ActionServerGoal& goal);
-  std::vector<mrs_msgs::Reference> getAutonomyPoints();
+  std::vector<mrs_msgs::Reference> getAutonomyPoints(double segment_length, double height_id);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback);
   std::tuple<std::string, std::string> processFeedbackMsg();
   robot_mission_handler_t* findRobotHandler(const std::string& robot_name, fleet_mission_handlers_t& mission_handlers); 
@@ -632,9 +632,9 @@ std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager:
       MissionManagerActionServerGoal action_goal;
       //TODO compute the autonomy points
       action_goal.frame_id = 0; //Using current local _frame
-      action_goal.height_id = 0; //Defining AGL height
+      action_goal.height_id = robot.height_id; //Defining AGL height
       action_goal.terminal_action = 0; //No terminal action
-      action_goal.points = getAutonomyPoints();
+      action_goal.points = getAutonomyPoints(robot.segment_length, robot.height);
 
       if (!action_client_ptr->isServerConnected()) {
         ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n";
@@ -702,7 +702,7 @@ std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager:
 //}
 
 /* getAutonomyPoints() //{ */
-std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints() {
+std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(double segment_length, double height) {
 
   std::vector<mrs_msgs::Reference> points;
   mrs_msgs::Reference point;
@@ -710,12 +710,12 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints() {
   // Center point
   point.position.x = 0.0;
   point.position.y = 0.0;
-  point.position.z = 5.0;
+  point.position.z = height;
   point.heading = 0.0;
 
   // Right
   points.push_back(point);
-  point.position.y = -5.0;
+  point.position.y = -segment_length;
   points.push_back(point);
 
   // Back to center
@@ -723,7 +723,7 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints() {
   points.push_back(point);
 
   // Front 
-  point.position.x = 5.0;
+  point.position.x = segment_length;
   points.push_back(point);
 
   // Back to center
@@ -731,7 +731,7 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints() {
   points.push_back(point);
 
   // Left
-  point.position.y = 5.0;
+  point.position.y = segment_length;
   points.push_back(point);
 
   // Back to center
@@ -739,7 +739,7 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints() {
   points.push_back(point);
 
   // Back
-  point.position.x = -5.0;
+  point.position.x = -segment_length;
   points.push_back(point);
 
   // Back to center
