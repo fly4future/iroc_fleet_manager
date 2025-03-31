@@ -1,0 +1,10 @@
+# Define the goal
+iroc_fleet_manager/AutonomyTestRobot[] robots
+---
+# Define the result
+bool success
+string[] messages
+---
+# Define a feedback message
+iroc_fleet_manager/WaypointMissionInfo info
+

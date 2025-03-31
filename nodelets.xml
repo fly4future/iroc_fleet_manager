@@ -3,3 +3,9 @@
     <description>RosMissionFleetManager nodelet</description>
   </class>
 </library>
+
+<library path="lib/libIROCAutonomyTestManager">
+  <class name="iroc_fleet_manager/IROCAutonomyTestManager" type="iroc_fleet_manager::IROCAutonomyTestManager" base_class_type="nodelet::Nodelet">
+    <description> IROC AutonomyTestManager nodelet </description>
+  </class>
+</library>
