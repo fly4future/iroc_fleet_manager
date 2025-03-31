@@ -16,7 +16,7 @@
 /* custom msgs of MRS group */
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <mrs_msgs/String.h>
-#include <mrs_mission_manager/waypointMissionAction.h>
+#include <iroc_mission_handler/waypointMissionAction.h>
 #include <iroc_fleet_manager/WaypointFleetManagerAction.h>
 #include <iroc_fleet_manager/WaypointMissionRobotFeedback.h>
 #include <unistd.h>
@@ -30,8 +30,8 @@ namespace iroc_fleet_manager
 
 using namespace actionlib;
 
-typedef SimpleActionClient<mrs_mission_manager::waypointMissionAction> MissionManagerClient;
-typedef mrs_mission_manager::waypointMissionGoal                       MissionManagerActionServerGoal;
+typedef SimpleActionClient<iroc_mission_handler::waypointMissionAction> MissionManagerClient;
+typedef iroc_mission_handler::waypointMissionGoal                       MissionManagerActionServerGoal;
 
 /* class IROCFleetManager //{ */
 
@@ -83,8 +83,8 @@ private:
     std::unique_ptr<MissionManagerClient>        action_client_ptr;
     ros::ServiceClient                           sc_robot_activation;
     ros::ServiceClient                           sc_robot_pausing;
-    mrs_mission_manager::waypointMissionFeedback feedback;
-    mrs_mission_manager::waypointMissionResult   result;
+    iroc_mission_handler::waypointMissionFeedback feedback;
+    iroc_mission_handler::waypointMissionResult   result;
     bool                                         got_result = false;
   };
 
@@ -95,9 +95,9 @@ private:
   } fleet_mission_handlers_;
 
   void waypointMissionActiveCallback(const std::string& robot_name);
-  void waypointMissionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
+  void waypointMissionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
                                    const std::string& robot_name);
-  void waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
+  void waypointMissionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
 
   // | ------------------ Additional functions ------------------ |
   std::map<std::string, IROCFleetManager::result_t> startRobotClients(const ActionServerGoal& goal);
@@ -446,7 +446,7 @@ void IROCFleetManager::waypointMissionActiveCallback(const std::string& robot_na
 
 /* waypointMissionDoneCallback //{ */
 
-void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
+void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
     const std::string& robot_name) {
 
   if (!active_mission_) {
@@ -476,7 +476,7 @@ void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& 
 
 /* waypointMissionFeedbackCallback //{ */
 
-void IROCFleetManager::waypointMissionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
+void IROCFleetManager::waypointMissionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
   
   if (!active_mission_) {
     return;
@@ -622,7 +622,7 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
       //Need to wait for server
       if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
         ROS_WARN("[IROCFleetManager]: Server connection failed for robot %s ", robot.name.c_str());
-        ss << "Action server from robot: " + robot.name + " failed to connect. Check the mrs_mission_manager node.\n";
+        ss << "Action server from robot: " + robot.name + " failed to connect. Check the iroc_mission_handler node.\n";
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
         success = false;
@@ -636,8 +636,8 @@ std::map<std::string,IROCFleetManager::result_t> IROCFleetManager::startRobotCli
       action_goal.points             = robot.points;
 
       if (!action_client_ptr->isServerConnected()) {
-        ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n";
-        ROS_WARN_STREAM("[IROCFleetManager]: Action server from robot :" + robot.name + " is not connected. Check the mrs_mission_manager node.");
+        ss << "Action server from robot: " + robot.name + " is not connected. Check the iroc_mission_handler node.\n";
+        ROS_WARN_STREAM("[IROCFleetManager]: Action server from robot :" + robot.name + " is not connected. Check the iroc_mission_handler node.");
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
         success = false;
