@@ -17,7 +17,7 @@
 /* custom msgs of MRS group */
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <mrs_msgs/String.h>
-#include <mrs_mission_manager/waypointMissionAction.h>
+#include <iroc_mission_handler/waypointMissionAction.h>
 #include <iroc_fleet_manager/AutonomyTestAction.h>
 #include <iroc_fleet_manager/WaypointMissionRobotFeedback.h>
 #include <unistd.h>
@@ -31,8 +31,8 @@ namespace iroc_fleet_manager
 
 using namespace actionlib;
 
-typedef SimpleActionClient<mrs_mission_manager::waypointMissionAction> MissionManagerClient;
-typedef mrs_mission_manager::waypointMissionGoal                       MissionManagerActionServerGoal;
+typedef SimpleActionClient<iroc_mission_handler::waypointMissionAction> MissionManagerClient;
+typedef iroc_mission_handler::waypointMissionGoal                       MissionManagerActionServerGoal;
 using radians  = mrs_lib::geometry::radians;
 using sradians = mrs_lib::geometry::sradians;
 
@@ -85,8 +85,8 @@ private:
     std::unique_ptr<MissionManagerClient>        action_client_ptr;
     ros::ServiceClient                           sc_robot_activation;
     ros::ServiceClient                           sc_robot_pausing;
-    mrs_mission_manager::waypointMissionFeedback feedback;
-    mrs_mission_manager::waypointMissionResult   result;
+    iroc_mission_handler::waypointMissionFeedback feedback;
+    iroc_mission_handler::waypointMissionResult   result;
     bool                                         got_result = false;
   };
 
@@ -97,9 +97,9 @@ private:
   } fleet_mission_handlers_;
 
   void missionActiveCallback(const std::string& robot_name);
-  void missionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
+  void missionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
                                    const std::string& robot_name);
-  void missionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
+  void missionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
 
   // | ------------------ Additional functions ------------------ |
   std::map<std::string, IROCAutonomyTestManager::result_t> startRobotClients(const ActionServerGoal& goal);
@@ -449,7 +449,7 @@ void IROCAutonomyTestManager::missionActiveCallback(const std::string& robot_nam
 
 /* missionDoneCallback //{ */
 
-void IROCAutonomyTestManager::missionDoneCallback(const SimpleClientGoalState& state, const mrs_mission_manager::waypointMissionResultConstPtr& result,
+void IROCAutonomyTestManager::missionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
     const std::string& robot_name) {
 
   if (!active_mission_) {
@@ -479,7 +479,7 @@ void IROCAutonomyTestManager::missionDoneCallback(const SimpleClientGoalState& s
 
 /* missionFeedbackCallback //{ */
 
-void IROCAutonomyTestManager::missionFeedbackCallback(const mrs_mission_manager::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
+void IROCAutonomyTestManager::missionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
   
   if (!active_mission_) {
     return;
@@ -625,7 +625,7 @@ std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager:
       //Need to wait for server
       if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
         ROS_WARN("[IROCAutonomyTestManager]: Server connection failed for robot %s ", robot.name.c_str());
-        ss << "Action server from robot: " + robot.name + " failed to connect. Check the mrs_mission_manager node.\n";
+        ss << "Action server from robot: " + robot.name + " failed to connect. Check the iroc_mission_handler node.\n";
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
         success = false;
@@ -640,8 +640,8 @@ std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager:
       action_goal.points = getAutonomyPoints(robot.segment_length, robot.height);
 
       if (!action_client_ptr->isServerConnected()) {
-        ss << "Action server from robot: " + robot.name + " is not connected. Check the mrs_mission_manager node.\n";
-        ROS_WARN_STREAM("[IROCAutonomyTestManager]: Action server from robot :" + robot.name + " is not connected. Check the mrs_mission_manager node.");
+        ss << "Action server from robot: " + robot.name + " is not connected. Check the iroc_mission_handler node.\n";
+        ROS_WARN_STREAM("[IROCAutonomyTestManager]: Action server from robot :" + robot.name + " is not connected. Check the iroc_mission_handler node.");
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
         success = false;
@@ -750,16 +750,17 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   points.push_back(point);
 
   // 360-degree pirouette (3 points)
-  // point.heading = M_PI / 2.0;  // 90 degrees
-  point.heading = sradians(M_PI / 2.0); 
+  point.heading = M_PI / 2.0;  // 90 degrees
+  // auto heading = sradians(3.0 * M_PI / 2.0);
+  // point.heading = heading; 
   points.push_back(point);
 
-  // point.heading = M_PI;  // 180 degrees
-  point.heading = sradians(M_PI);
+  point.heading = M_PI;  // 180 degrees
+  // point.heading = sradians(M_PI);
   points.push_back(point);
 
-  // point.heading = 3.0 * M_PI / 2.0;  // 270 degrees
-  point.heading = sradians(3.0 * M_PI / 2.0);
+  point.heading = 3.0 * M_PI / 2.0;  // 270 degrees
+  // point.heading = sradians(3.0 * M_PI / 2.0);
   points.push_back(point);
 
   return points;
