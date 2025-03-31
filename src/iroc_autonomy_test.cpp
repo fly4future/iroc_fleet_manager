@@ -6,6 +6,7 @@
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/subscribe_handler.h>
+#include <mrs_lib/geometry/cyclic.h>
 
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/server/simple_action_server.h>
@@ -32,6 +33,8 @@ using namespace actionlib;
 
 typedef SimpleActionClient<mrs_mission_manager::waypointMissionAction> MissionManagerClient;
 typedef mrs_mission_manager::waypointMissionGoal                       MissionManagerActionServerGoal;
+using radians  = mrs_lib::geometry::radians;
+using sradians = mrs_lib::geometry::sradians;
 
 /* class IROCAutonomyTestManager //{ */
 
@@ -747,13 +750,16 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   points.push_back(point);
 
   // 360-degree pirouette (3 points)
-  point.heading = M_PI / 2.0;  // 90 degrees
+  // point.heading = M_PI / 2.0;  // 90 degrees
+  point.heading = sradians(M_PI / 2.0); 
   points.push_back(point);
 
-  point.heading = M_PI;  // 180 degrees
+  // point.heading = M_PI;  // 180 degrees
+  point.heading = sradians(M_PI);
   points.push_back(point);
 
-  point.heading = 3.0 * M_PI / 2.0;  // 270 degrees
+  // point.heading = 3.0 * M_PI / 2.0;  // 270 degrees
+  point.heading = sradians(3.0 * M_PI / 2.0);
   points.push_back(point);
 
   return points;
