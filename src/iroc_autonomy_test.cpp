@@ -65,6 +65,7 @@ private:
   void       timerMain(const ros::TimerEvent& event);
   void       timerFeedback(const ros::TimerEvent& event);
 
+
   // | ----------------- mission management action server stuff  ---------------- |
 
   typedef actionlib::SimpleActionServer<iroc_fleet_manager::AutonomyTestAction> AutonomyTestServer;
@@ -103,7 +104,7 @@ private:
 
   // | ------------------ Additional functions ------------------ |
   std::map<std::string, IROCAutonomyTestManager::result_t> startRobotClients(const ActionServerGoal& goal);
-  std::vector<mrs_msgs::Reference> getAutonomyPoints(double segment_length, double height_id);
+  std::vector<mrs_msgs::Reference> getAutonomyPoints(double segment_length);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback);
   std::tuple<std::string, std::string> processFeedbackMsg();
   robot_mission_handler_t* findRobotHandler(const std::string& robot_name, fleet_mission_handlers_t& mission_handlers); 
@@ -633,11 +634,10 @@ std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager:
 
       ROS_INFO("[IROCAutonomyTestManager]: Created action client on topic \'ac/waypoint_mission\' -> \'%s\'", waypoint_action_client_topic.c_str());
       MissionManagerActionServerGoal action_goal;
-      //TODO compute the autonomy points
-      action_goal.frame_id = 0; //Using current local _frame
-      action_goal.height_id = robot.height_id; //Defining AGL height
-      action_goal.terminal_action = 0; //No terminal action
-      action_goal.points = getAutonomyPoints(robot.segment_length, robot.height);
+      action_goal.frame_id = MissionManagerActionServerGoal::FRAME_ID_FCU; //Using current local _frame
+      action_goal.height_id = MissionManagerActionServerGoal::HEIGHT_ID_FCU; //Defining FCU height
+      action_goal.terminal_action = MissionManagerActionServerGoal::TERMINAL_ACTION_NONE; //No terminal action
+      action_goal.points = getAutonomyPoints(robot.segment_length);
 
       if (!action_client_ptr->isServerConnected()) {
         ss << "Action server from robot: " + robot.name + " is not connected. Check the iroc_mission_handler node.\n";
@@ -705,7 +705,7 @@ std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager:
 //}
 
 /* getAutonomyPoints() //{ */
-std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(double segment_length, double height) {
+std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(double segment_length) {
 
   std::vector<mrs_msgs::Reference> points;
   mrs_msgs::Reference point;
@@ -713,7 +713,7 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   // Center point
   point.position.x = 0.0;
   point.position.y = 0.0;
-  point.position.z = height;
+  point.position.z = 0.0;
   point.heading = 0.0;
 
   // Right
