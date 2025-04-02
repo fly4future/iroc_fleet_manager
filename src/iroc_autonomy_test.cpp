@@ -97,6 +97,8 @@ private:
     std::vector<robot_mission_handler_t>                                handlers;
   } fleet_mission_handlers_;
 
+  std::vector<std::string> lost_robot_names_;
+
   void missionActiveCallback(const std::string& robot_name);
   void missionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
                                    const std::string& robot_name);
@@ -457,15 +459,25 @@ void IROCAutonomyTestManager::missionDoneCallback(const SimpleClientGoalState& s
     return;
   }
 
-  if (result == NULL) 
-    ROS_WARN("[IROCAutonomyTestManager]: Probably mission_manager died, and action server connection was lost!, reconnection is not currently handled, if mission manager was restarted need to upload a new mission!");
+  if (result == NULL){ 
+    active_mission_ = false;
 
+    lost_robot_names_.push_back(robot_name);
+    ROS_WARN("[IROCFleetManager]: Probably mission_handler died, and action server connection was lost!, reconnection is not currently handled, if mission handler was restarted need to upload a new mission!");
+    iroc_fleet_manager::AutonomyTestResult action_server_result;
+    action_server_result.success = false;
+    action_server_result.messages.emplace_back("Probably mission_handler died, and action server connection was lost!, reconnection is not currently handled, if mission handler was restarted need to upload a new mission!");
+    autonomy_test_server_ptr_->setAborted(action_server_result);
+    cancelRobotClients();
+    ROS_INFO("[IROCFleetManager]: Mission aborted.");
+    return;
+  }
   if (result->success) {
     ROS_INFO_STREAM("[IROCAutonomyTestManager]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
-          << result->message << "\"");
+        << result->message << "\"");
   } else {
     ROS_WARN_STREAM("[IROCAutonomyTestManager]: Action server on robot " << robot_name << " finished with state: \"" << state.toString() << "\". Result message is: \""
-          << result->message << "\"");
+        << result->message << "\"");
   }
 
   {
@@ -750,17 +762,13 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   points.push_back(point);
 
   // 360-degree pirouette (3 points)
-  point.heading = M_PI / 2.0;  // 90 degrees
-  // auto heading = sradians(3.0 * M_PI / 2.0);
-  // point.heading = heading; 
+  point.heading = (2* M_PI) / 3.0;  // 120 degrees
   points.push_back(point);
 
-  point.heading = M_PI;  // 180 degrees
-  // point.heading = sradians(M_PI);
+  point.heading = (2* M_PI) / 3.0;  // 120 degrees
   points.push_back(point);
 
-  point.heading = 3.0 * M_PI / 2.0;  // 270 degrees
-  // point.heading = sradians(3.0 * M_PI / 2.0);
+  point.heading = (2* M_PI) / 3.0;  // 120 degrees
   points.push_back(point);
 
   return points;
@@ -868,17 +876,37 @@ IROCAutonomyTestManager::robot_mission_handler_t* IROCAutonomyTestManager::findR
 /* cancelRobotClients() //{ */
 
 void IROCAutonomyTestManager::cancelRobotClients(){
-  std::scoped_lock lock(fleet_mission_handlers_.mtx);
-  for (auto& rh : fleet_mission_handlers_.handlers) {
-    const auto action_client_state = rh.action_client_ptr->getState(); 
-    if (!action_client_state.isDone()) {
-      ROS_WARN_STREAM("[IROCAutonomyTestManager]:\"" << rh.robot_name << "\" has an active mission, canceling...");
-      rh.action_client_ptr->cancelGoal();
-      rh.action_client_ptr->waitForResult(ros::Duration(1.0));
+
+  {
+    std::scoped_lock lock(fleet_mission_handlers_.mtx);
+    for (auto& rh : fleet_mission_handlers_.handlers) {
+
+      //Check if robot is in list of lost robots
+      bool lost_robot = std::any_of(lost_robot_names_.begin(), lost_robot_names_.end(), [&rh](const auto& lost_robot) {
+          return rh.robot_name == lost_robot;});
+
+      bool robot_got_result = std::any_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
+          [&rh](const auto& handler) {
+        return rh.robot_name == handler.robot_name && handler.got_result;});
+
+      if (lost_robot || robot_got_result) {
+        ROS_WARN_STREAM("[IROCFleetManager]: Robot \"" << rh.robot_name << "\" mission is done, no need of canceling...");
+        continue;
+      }
+
+      if (rh.action_client_ptr == NULL) {
+        //This is possible if mission handler was restarted with an active mission
+        ROS_WARN_STREAM("[IROCFleetManager]: Action client for robot \"" << rh.robot_name << "\" is null!");
+        continue;
+      }
+      const auto action_client_state = rh.action_client_ptr->getState(); 
+      if (!action_client_state.isDone()) {
+        ROS_WARN_STREAM("[IROCFleetManager]:\"" << rh.robot_name << "\" has an active mission, canceling...");
+        rh.action_client_ptr->cancelGoal();
+        rh.action_client_ptr->waitForResult(ros::Duration(1.0));
+      }
     }
   }
-  //Clear the robot handlers
-  fleet_mission_handlers_.handlers.clear();
 }
 
 //}
