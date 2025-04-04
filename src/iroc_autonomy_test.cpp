@@ -626,6 +626,7 @@ void IROCAutonomyTestManager::actionPublishFeedback() {
 std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager::startRobotClients(const ActionServerGoal& goal){
   std::scoped_lock lck(fleet_mission_handlers_.mtx);
   std::map<std::string,IROCAutonomyTestManager::result_t> robot_results;
+  fleet_mission_handlers_.handlers.clear();
   {
     fleet_mission_handlers_.handlers.reserve(goal.robots.size());
     //Initialize the robots received in the goal request
@@ -762,13 +763,81 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   points.push_back(point);
 
   // 360-degree pirouette (3 points)
-  point.heading = (2* M_PI) / 3.0;  // 120 degrees
+  point.heading = 0.0;  // 90 degrees
   points.push_back(point);
 
-  point.heading = (2* M_PI) / 3.0;  // 120 degrees
+  point.heading = (2* M_PI) / 3.0;  
   points.push_back(point);
 
-  point.heading = (2* M_PI) / 3.0;  // 120 degrees
+  point.heading = (4* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (2* M_PI);  
+  points.push_back(point);
+
+  // 360-degree pirouette (3 points)
+  point.heading = 0.0;  // 90 degrees
+  points.push_back(point);
+
+  point.heading = (2* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (4* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (2* M_PI);  
+  points.push_back(point);
+
+  // 360-degree pirouette (3 points)
+  point.heading = 0.0;  // 90 degrees
+  points.push_back(point);
+
+  point.heading = (2* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (4* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (2* M_PI);  
+  points.push_back(point);
+
+  // 360-degree pirouette (3 points)
+  point.heading = 0.0;  // 90 degrees
+  points.push_back(point);
+
+  point.heading = (2* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (4* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (2* M_PI);  
+  points.push_back(point);
+
+  // 360-degree pirouette (3 points)
+  point.heading = 0.0;  // 90 degrees
+  points.push_back(point);
+
+  point.heading = (2* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (4* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (2* M_PI);  
+  points.push_back(point);
+
+  // 360-degree pirouette (3 points)
+  point.heading = 0.0;  // 90 degrees
+  points.push_back(point);
+
+  point.heading = (2* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (4* M_PI) / 3.0;  
+  points.push_back(point);
+
+  point.heading = (2* M_PI);  
   points.push_back(point);
 
   return points;
