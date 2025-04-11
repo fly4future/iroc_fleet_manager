@@ -775,59 +775,7 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   point.heading = (2* M_PI);  
   points.push_back(point);
 
-  // 360-degree pirouette (3 points)
-  point.heading = 0.0;  // 90 degrees
-  points.push_back(point);
-
-  point.heading = (2* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (4* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (2* M_PI);  
-  points.push_back(point);
-
-  // 360-degree pirouette (3 points)
-  point.heading = 0.0;  // 90 degrees
-  points.push_back(point);
-
-  point.heading = (2* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (4* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (2* M_PI);  
-  points.push_back(point);
-
-  // 360-degree pirouette (3 points)
-  point.heading = 0.0;  // 90 degrees
-  points.push_back(point);
-
-  point.heading = (2* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (4* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (2* M_PI);  
-  points.push_back(point);
-
-  // 360-degree pirouette (3 points)
-  point.heading = 0.0;  // 90 degrees
-  points.push_back(point);
-
-  point.heading = (2* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (4* M_PI) / 3.0;  
-  points.push_back(point);
-
-  point.heading = (2* M_PI);  
-  points.push_back(point);
-
-  // 360-degree pirouette (3 points)
+  // // 360-degree pirouette (3 points)
   point.heading = 0.0;  // 90 degrees
   points.push_back(point);
 
