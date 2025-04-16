@@ -107,6 +107,7 @@ private:
   std::tuple<std::string, std::string> processFeedbackMsg();
   robot_mission_handler_t* findRobotHandler(const std::string& robot_name, fleet_mission_handlers_t& mission_handlers); 
   void cancelRobotClients();
+  std::vector<iroc_fleet_manager::WaypointMissionRobotResult> getRobotResults();
 
   // some helper method overloads
   template <typename Svc_T>
@@ -228,7 +229,8 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
       ROS_WARN("[IROCFleetManager]: Early failure detected, aborting mission.");
       iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
       action_server_result.success = false;
-      action_server_result.messages.emplace_back("Early failure detected, aborting mission");
+      action_server_result.messages.emplace_back("Early failure detected, aborting mission.");
+      action_server_result.robots_results = getRobotResults();
       active_mission_ = false;
       mission_management_server_ptr_->setAborted(action_server_result);
       cancelRobotClients(); 
@@ -748,6 +750,43 @@ IROCFleetManager::ActionServerFeedback IROCFleetManager::processAggregatedFeedba
   return action_server_feedback; 
 }
 
+//}
+
+/* getRobotResults() //{ */
+std::vector<iroc_fleet_manager::WaypointMissionRobotResult> IROCFleetManager::getRobotResults(){ 
+  // Get the robot results
+  std::vector<iroc_fleet_manager::WaypointMissionRobotResult> robots_results;
+
+  {
+    std::scoped_lock lock(fleet_mission_handlers_.mtx);
+    for (auto& handler : fleet_mission_handlers_.handlers) {
+      iroc_fleet_manager::WaypointMissionRobotResult robot_result;
+      if (handler.got_result && !handler.result.success) {
+        robot_result.name    = handler.robot_name;
+        robot_result.message = handler.result.message;
+        robot_result.success = handler.result.success;
+      } 
+
+      if (handler.got_result) {
+        robot_result.name    = handler.robot_name;
+        robot_result.message = handler.result.message; 
+        robot_result.success = handler.result.success; 
+      } else {
+        robot_result.name    = handler.robot_name;
+        robot_result.message = "Robot did not finished it's mission, mission was aborted.";
+        robot_result.success = false; 
+      }
+      robots_results.emplace_back(robot_result);
+    }
+  }
+
+  // Print the robots result
+  for (auto& robot_result : robots_results) {
+    ROS_INFO("[IROCFleetManager]: Robot: %s, result: %s success: %d", robot_result.name.c_str(), robot_result.message.c_str(), robot_result.success);
+  }
+
+  return robots_results;
+}
 //}
 
 /* processFeedbackMsg() //{ */

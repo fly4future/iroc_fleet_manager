@@ -38,6 +38,7 @@ add_message_files(DIRECTORY msg FILES
   WaypointMissionRobot.msg
   AutonomyTestRobot.msg
   WaypointMissionRobotFeedback.msg
+  WaypointMissionRobotResult.msg
   WaypointMissionInfo.msg
   )
 # messages
