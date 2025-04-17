@@ -229,7 +229,7 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
       ROS_WARN("[IROCFleetManager]: Early failure detected, aborting mission.");
       iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
       action_server_result.success = false;
-      action_server_result.messages.emplace_back("Early failure detected, aborting mission.");
+      action_server_result.message = "Early failure detected, aborting mission.";
       action_server_result.robots_results = getRobotResults();
       active_mission_ = false;
       mission_management_server_ptr_->setAborted(action_server_result);
@@ -255,7 +255,8 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
         ROS_WARN("[IROCFleetManager]: Not all robots finished successfully, finishing mission. ");
         iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
         action_server_result.success = false;
-        action_server_result.messages.emplace_back("Not all robots finished successfully, finishing mission");
+        action_server_result.message = "Not all robots finished successfully, finishing mission";
+        action_server_result.robots_results = getRobotResults();
         active_mission_ = false;
         mission_management_server_ptr_->setAborted(action_server_result);
         cancelRobotClients();
@@ -266,7 +267,9 @@ void IROCFleetManager::timerMain([[maybe_unused]] const ros::TimerEvent& event) 
       ROS_INFO("[IROCFleetManager]: All robots finished successfully, finishing mission."); 
       iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
       action_server_result.success = true;
-      action_server_result.messages.emplace_back("All robots finished successfully, mission finished");
+      action_server_result.message = "All robots finished successfully, mission finished";
+      action_server_result.robots_results = getRobotResults();
+
       active_mission_ = false;
       mission_management_server_ptr_->setSucceeded(action_server_result);
       cancelRobotClients();
@@ -466,7 +469,10 @@ void IROCFleetManager::waypointMissionDoneCallback(const SimpleClientGoalState& 
     ROS_WARN_STREAM("[IROCFleetManager]: Robot " << robot_name << " mission_handler died/ or restarted while mission was active, and action server connection was lost!, reconnection is not currently handled, if mission handler was restarted need to upload a new mission!");
     iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
     action_server_result.success = false;
-    action_server_result.messages.emplace_back("Probably mission_handler died, and action server connection was lost!, reconnection is not currently handled, if mission handler was restarted need to upload a new mission!");
+    action_server_result.message = "Probably mission_handler died, and action server connection was lost!, reconnection is not currently handled, if mission handler was restarted need to upload a new mission!";
+    action_server_result.robots_results = getRobotResults();
+
+
     mission_management_server_ptr_->setAborted(action_server_result);
     cancelRobotClients();
     ROS_INFO("[IROCFleetManager]: Mission aborted.");
@@ -520,7 +526,8 @@ void IROCFleetManager::actionCallbackGoal() {
   if (!is_initialized_) {
     iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
     action_server_result.success = false;
-    action_server_result.messages.emplace_back("Not initialized yet");
+    action_server_result.message = "Not  initialized yet";
+    action_server_result.robots_results = getRobotResults();
     ROS_WARN("[IROCFleetManager]: not initialized yet");
     mission_management_server_ptr_->setAborted(action_server_result);
     return;
@@ -536,15 +543,20 @@ void IROCFleetManager::actionCallbackGoal() {
 
   if (!all_success) {
       iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      iroc_fleet_manager::WaypointMissionRobotResult robot_result;
       for (const auto& result : results) {
         std::stringstream ss;
+        robot_result.name = result.first;
+        robot_result.message = result.second.message;
+        robot_result.success = result.second.success;
+        action_server_result.robots_results.emplace_back(robot_result);
         if (!result.second.success) {
           ss << result.first << " failed with response: " << result.second.message;
           ROS_WARN_STREAM("[IROCFleetManager]: Failure starting robot clients: " << ss.str());
-          action_server_result.messages.emplace_back(ss.str()); 
         }
       }
       action_server_result.success = false;
+      action_server_result.message = "Failure starting robot clients.";
       mission_management_server_ptr_->setAborted(action_server_result);
       cancelRobotClients(); 
       ROS_INFO("[IROCFleetManager]: Mission Aborted.");
@@ -567,7 +579,7 @@ void IROCFleetManager::actionCallbackPreempt() {
       ROS_INFO("[IROCFleetManager]: Preemption toggled for ActionServer.");
       iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
       action_server_result.success = false;
-      action_server_result.messages.emplace_back("Preempted by client");
+      action_server_result.message = "Preempted by client";
       ROS_WARN_STREAM("[IROCFleetManager]: Preempted by the client");
       mission_management_server_ptr_->setPreempted(action_server_result);
       cancelRobotClients();
@@ -577,7 +589,7 @@ void IROCFleetManager::actionCallbackPreempt() {
 
       iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
       action_server_result.success = false;
-      action_server_result.messages.emplace_back("Mission stopped.");
+      action_server_result.message = "Mission stopped.";
       active_mission_ = false;
       mission_management_server_ptr_->setAborted(action_server_result);
       cancelRobotClients();
