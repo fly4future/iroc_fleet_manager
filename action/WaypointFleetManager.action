@@ -3,7 +3,8 @@ iroc_fleet_manager/WaypointMissionRobot[] robots
 ---
 # Define the result
 bool success
-string[] messages
+string message
+iroc_fleet_manager/WaypointMissionRobotResult[] robots_results
 ---
 # Define a feedback message
 iroc_fleet_manager/WaypointMissionInfo info
