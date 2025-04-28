@@ -9,3 +9,9 @@
     <description> IROC AutonomyTestManager nodelet </description>
   </class>
 </library>
+
+<library path="lib/libIROC_CoverageManager">
+  <class name="iroc_fleet_manager/IROC_CoverageManager" type="iroc_fleet_manager::IROC_CoverageManager" base_class_type="nodelet::Nodelet">
+    <description> IROC CoverageManager nodelet </description>
+  </class>
+</library>

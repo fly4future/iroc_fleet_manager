@@ -37,6 +37,7 @@ add_action_files(DIRECTORY action FILES
 add_message_files(DIRECTORY msg FILES
   WaypointMissionRobot.msg
   AutonomyTestRobot.msg
+  CoverageMission.msg
   WaypointMissionRobotFeedback.msg
   WaypointMissionRobotResult.msg
   WaypointMissionInfo.msg
