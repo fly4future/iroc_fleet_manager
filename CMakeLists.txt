@@ -21,6 +21,7 @@ set(CATKIN_DEPENDENCIES
 
 set(LIBRARIES
   IROCFleetManager
+  IROC_CoverageManager
   IROCAutonomyTestManager
   )
 
@@ -32,6 +33,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_action_files(DIRECTORY action FILES 
   WaypointFleetManager.action
   AutonomyTest.action
+  CoverageMission.action
   )
 # messages
 add_message_files(DIRECTORY msg FILES
@@ -80,8 +82,23 @@ target_link_libraries(IROCFleetManager
   ${catkin_LIBRARIES}
   )
 
-# IROCAutonomyTestManager
+# IROC_CoverageManager
+## Declare a C++ library
+add_library(IROC_CoverageManager
+  src/iroc_coverage_planner.cpp
+  )
 
+add_dependencies(IROC_CoverageManager
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  )
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(IROC_CoverageManager
+  ${catkin_LIBRARIES}
+  )
+
+# IROCAutonomyTestManager
 ## Declare a C++ library
 add_library(IROCAutonomyTestManager
   src/iroc_autonomy_test.cpp

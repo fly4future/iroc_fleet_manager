@@ -17,8 +17,9 @@
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <mrs_msgs/String.h>
 #include <iroc_mission_handler/waypointMissionAction.h>
-#include <iroc_fleet_manager/WaypointFleetManagerAction.h>
+#include <iroc_fleet_manager/CoverageMissionAction.h>
 #include <iroc_fleet_manager/WaypointMissionRobotFeedback.h>
+#include <iroc_fleet_manager/WaypointMissionRobot.h>
 #include <unistd.h>
 #include <iostream>
 #include <numeric>
@@ -64,14 +65,14 @@ private:
 
   // | ----------------- mission management action server stuff  ---------------- |
 
-  typedef actionlib::SimpleActionServer<iroc_fleet_manager::WaypointFleetManagerAction> MissionManagementServer;
+  typedef actionlib::SimpleActionServer<iroc_fleet_manager::CoverageMissionAction> MissionManagementServer;
 
   void                                                           actionCallbackGoal();
   void                                                           actionCallbackPreempt();
   void                                                           actionPublishFeedback(void);
   std::unique_ptr<MissionManagementServer>                       mission_management_server_ptr_;
-  typedef iroc_fleet_manager::WaypointFleetManagerGoal ActionServerGoal;
-  typedef iroc_fleet_manager::WaypointFleetManagerFeedback ActionServerFeedback;
+  typedef iroc_fleet_manager::CoverageMissionGoal ActionServerGoal;
+  typedef iroc_fleet_manager::CoverageMissionFeedback ActionServerFeedback;
   ActionServerGoal                                               action_server_goal_;
   std::recursive_mutex                                           action_server_mutex_;
 
@@ -227,7 +228,7 @@ void IROC_CoverageManager::timerMain([[maybe_unused]] const ros::TimerEvent& eve
 
     if (any_failure) {
       ROS_WARN("[IROC_CoverageManager]: Early failure detected, aborting mission.");
-      iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      iroc_fleet_manager::CoverageMissionResult action_server_result;
       action_server_result.success = false;
       action_server_result.message = "Early failure detected, aborting mission.";
       action_server_result.robots_results = getRobotResults();
@@ -253,7 +254,7 @@ void IROC_CoverageManager::timerMain([[maybe_unused]] const ros::TimerEvent& eve
     if (got_all_results) {
       if (!all_success) {
         ROS_WARN("[IROC_CoverageManager]: Not all robots finished successfully, finishing mission. ");
-        iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+        iroc_fleet_manager::CoverageMissionResult action_server_result;
         action_server_result.success = false;
         action_server_result.message = "Not all robots finished successfully, finishing mission";
         action_server_result.robots_results = getRobotResults();
@@ -265,7 +266,7 @@ void IROC_CoverageManager::timerMain([[maybe_unused]] const ros::TimerEvent& eve
       }
 
       ROS_INFO("[IROC_CoverageManager]: All robots finished successfully, finishing mission."); 
-      iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      iroc_fleet_manager::CoverageMissionResult action_server_result;
       action_server_result.success = true;
       action_server_result.message = "All robots finished successfully, mission finished";
       action_server_result.robots_results = getRobotResults();
@@ -467,7 +468,7 @@ void IROC_CoverageManager::waypointMissionDoneCallback(const SimpleClientGoalSta
     
     lost_robot_names_.push_back(robot_name);
     ROS_WARN_STREAM("[IROC_CoverageManager]: Robot " << robot_name << " mission_handler died/ or restarted while mission was active, and action server connection was lost!, reconnection is not currently handled, if mission handler was restarted need to upload a new mission!");
-    iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+    iroc_fleet_manager::CoverageMissionResult action_server_result;
     action_server_result.success = false;
     action_server_result.message = "Probably mission_handler died, and action server connection was lost!, reconnection is not currently handled, if mission handler was restarted need to upload a new mission!";
     action_server_result.robots_results = getRobotResults();
@@ -520,11 +521,11 @@ void IROC_CoverageManager::waypointMissionFeedbackCallback(const iroc_mission_ha
 
 void IROC_CoverageManager::actionCallbackGoal() {
   std::scoped_lock  lock(action_server_mutex_);
-  boost::shared_ptr<const iroc_fleet_manager::WaypointFleetManagerGoal> new_action_server_goal = mission_management_server_ptr_->acceptNewGoal();
+  boost::shared_ptr<const iroc_fleet_manager::CoverageMissionGoal> new_action_server_goal = mission_management_server_ptr_->acceptNewGoal();
   ROS_INFO_STREAM("[IROC_CoverageManager]: Action server received a new goal: \n" << *new_action_server_goal);
 
   if (!is_initialized_) {
-    iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+    iroc_fleet_manager::CoverageMissionResult action_server_result;
     action_server_result.success = false;
     action_server_result.message = "Not  initialized yet";
     action_server_result.robots_results = getRobotResults();
@@ -542,7 +543,7 @@ void IROC_CoverageManager::actionCallbackGoal() {
   );
 
   if (!all_success) {
-      iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      iroc_fleet_manager::CoverageMissionResult action_server_result;
       iroc_fleet_manager::WaypointMissionRobotResult robot_result;
       for (const auto& result : results) {
         std::stringstream ss;
@@ -577,7 +578,7 @@ void IROC_CoverageManager::actionCallbackPreempt() {
   if (mission_management_server_ptr_->isActive()) {
     if (mission_management_server_ptr_->isNewGoalAvailable()) {
       ROS_INFO("[IROC_CoverageManager]: Preemption toggled for ActionServer.");
-      iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      iroc_fleet_manager::CoverageMissionResult action_server_result;
       action_server_result.success = false;
       action_server_result.message = "Preempted by client";
       ROS_WARN_STREAM("[IROC_CoverageManager]: Preempted by the client");
@@ -587,7 +588,7 @@ void IROC_CoverageManager::actionCallbackPreempt() {
     } else {
       ROS_INFO("[IROC_CoverageManager]: Cancel toggled for ActionServer.");
 
-      iroc_fleet_manager::WaypointFleetManagerResult action_server_result;
+      iroc_fleet_manager::CoverageMissionResult action_server_result;
       action_server_result.success = false;
       action_server_result.message = "Mission stopped.";
       active_mission_ = false;
@@ -645,10 +646,14 @@ std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::start
   fleet_mission_handlers_.handlers.clear();
   lost_robot_names_.clear();
 
+  std::vector<iroc_fleet_manager::WaypointMissionRobot> mission_robots; 
+
+  // TODO Here we get the coverage path from the planner 
+  // TODO Here we need to fill the mission_robots vector and assign the path to each robot  
   {
-    fleet_mission_handlers_.handlers.reserve(goal.robots.size());
+    fleet_mission_handlers_.handlers.reserve(mission_robots.size());
     // Initialize the robots received in the goal request
-    for (const auto& robot : goal.robots) {
+    for (const auto& robot : mission_robots) {
       bool success = true;
       std::stringstream ss;
       const std::string waypoint_action_client_topic = "/" + robot.name + nh_.resolveName("ac/waypoint_mission");
