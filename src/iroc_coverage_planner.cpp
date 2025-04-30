@@ -65,12 +65,12 @@ private:
 
   // | ----------------- mission management action server stuff  ---------------- |
 
-  typedef actionlib::SimpleActionServer<iroc_fleet_manager::CoverageMissionAction> MissionManagementServer;
+  typedef actionlib::SimpleActionServer<iroc_fleet_manager::CoverageMissionAction> CoverageMissionServer;
 
   void                                                           actionCallbackGoal();
   void                                                           actionCallbackPreempt();
   void                                                           actionPublishFeedback(void);
-  std::unique_ptr<MissionManagementServer>                       mission_management_server_ptr_;
+  std::unique_ptr<CoverageMissionServer>                         coverage_mission_server_ptr_;
   typedef iroc_fleet_manager::CoverageMissionGoal ActionServerGoal;
   typedef iroc_fleet_manager::CoverageMissionFeedback ActionServerFeedback;
   ActionServerGoal                                               action_server_goal_;
@@ -180,10 +180,10 @@ void IROC_CoverageManager::onInit() {
   ROS_INFO("[IROC_CoverageManager]: Created ServiceServer on service \'svc_server/change_robot_mission_state\' -> \'%s\'", ss_change_robot_mission_state_.getService().c_str());
 
   // | ------------------ action server methods ----------------- |
-  mission_management_server_ptr_ = std::make_unique<MissionManagementServer>(nh_, ros::this_node::getName(), false);
-  mission_management_server_ptr_->registerGoalCallback(boost::bind(&IROC_CoverageManager::actionCallbackGoal, this));
-  mission_management_server_ptr_->registerPreemptCallback(boost::bind(&IROC_CoverageManager::actionCallbackPreempt, this));
-  mission_management_server_ptr_->start();
+  coverage_mission_server_ptr_ = std::make_unique<CoverageMissionServer>(nh_, ros::this_node::getName(), false);
+  coverage_mission_server_ptr_->registerGoalCallback(boost::bind(&IROC_CoverageManager::actionCallbackGoal, this));
+  coverage_mission_server_ptr_->registerPreemptCallback(boost::bind(&IROC_CoverageManager::actionCallbackPreempt, this));
+  coverage_mission_server_ptr_->start();
 
   // | --------------------- finish the init -------------------- |
 
@@ -233,7 +233,7 @@ void IROC_CoverageManager::timerMain([[maybe_unused]] const ros::TimerEvent& eve
       action_server_result.message = "Early failure detected, aborting mission.";
       action_server_result.robots_results = getRobotResults();
       active_mission_ = false;
-      mission_management_server_ptr_->setAborted(action_server_result);
+      coverage_mission_server_ptr_->setAborted(action_server_result);
       cancelRobotClients(); 
       ROS_INFO("[IROC_CoverageManager]: Mission aborted.");
       return;
@@ -259,7 +259,7 @@ void IROC_CoverageManager::timerMain([[maybe_unused]] const ros::TimerEvent& eve
         action_server_result.message = "Not all robots finished successfully, finishing mission";
         action_server_result.robots_results = getRobotResults();
         active_mission_ = false;
-        mission_management_server_ptr_->setAborted(action_server_result);
+        coverage_mission_server_ptr_->setAborted(action_server_result);
         cancelRobotClients();
         ROS_INFO("[IROC_CoverageManager]: Mission finished.");
         return;
@@ -272,7 +272,7 @@ void IROC_CoverageManager::timerMain([[maybe_unused]] const ros::TimerEvent& eve
       action_server_result.robots_results = getRobotResults();
 
       active_mission_ = false;
-      mission_management_server_ptr_->setSucceeded(action_server_result);
+      coverage_mission_server_ptr_->setSucceeded(action_server_result);
       cancelRobotClients();
       ROS_INFO("[IROC_CoverageManager]: Mission finished.");
     } 
@@ -311,7 +311,7 @@ bool IROC_CoverageManager::changeFleetMissionStateCallback(mrs_msgs::String::Req
   ROS_INFO_STREAM("[IROC_CoverageManager]: Received a " << req.value<< " request for the fleet");
   std::stringstream ss;
   bool success = true;
-  if (mission_management_server_ptr_->isActive()) {
+  if (coverage_mission_server_ptr_->isActive()) {
     if (req.value == "start") {
       ROS_INFO_STREAM("[IROC_CoverageManager]: Calling mission activation.");
       for (auto& rh : fleet_mission_handlers_.handlers) {
@@ -354,17 +354,19 @@ bool IROC_CoverageManager::changeFleetMissionStateCallback(mrs_msgs::String::Req
     success = false;
     ss << "No active mission.\n";
   }
+
+  if (success) {
+    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Succesfully processed the  "<< req.value <<" request.");
+    ss << "Succesfully processed the  "<< req.value <<" request.\n";
+  } else {
+    ROS_WARN("[IROCAutonomyTestManager]: Failure: %s", res.message.c_str());
+  };
+
   res.success = success;
   res.message = ss.str();
-  if (res.success){
-    ROS_INFO_STREAM("[IROC_CoverageManager]: Succesfully processed the  "<< req.value <<" request.");
-  }else{
-    ROS_WARN("[IROC_CoverageManager]: Failure: %s", res.message.c_str());
-  };
   active_mission_change_ = false;
   return true;
 }
-
 //}
 
 /*  changeRobotMissionStateCallback()//{ */
@@ -385,7 +387,7 @@ bool IROC_CoverageManager::changeRobotMissionStateCallback(iroc_fleet_manager::C
   }
 
   bool success = true;
-  if (mission_management_server_ptr_->isActive()) {
+  if (coverage_mission_server_ptr_->isActive()) {
     if (req.type == "start") {
       ROS_INFO_STREAM("[IROC_CoverageManager]: Calling mission pausing for robot: " << req.robot_name << ".");
       const auto resp = callService<std_srvs::Trigger>(rh_ptr->sc_robot_activation);
@@ -428,18 +430,19 @@ bool IROC_CoverageManager::changeRobotMissionStateCallback(iroc_fleet_manager::C
     success = false;
     ss << "No active mission\n";
   }
-  res.success = success;
-  res.message = ss.str();
-  if (res.success){
-    ROS_INFO_STREAM("[IROC_CoverageManager]: Succesfully processed the  "<< req.type<<" request for "<< req.robot_name <<".");
-  }else{
-    ROS_WARN("[IROC_CoverageManager]: Failure: %s", res.message.c_str());
+
+  if (success) {
+    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Succesfully processed the  "<< req.type<<" request for "<< req.robot_name <<".");
+    ss << "Succesfully processed the  "<< req.type <<" request for "<< req.robot_name << " <.\n";
+  } else {
+    ROS_WARN("[IROCAutonomyTestManager]: Failure: %s", res.message.c_str());
   };
 
+  res.success = success;
+  res.message = ss.str();
   active_mission_change_ = false;
   return true;
 }
-
 //}
 
 // --------------------------------------------------------------
@@ -474,7 +477,7 @@ void IROC_CoverageManager::waypointMissionDoneCallback(const SimpleClientGoalSta
     action_server_result.robots_results = getRobotResults();
 
 
-    mission_management_server_ptr_->setAborted(action_server_result);
+    coverage_mission_server_ptr_->setAborted(action_server_result);
     cancelRobotClients();
     ROS_INFO("[IROC_CoverageManager]: Mission aborted.");
     return;
@@ -521,7 +524,7 @@ void IROC_CoverageManager::waypointMissionFeedbackCallback(const iroc_mission_ha
 
 void IROC_CoverageManager::actionCallbackGoal() {
   std::scoped_lock  lock(action_server_mutex_);
-  boost::shared_ptr<const iroc_fleet_manager::CoverageMissionGoal> new_action_server_goal = mission_management_server_ptr_->acceptNewGoal();
+  boost::shared_ptr<const iroc_fleet_manager::CoverageMissionGoal> new_action_server_goal = coverage_mission_server_ptr_->acceptNewGoal();
   ROS_INFO_STREAM("[IROC_CoverageManager]: Action server received a new goal: \n" << *new_action_server_goal);
 
   if (!is_initialized_) {
@@ -530,7 +533,7 @@ void IROC_CoverageManager::actionCallbackGoal() {
     action_server_result.message = "Not  initialized yet";
     action_server_result.robots_results = getRobotResults();
     ROS_WARN("[IROC_CoverageManager]: not initialized yet");
-    mission_management_server_ptr_->setAborted(action_server_result);
+    coverage_mission_server_ptr_->setAborted(action_server_result);
     return;
   }
 
@@ -558,7 +561,7 @@ void IROC_CoverageManager::actionCallbackGoal() {
       }
       action_server_result.success = false;
       action_server_result.message = "Failure starting robot clients.";
-      mission_management_server_ptr_->setAborted(action_server_result);
+      coverage_mission_server_ptr_->setAborted(action_server_result);
       cancelRobotClients(); 
       ROS_INFO("[IROC_CoverageManager]: Mission Aborted.");
       return;
@@ -575,14 +578,14 @@ void IROC_CoverageManager::actionCallbackGoal() {
 
 void IROC_CoverageManager::actionCallbackPreempt() {
   std::scoped_lock lock(action_server_mutex_);
-  if (mission_management_server_ptr_->isActive()) {
-    if (mission_management_server_ptr_->isNewGoalAvailable()) {
+  if (coverage_mission_server_ptr_->isActive()) {
+    if (coverage_mission_server_ptr_->isNewGoalAvailable()) {
       ROS_INFO("[IROC_CoverageManager]: Preemption toggled for ActionServer.");
       iroc_fleet_manager::CoverageMissionResult action_server_result;
       action_server_result.success = false;
       action_server_result.message = "Preempted by client";
       ROS_WARN_STREAM("[IROC_CoverageManager]: Preempted by the client");
-      mission_management_server_ptr_->setPreempted(action_server_result);
+      coverage_mission_server_ptr_->setPreempted(action_server_result);
       cancelRobotClients();
       ROS_INFO("[IROC_CoverageManager]: Mission stopped by preemtption.");
     } else {
@@ -592,7 +595,7 @@ void IROC_CoverageManager::actionCallbackPreempt() {
       action_server_result.success = false;
       action_server_result.message = "Mission stopped.";
       active_mission_ = false;
-      mission_management_server_ptr_->setAborted(action_server_result);
+      coverage_mission_server_ptr_->setAborted(action_server_result);
       cancelRobotClients();
       ROS_INFO("[IROC_CoverageManager]: Mission stopped.");
     }
@@ -625,9 +628,9 @@ void IROC_CoverageManager::actionPublishFeedback() {
       robots_feedback.emplace_back(robot_feedback);
     }
   
-    if (mission_management_server_ptr_->isActive()) {
+    if (coverage_mission_server_ptr_->isActive()) {
       auto action_server_feedback = processAggregatedFeedbackInfo(robots_feedback);
-      mission_management_server_ptr_->publishFeedback(action_server_feedback);
+      coverage_mission_server_ptr_->publishFeedback(action_server_feedback);
     }
   }
 }
