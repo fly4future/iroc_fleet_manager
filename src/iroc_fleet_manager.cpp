@@ -353,13 +353,16 @@ bool IROCFleetManager::changeFleetMissionStateCallback(mrs_msgs::String::Request
     success = false;
     ss << "No active mission.\n";
   }
+
+  if (success) {
+    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Succesfully processed the  "<< req.value <<" request.");
+    ss << "Succesfully processed the  "<< req.value <<" request.\n";
+  } else {
+    ROS_WARN("[IROCAutonomyTestManager]: Failure: %s", res.message.c_str());
+  };
+
   res.success = success;
   res.message = ss.str();
-  if (res.success){
-    ROS_INFO_STREAM("[IROCFleetManager]: Succesfully processed the  "<< req.value <<" request.");
-  }else{
-    ROS_WARN("[IROCFleetManager]: Failure: %s", res.message.c_str());
-  };
   active_mission_change_ = false;
   return true;
 }
@@ -427,14 +430,16 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
     success = false;
     ss << "No active mission\n";
   }
-  res.success = success;
-  res.message = ss.str();
-  if (res.success){
-    ROS_INFO_STREAM("[IROCFleetManager]: Succesfully processed the  "<< req.type<<" request for "<< req.robot_name <<".");
-  }else{
-    ROS_WARN("[IROCFleetManager]: Failure: %s", res.message.c_str());
+
+  if (success) {
+    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Succesfully processed the  "<< req.type<<" request for "<< req.robot_name <<".");
+    ss << "Succesfully processed the  "<< req.type <<" request for "<< req.robot_name << " <.\n";
+  } else {
+    ROS_WARN("[IROCAutonomyTestManager]: Failure: %s", res.message.c_str());
   };
 
+  res.success = success;
+  res.message = ss.str();
   active_mission_change_ = false;
   return true;
 }
