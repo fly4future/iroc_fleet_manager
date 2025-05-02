@@ -87,7 +87,7 @@ target_link_libraries(IROCFleetManager
 
 ## External library for coverage planner
 add_library(CoveragePlannerLib
-  ${COVERAGE_PLANNER_SRC_DIR}/src/main.cpp
+  ${COVERAGE_PLANNER_SRC_DIR}/src/coverage_planner.cpp
   ${COVERAGE_PLANNER_SRC_DIR}/src/MapPolygon.cpp
   ${COVERAGE_PLANNER_SRC_DIR}/src/EnergyCalculator.cpp
   ${COVERAGE_PLANNER_SRC_DIR}/src/ShortestPathCalculator.cpp

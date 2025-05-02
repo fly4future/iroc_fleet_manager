@@ -12,26 +12,8 @@
 #include "SimpleLogger.h"
 #include "utils.hpp"
 #include <iomanip>
+#include <coverage_planner.hpp>
 
-// Struct defining full algorithm config in one place
-struct algorithm_config_t
-{
-  energy_calculator_config_t energy_calculator_config;
-  int number_of_rotations;
-  bool points_in_lat_lon;
-  std::pair<double, double> lat_lon_origin;
-  std::string fly_zone_points_file;
-  std::vector<std::string> no_fly_zone_points_files;
-  int number_of_drones;
-  double sweeping_step;
-  decomposition_type_t decomposition_type;
-  int min_sub_polygons_per_uav;
-  std::pair<double, double> start_pos;
-
-  int rotations_per_cell;
-  int no_improvement_cycles_before_stop;
-  double max_single_path_energy;
-};
 
 /*!
  * Parse algorithm configuration from YAML object into algorithm_config_t object
@@ -52,8 +34,6 @@ bool algorithm_config_is_valid(const YAML::Node& config);
  * @param f Function that generates the specified number of paths
  * @return Solution to the problem
  */
-template <typename F>
-mstsp_solver::final_solution_t generate_with_constraints(double max_energy_bound, unsigned int n_uavs, F f);
 
 /*!
  * Read points from CSV file into vector of points
@@ -74,9 +54,6 @@ void write_polygon_into_csv(const std::vector<point_heading_t<double>>& path, co
  * @param shortest_path_calculator Initialized shorted path calculator
  * @param logger Logger to log output
  */
-mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config_t& algorithm_config, MapPolygon polygon,
-                                              const EnergyCalculator& energy_calculator, const ShortestPathCalculator& shortest_path_calculator,
-                                              std::shared_ptr<loggers::SimpleLogger>& logger);
 //}
 
 /* main() //{ */

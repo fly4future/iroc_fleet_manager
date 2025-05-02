@@ -24,9 +24,18 @@
 #include <iostream>
 #include <numeric>
 
-// Coverage planner includes
+// Coverage planner library includes
+#include <CoveragePlannerLib/coverage_planner.hpp>
 #include <CoveragePlannerLib/MapPolygon.hpp>
+#include <CoveragePlannerLib/EnergyCalculator.h>
 #include <CoveragePlannerLib/algorithms.hpp>
+#include <CoveragePlannerLib/ShortestPathCalculator.hpp>
+#include <CoveragePlannerLib/mstsp_solver/SolverConfig.h>
+#include <CoveragePlannerLib/mstsp_solver/MstspSolver.h>
+#include <CoveragePlannerLib/SimpleLogger.h>
+#include <CoveragePlannerLib/utils.hpp>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
 
 //}
 
@@ -107,6 +116,7 @@ private:
   void waypointMissionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& result, const std::string& robot_name);
 
   // | ------------------ Additional functions ------------------ |
+  algorithm_config_t parse_algorithm_config(mrs_lib::ParamLoader& param_loader);
   std::map<std::string, IROC_CoverageManager::result_t> startRobotClients(const ActionServerGoal& goal);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback);
   std::tuple<std::string, std::string> processFeedbackMsg();
@@ -151,6 +161,10 @@ void IROC_CoverageManager::onInit() {
   const auto main_timer_rate    = param_loader.loadParam2<double>("main_timer_rate");
   const auto feedback_timer_rate    = param_loader.loadParam2<double>("feedback_timer_rate");
   const auto no_message_timeout = param_loader.loadParam2<ros::Duration>("no_message_timeout");
+
+  const auto planner_config = parse_algorithm_config(param_loader); 
+
+
 
   if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[IROC_CoverageManager]: Could not load all parameters!");
@@ -642,6 +656,69 @@ void IROC_CoverageManager::actionPublishFeedback() {
 //}
 
 // | -------------------- support functions ------------------- |
+
+
+/* parse_algorithm_config() //{ */
+
+algorithm_config_t IROC_CoverageManager::parse_algorithm_config(mrs_lib::ParamLoader& param_loader )
+{
+  const std::string yaml_prefix = "coverage_planner/";
+  algorithm_config_t algorithm_config;
+
+  // Load basic drone parameters
+  param_loader.loadParam(yaml_prefix + "drone_mass", algorithm_config.energy_calculator_config.drone_mass);
+  param_loader.loadParam(yaml_prefix + "drone_area", algorithm_config.energy_calculator_config.drone_area);
+  param_loader.loadParam(yaml_prefix + "average_acceleration", algorithm_config.energy_calculator_config.average_acceleration);
+  param_loader.loadParam(yaml_prefix + "propeller_radius", algorithm_config.energy_calculator_config.propeller_radius);
+  param_loader.loadParam(yaml_prefix + "number_of_propellers", algorithm_config.energy_calculator_config.number_of_propellers);
+  param_loader.loadParam(yaml_prefix + "allowed_path_deviation", algorithm_config.energy_calculator_config.allowed_path_deviation);
+  param_loader.loadParam(yaml_prefix + "number_of_rotations", algorithm_config.number_of_rotations);
+
+  // Load battery model parameters
+  const std::string battery_prefix = yaml_prefix + "battery_model/";
+  param_loader.loadParam(battery_prefix + "cell_capacity", algorithm_config.energy_calculator_config.battery_model.cell_capacity);
+  param_loader.loadParam(battery_prefix + "number_of_cells", algorithm_config.energy_calculator_config.battery_model.number_of_cells);
+  param_loader.loadParam(battery_prefix + "d0", algorithm_config.energy_calculator_config.battery_model.d0);
+  param_loader.loadParam(battery_prefix + "d1", algorithm_config.energy_calculator_config.battery_model.d1);
+  param_loader.loadParam(battery_prefix + "d2", algorithm_config.energy_calculator_config.battery_model.d2);
+  param_loader.loadParam(battery_prefix + "d3", algorithm_config.energy_calculator_config.battery_model.d3);
+
+  // Load speed model parameters
+  const std::string speed_prefix = yaml_prefix + "best_speed_model/";
+  param_loader.loadParam(speed_prefix + "c0", algorithm_config.energy_calculator_config.best_speed_model.c0);
+  param_loader.loadParam(speed_prefix + "c1", algorithm_config.energy_calculator_config.best_speed_model.c1);
+  param_loader.loadParam(speed_prefix + "c2", algorithm_config.energy_calculator_config.best_speed_model.c2);
+
+  // Load coordinate system parameters
+  param_loader.loadParam(yaml_prefix + "points_in_lat_lon", algorithm_config.points_in_lat_lon);
+  if (algorithm_config.points_in_lat_lon) {
+    param_loader.loadParam(yaml_prefix + "latitude_origin", algorithm_config.lat_lon_origin.first);
+    param_loader.loadParam(yaml_prefix + "longitude_origin", algorithm_config.lat_lon_origin.second);
+  }
+
+  // Load mission parameters
+  param_loader.loadParam(yaml_prefix + "number_of_drones", algorithm_config.number_of_drones);
+  param_loader.loadParam(yaml_prefix + "sweeping_step", algorithm_config.sweeping_step);
+
+  int decomposition_method;
+  param_loader.loadParam(yaml_prefix + "decomposition_method", decomposition_method);
+  algorithm_config.decomposition_type = static_cast<decomposition_type_t>(decomposition_method);
+
+  param_loader.loadParam(yaml_prefix + "min_sub_polygons_per_uav", algorithm_config.min_sub_polygons_per_uav);
+
+  // Load starting position
+  param_loader.loadParam(yaml_prefix + "start_x", algorithm_config.start_pos.first);
+  param_loader.loadParam(yaml_prefix + "start_y", algorithm_config.start_pos.second);
+
+  // Load optimization parameters
+  param_loader.loadParam(yaml_prefix + "rotations_per_cell", algorithm_config.rotations_per_cell);
+  param_loader.loadParam(yaml_prefix + "no_improvement_cycles_before_stop", algorithm_config.no_improvement_cycles_before_stop);
+  param_loader.loadParam(yaml_prefix + "max_single_path_energy", algorithm_config.max_single_path_energy);
+
+  return algorithm_config;
+  double drone_mass;
+}
+//}
 
 /* startRobotClients() //{ */
 
