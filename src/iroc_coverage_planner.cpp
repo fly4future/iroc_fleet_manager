@@ -24,6 +24,10 @@
 #include <iostream>
 #include <numeric>
 
+// Coverage planner includes
+#include <CoveragePlannerLib/MapPolygon.hpp>
+#include <CoveragePlannerLib/algorithms.hpp>
+
 //}
 
 namespace iroc_fleet_manager
