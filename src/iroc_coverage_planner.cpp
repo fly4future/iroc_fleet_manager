@@ -16,7 +16,9 @@
 /* custom msgs of MRS group */
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <mrs_msgs/String.h>
+#include <mrs_msgs/Reference.h>
 #include <iroc_mission_handler/waypointMissionAction.h>
+#include <iroc_fleet_manager/CoverageMission.h>
 #include <iroc_fleet_manager/CoverageMissionAction.h>
 #include <iroc_fleet_manager/WaypointMissionRobotFeedback.h>
 #include <iroc_fleet_manager/WaypointMissionRobot.h>
@@ -58,11 +60,14 @@ private:
   bool is_initialized_                      = false;
   std::atomic_bool active_mission_          = false;
   std::atomic_bool active_mission_change_   = false;
+
   struct result_t
   {
     bool        success;
     std::string message;
   };
+
+  algorithm_config_t planner_config_;
 
   // | ----------------------- ROS servers ---------------------- |
   ros::ServiceServer ss_change_fleet_mission_state_;
@@ -110,6 +115,9 @@ private:
 
   std::vector<std::string> lost_robot_names_;
 
+  // Additional type for coverage planner
+  typedef std::vector<std::vector<mrs_msgs::Reference>> coverage_paths_t;
+
   void waypointMissionActiveCallback(const std::string& robot_name);
   void waypointMissionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
                                    const std::string& robot_name);
@@ -117,6 +125,7 @@ private:
 
   // | ------------------ Additional functions ------------------ |
   algorithm_config_t parse_algorithm_config(mrs_lib::ParamLoader& param_loader);
+  coverage_paths_t getCoveragePaths(const iroc_fleet_manager::CoverageMission& mission); 
   std::map<std::string, IROC_CoverageManager::result_t> startRobotClients(const ActionServerGoal& goal);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback);
   std::tuple<std::string, std::string> processFeedbackMsg();
@@ -162,9 +171,7 @@ void IROC_CoverageManager::onInit() {
   const auto feedback_timer_rate    = param_loader.loadParam2<double>("feedback_timer_rate");
   const auto no_message_timeout = param_loader.loadParam2<ros::Duration>("no_message_timeout");
 
-  const auto planner_config = parse_algorithm_config(param_loader); 
-
-
+  planner_config_ = parse_algorithm_config(param_loader); 
 
   if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[IROC_CoverageManager]: Could not load all parameters!");
@@ -657,7 +664,6 @@ void IROC_CoverageManager::actionPublishFeedback() {
 
 // | -------------------- support functions ------------------- |
 
-
 /* parse_algorithm_config() //{ */
 
 algorithm_config_t IROC_CoverageManager::parse_algorithm_config(mrs_lib::ParamLoader& param_loader )
@@ -720,6 +726,76 @@ algorithm_config_t IROC_CoverageManager::parse_algorithm_config(mrs_lib::ParamLo
 }
 //}
 
+/* getCoveragePaths() //{ */
+IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(const iroc_fleet_manager::CoverageMission& mission) { 
+
+  // Fly zone and no fly zones
+  std::vector<point_t> fly_zone; 
+  std::vector<std::vector<point_t>> no_fly_zones;
+
+  // Fill the search area 
+  for (const auto& point : mission.search_area) {
+    ROS_INFO("[IROC_CoverageManager:]: Search area point: %f, %f", point.x, point.y);
+    fly_zone.emplace_back(point.x, point.y);
+  }
+  //Add the first point to close the polygon
+  fly_zone.emplace_back(mission.search_area[0].x, mission.search_area[0].y);
+
+  // Print the fly zone points
+  for (const auto& point : fly_zone) {
+    ROS_INFO("[IROC_CoverageManager:]: Fly zone point: %f, %f", point.first, point.second);
+  }
+
+  // Initialize polygon and transform all the point into meters
+  MapPolygon polygon = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin);
+
+  // Decompose the polygon
+  ShortestPathCalculator shortest_path_calculator(polygon);
+
+  // Create a logger to log everything directly into stdout
+  auto shared_logger = std::make_shared<loggers::SimpleLogger>();
+  EnergyCalculator energy_calculator{planner_config_.energy_calculator_config, shared_logger};
+  ROS_INFO_STREAM("[IROC_CoverageManager:]: Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed());
+
+  mstsp_solver::final_solution_t best_solution;
+  try
+  {
+    auto f = [&](int n) { return solve_for_uavs(n, planner_config_, polygon, energy_calculator, shortest_path_calculator, shared_logger); };
+    best_solution = generate_with_constraints(planner_config_.max_single_path_energy * 3600, mission.robots.size(), f);
+  }
+  catch (const polygon_decomposition_error& e)
+  {
+    ROS_WARN_STREAM("[IROC_CoverageManager:]: Error while decomposing the polygon");  
+    return coverage_paths_t();
+  }
+
+  // For saving the paths for each UAV
+  coverage_paths_t coverage_paths;
+  auto best_paths = best_solution.paths;
+  for (auto& path : best_paths)
+  {
+    std::vector<mrs_msgs::Reference> coverage_path;
+    mrs_msgs::Reference point; 
+    for (auto& p : path)
+    {
+      // TODO Replace with mrs_lib transformer
+      auto lat_lon_p = meters_to_gps_coordinates({p.x, p.y}, planner_config_.lat_lon_origin);
+      p.x = lat_lon_p.first;
+      p.y = lat_lon_p.second;
+      // Fill the reference point
+      point.position.x = p.x;
+      point.position.y = p.y;
+      point.position.z = mission.height; 
+      point.heading = 0.0;
+      coverage_path.push_back(point);
+    }
+    coverage_paths.push_back(coverage_path);
+  }
+
+  return coverage_paths;
+}
+//}
+
 /* startRobotClients() //{ */
 
 std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::startRobotClients(const ActionServerGoal& goal){
@@ -733,7 +809,20 @@ std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::start
   std::vector<iroc_fleet_manager::WaypointMissionRobot> mission_robots; 
 
   // TODO Here we get the coverage path from the planner 
-  // TODO Here we need to fill the mission_robots vector and assign the path to each robot  
+  auto paths = getCoveragePaths(goal.mission);  
+  ROS_INFO("[IROC_CoverageManager:]: Coverage paths size: %zu", paths.size());
+
+  // Filling the mission_robots vector with the generated paths
+  for (int it = 0; it < goal.mission.robots.size() ; it++) {
+    iroc_fleet_manager::WaypointMissionRobot robot;
+    robot.name = goal.mission.robots[it];
+    robot.points = paths[it];
+    robot.terminal_action = goal.mission.terminal_action;
+    robot.height_id = goal.mission.height_id;
+    robot.frame_id = goal.mission.frame_id;
+    mission_robots.push_back(robot);
+  }
+
   {
     fleet_mission_handlers_.handlers.reserve(mission_robots.size());
     // Initialize the robots received in the goal request

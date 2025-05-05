@@ -46,6 +46,11 @@ namespace
 MapPolygon::MapPolygon(const MapPolygon& p)
 {
   fly_zone_polygon_points = p.fly_zone_polygon_points;
+  // // Print the fly zone points
+  // for (const auto& p : fly_zone_polygon_points)
+  // {
+  //   std::cout << "[MapPolygon] Fly zone point: " << p.first << " " << p.second << std::endl;
+  // }
   no_fly_zone_polygons = p.no_fly_zone_polygons;
 }
 //}

@@ -36,11 +36,13 @@ coverage_planner:
   points_in_lat_lon: true
 
   # These values are used only if the points_in_lat_lon is set to true
-  latitude_origin: 49.36314644627111
-  longitude_origin: 14.260587804055804
+  latitude_origin: 47.397743
+  longitude_origin: 8.545594
+  # latitude_origin: 49.36314644627111
+  # longitude_origin: 14.260587804055804
 
   # Minimum number of paths to generate
-  number_of_drones: 3
+  number_of_drones: 2
 
   # Sweeping step in meters
   sweeping_step: 6
@@ -55,8 +57,10 @@ coverage_planner:
   min_sub_polygons_per_uav: 1
 
   # Start and end position of each UAV. If points_in_lat_lon is defined, x and y are latitude and longitude
-  start_x: 49.362348212496755
-  start_y: 14.261290785325457
+  start_x: 47.397743
+  start_y: 8.545594
+  # start_x: 49.362348212496755
+  # start_y: 14.261290785325457
 
   # Parameters affecting algorithm performance and completion time
   rotations_per_cell: 5
