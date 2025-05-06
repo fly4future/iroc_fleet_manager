@@ -74,6 +74,7 @@ mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config
                                               const EnergyCalculator& energy_calculator, const ShortestPathCalculator& shortest_path_calculator,
                                               std::shared_ptr<loggers::SimpleLogger>& logger);
 
+[[maybe_unused]] std::vector<MapPolygon> decompose_polygon(int n_uavs, const algorithm_config_t& algorithm_config, MapPolygon polygon);
 
 #endif //COVERAGE_PLANNER_HPP
 

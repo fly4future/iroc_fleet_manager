@@ -75,6 +75,7 @@
       <!-- Service clients -->
       <remap from="~svc/mission_activation" to="/mission_handler/mission_activation" />
       <remap from="~svc/mission_pausing" to="/mission_handler/mission_pausing" />
+      <remap from="~svc/transform_reference" to="control_manager/transform_reference" />
       <!-- Service servers -->
       <remap from="~svc/change_fleet_mission_state" to="~change_fleet_mission_state" />
       <remap from="~svc/change_robot_mission_state" to="~change_robot_mission_state" />

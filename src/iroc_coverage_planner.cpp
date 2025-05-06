@@ -17,6 +17,7 @@
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <mrs_msgs/String.h>
 #include <mrs_msgs/Reference.h>
+#include <mrs_msgs/TransformReferenceSrv.h>
 #include <iroc_mission_handler/waypointMissionAction.h>
 #include <iroc_fleet_manager/CoverageMission.h>
 #include <iroc_fleet_manager/CoverageMissionAction.h>
@@ -70,6 +71,7 @@ private:
   algorithm_config_t planner_config_;
 
   // | ----------------------- ROS servers ---------------------- |
+  
   ros::ServiceServer ss_change_fleet_mission_state_;
   ros::ServiceServer ss_change_robot_mission_state_;
   bool changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res);
@@ -196,13 +198,14 @@ void IROC_CoverageManager::onInit() {
 
 
   // | --------------------- service clients -------------------- |
-  
+ 
   // | --------------------- service servers -------------------- |
 
   ss_change_fleet_mission_state_ = nh_.advertiseService(nh_.resolveName("svc/change_fleet_mission_state"), &IROC_CoverageManager::changeFleetMissionStateCallback, this);
   ROS_INFO("[IROC_CoverageManager]: Created ServiceServer on service \'svc_server/change_mission_state\' -> \'%s\'", ss_change_fleet_mission_state_.getService().c_str());
   ss_change_robot_mission_state_ = nh_.advertiseService(nh_.resolveName("svc/change_robot_mission_state"), &IROC_CoverageManager::changeRobotMissionStateCallback, this);
   ROS_INFO("[IROC_CoverageManager]: Created ServiceServer on service \'svc_server/change_robot_mission_state\' -> \'%s\'", ss_change_robot_mission_state_.getService().c_str());
+
 
   // | ------------------ action server methods ----------------- |
   coverage_mission_server_ptr_ = std::make_unique<CoverageMissionServer>(nh_, ros::this_node::getName(), false);
@@ -341,6 +344,10 @@ bool IROC_CoverageManager::changeFleetMissionStateCallback(mrs_msgs::String::Req
       ROS_INFO_STREAM("[IROC_CoverageManager]: Calling mission activation.");
       for (auto& rh : fleet_mission_handlers_.handlers) {
         const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_activation);
+        // Sleeping 5 seconds between activations as robots are starting in the same point.
+        ROS_INFO("[IROC_CoverageManager:]: Waiting 5 seconds between activations.");
+        ros::Duration(5).sleep();
+        ROS_INFO("[IROC_CoverageManager:]: Finished waiting.");
         if (!resp.success) { 
           success = false; 
           ROS_WARN_STREAM("[IROC_CoverageManager]: "<< "Call for robot \"" << rh.robot_name << "\" was not successful with message: " << resp.message << "\n");
@@ -381,10 +388,10 @@ bool IROC_CoverageManager::changeFleetMissionStateCallback(mrs_msgs::String::Req
   }
 
   if (success) {
-    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Succesfully processed the  "<< req.value <<" request.");
+    ROS_INFO_STREAM("[IROC_CoverageManager]: Succesfully processed the  "<< req.value <<" request.");
     ss << "Succesfully processed the  "<< req.value <<" request.\n";
   } else {
-    ROS_WARN("[IROCAutonomyTestManager]: Failure: %s", res.message.c_str());
+    ROS_WARN("[IROC_CoverageManager]: Failure: %s", res.message.c_str());
   };
 
   res.success = success;
@@ -757,39 +764,46 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
   EnergyCalculator energy_calculator{planner_config_.energy_calculator_config, shared_logger};
   ROS_INFO_STREAM("[IROC_CoverageManager:]: Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed());
 
-  mstsp_solver::final_solution_t best_solution;
-  try
-  {
-    auto f = [&](int n) { return solve_for_uavs(n, planner_config_, polygon, energy_calculator, shortest_path_calculator, shared_logger); };
-    best_solution = generate_with_constraints(planner_config_.max_single_path_energy * 3600, mission.robots.size(), f);
-  }
-  catch (const polygon_decomposition_error& e)
-  {
-    ROS_WARN_STREAM("[IROC_CoverageManager:]: Error while decomposing the polygon");  
-    return coverage_paths_t();
-  }
+  //Decompose polygon for each UAV
+  auto decomposed_polygon = decompose_polygon(mission.robots.size(),planner_config_, polygon);
+
+  ROS_INFO("[IROC_CoverageManager:]: Size of decomposed polygon: %zu", decomposed_polygon.size());
 
   // For saving the paths for each UAV
   coverage_paths_t coverage_paths;
-  auto best_paths = best_solution.paths;
-  for (auto& path : best_paths)
-  {
-    std::vector<mrs_msgs::Reference> coverage_path;
-    mrs_msgs::Reference point; 
-    for (auto& p : path)
+  for (const auto& polygon : decomposed_polygon) {
+    mstsp_solver::final_solution_t best_solution;
+    try
     {
-      // TODO Replace with mrs_lib transformer
-      auto lat_lon_p = meters_to_gps_coordinates({p.x, p.y}, planner_config_.lat_lon_origin);
-      p.x = lat_lon_p.first;
-      p.y = lat_lon_p.second;
-      // Fill the reference point
-      point.position.x = p.x;
-      point.position.y = p.y;
-      point.position.z = mission.height; 
-      point.heading = 0.0;
-      coverage_path.push_back(point);
+      auto f = [&](int n) { return solve_for_uavs(n, planner_config_, polygon, energy_calculator, shortest_path_calculator, shared_logger); };
+      best_solution = generate_with_constraints(planner_config_.max_single_path_energy * 3600, 1, f);
     }
-    coverage_paths.push_back(coverage_path);
+    catch (const polygon_decomposition_error& e)
+    {
+      ROS_WARN_STREAM("[IROC_CoverageManager:]: Error while decomposing the polygon");  
+      return coverage_paths_t();
+    }
+
+    auto best_paths = best_solution.paths;
+    for (auto& path : best_paths)
+    {
+      std::vector<mrs_msgs::Reference> coverage_path;
+      mrs_msgs::Reference point; 
+      for (auto& p : path)
+      {
+        // TODO Replace with mrs_lib transformer?
+        auto lat_lon_p = meters_to_gps_coordinates({p.x, p.y}, planner_config_.lat_lon_origin);
+        p.x = lat_lon_p.first;
+        p.y = lat_lon_p.second;
+        // Fill the reference point
+        point.position.x = p.x;
+        point.position.y = p.y;
+        point.position.z = mission.height; 
+        point.heading = 0.0;
+        coverage_path.push_back(point);
+      }
+      coverage_paths.push_back(coverage_path);
+    }  
   }
 
   return coverage_paths;

@@ -348,6 +348,7 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
 
   return algorithm_config;
 }
+//}
 
 /* solve_for_uavs() //{ */
 
@@ -402,6 +403,9 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
     polygons_decomposed = polygons_divided;
     std::cout << "Divided large polygons into smaller ones" << std::endl;
 
+    //Print number of polygons
+    std::cout << "Number of polygons: " << polygons_decomposed.size() << std::endl;
+
     // Create the configuration for MSTSP solver
     auto starting_point = algorithm_config.points_in_lat_lon ? gps_coordinates_to_meters(algorithm_config.start_pos, algorithm_config.lat_lon_origin)
                                                              : algorithm_config.start_pos;
@@ -428,5 +432,63 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
   }
   return best_solution;
 }
+//}
 
+/* decompose_polygon() //{ */
+
+[[maybe_unused]] std::vector<MapPolygon> decompose_polygon(int n_uavs, const algorithm_config_t& algorithm_config, MapPolygon polygon)
+{
+  auto init_polygon = polygon;
+
+  auto best_initial_rotations = n_best_init_decomp_angles(polygon, algorithm_config.number_of_rotations, algorithm_config.decomposition_type);
+
+  std::cout << "Calculated best rotations: " << std::endl;
+  for (const auto& rot : best_initial_rotations)
+  {
+    std::cout << rot << std::endl;
+  }
+
+  std::vector<MapPolygon> polygons_decomposed;
+
+  // Run algorithm for each rotation and save the best result
+  double best_solution_cost = std::numeric_limits<double>::max();
+  mstsp_solver::final_solution_t best_solution;
+  for (const auto& rotation : best_initial_rotations)
+  {
+    // Decompose polygon using initial rotation
+    polygon = init_polygon.rotated(rotation);
+    polygons_decomposed = trapezoidal_decomposition(polygon, static_cast<decomposition_type_t>(algorithm_config.decomposition_type));
+
+    std::cout << "Polygon decomposed. Decomposed polygons: " << std::endl;
+    for (const auto& p : polygons_decomposed)
+    {
+      std::cout << "Decomposed sub polygon area: " << p.area() << std::endl;
+    }
+
+    // Divide large polygons into smaller ones to meet the constraint on the lowest number of sub polygons
+    std::cout << "Dividing large polygons into smaller ones" << std::endl;
+    std::vector<MapPolygon> polygons_divided;
+    try
+    {
+      polygons_divided = split_into_number(polygons_decomposed, static_cast<size_t>(n_uavs) * algorithm_config.min_sub_polygons_per_uav);
+    }
+    catch (std::runtime_error& e)
+    {
+      std::cout << "ERROR while dividing polygon: " << e.what() << std::endl;
+      // return best_solution;
+    }
+
+    for (auto& p : polygons_divided)
+    {
+      p = p.rotated(-rotation);
+    }
+    polygons_decomposed = polygons_divided;
+    std::cout << "Divided large polygons into smaller ones" << std::endl;
+
+    //Print number of polygons
+    std::cout << "Number of polygons: " << polygons_decomposed.size() << std::endl;
+  }
+  return polygons_decomposed;
+}
+//}
 
