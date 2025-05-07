@@ -709,8 +709,6 @@ algorithm_config_t IROC_CoverageManager::parse_algorithm_config(mrs_lib::ParamLo
     param_loader.loadParam(yaml_prefix + "longitude_origin", algorithm_config.lat_lon_origin.second);
   }
 
-  // Load mission parameters
-  param_loader.loadParam(yaml_prefix + "number_of_drones", algorithm_config.number_of_drones);
   param_loader.loadParam(yaml_prefix + "sweeping_step", algorithm_config.sweeping_step);
 
   int decomposition_method;
@@ -719,10 +717,6 @@ algorithm_config_t IROC_CoverageManager::parse_algorithm_config(mrs_lib::ParamLo
 
   param_loader.loadParam(yaml_prefix + "min_sub_polygons_per_uav", algorithm_config.min_sub_polygons_per_uav);
 
-  // Load starting position
-  param_loader.loadParam(yaml_prefix + "start_x", algorithm_config.start_pos.first);
-  param_loader.loadParam(yaml_prefix + "start_y", algorithm_config.start_pos.second);
-
   // Load optimization parameters
   param_loader.loadParam(yaml_prefix + "rotations_per_cell", algorithm_config.rotations_per_cell);
   param_loader.loadParam(yaml_prefix + "no_improvement_cycles_before_stop", algorithm_config.no_improvement_cycles_before_stop);
@@ -730,6 +724,63 @@ algorithm_config_t IROC_CoverageManager::parse_algorithm_config(mrs_lib::ParamLo
 
   return algorithm_config;
   double drone_mass;
+}
+//}
+
+/* calculate_centroid() //{ */
+// Calculate centroid of a polygon
+point_t calculate_centroid(const MapPolygon& polygon) {
+  auto points = polygon.get_all_points();
+  double sum_x = 0, sum_y = 0;
+  for (const auto& point : points) {
+    sum_x += point.first;
+    sum_y += point.second;
+  }
+  return {sum_x / points.size(), sum_y / points.size()};
+}
+//}
+
+/* calculate_distance() //{ */
+// Calculate Euclidean distance between two points
+double calculate_distance(const point_t& p1, const point_t& p2) {
+  return std::sqrt(std::pow(p1.first - p2.first, 2) + std::pow(p1.second - p2.second, 2));
+}
+//}
+
+/* assign_closest_polygons() //{ */
+// Assign each UAV to its closest polygon and return the assigned polygons
+std::vector<MapPolygon> assign_closest_polygons(const std::vector<point_t>& uav_positions, 
+                                            std::vector<MapPolygon> polygons) {
+  std::vector<MapPolygon> assigned_polygons(uav_positions.size());
+  std::vector<point_t> polygon_centroids;
+  
+  // Calculate centroids for all polygons
+  for (const auto& poly : polygons) {
+    polygon_centroids.push_back(calculate_centroid(poly));
+  }
+  
+  // For each UAV, find the closest unassigned polygon
+  for (size_t i = 0; i < uav_positions.size(); i++) {
+    double min_distance = std::numeric_limits<double>::max();
+    size_t closest_polygon_idx = 0;
+    
+    for (size_t j = 0; j < polygon_centroids.size(); j++) {
+      double dist = calculate_distance(uav_positions[i], polygon_centroids[j]);
+      if (dist < min_distance) {
+        min_distance = dist;
+        closest_polygon_idx = j;
+      }
+    }
+    
+    // Assign the closest polygon to this UAV
+    assigned_polygons[i] = polygons[closest_polygon_idx];
+    
+    // Remove the assigned polygon and its centroid from consideration
+    polygons.erase(polygons.begin() + closest_polygon_idx);
+    polygon_centroids.erase(polygon_centroids.begin() + closest_polygon_idx);
+  }
+  
+  return assigned_polygons;
 }
 //}
 
@@ -767,6 +818,25 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
   //Decompose polygon for each UAV
   auto decomposed_polygon = decompose_polygon(mission.robots.size(),planner_config_, polygon);
 
+  std::vector<point_t> polygon_centroids;
+  for (const auto& polygon : decomposed_polygon) {
+    auto points_tmp = polygon.get_all_points();
+    auto m_polygon_points = std::vector<point_t>{points_tmp.begin(), points_tmp.end()};
+    // Print polygon points
+    for (const auto& point : m_polygon_points) 
+      ROS_INFO("[IROC_CoverageManager:]: Polygon point: %f, %f", point.first, point.second);
+    polygon_centroids.emplace_back(calculate_centroid(polygon));
+  }
+
+  // Create a vector of UAV positions
+  std::vector<point_t> uav_positions;
+  for (const auto& robot : mission.robots) {
+      uav_positions.push_back({robot.local_position.x, robot.local_position.y});
+  }
+
+  // Assign each UAV to its closest polygon
+  auto assigned_polygons = assign_closest_polygons(uav_positions, decomposed_polygon);
+
   ROS_INFO("[IROC_CoverageManager:]: Size of decomposed polygon: %zu", decomposed_polygon.size());
 
   // For saving the paths for each UAV
@@ -777,10 +847,12 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
     mstsp_solver::final_solution_t best_solution;
     try
     {
+
+      const auto& assigned_polygon = assigned_polygons[uav_index];
       // Setting the start position for each UAV
-      planner_config_.start_pos.first = mission.robots.at(uav_index).position.x;
-      planner_config_.start_pos.second= mission.robots.at(uav_index).position.y;
-      auto f = [&](int n) { return solve_for_uavs(n, planner_config_, polygon, energy_calculator, shortest_path_calculator, shared_logger); };
+      planner_config_.start_pos.first = mission.robots.at(uav_index).global_position.x;
+      planner_config_.start_pos.second= mission.robots.at(uav_index).global_position.y;
+      auto f = [&](int n) { return solve_for_uavs(n, planner_config_, assigned_polygon, energy_calculator, shortest_path_calculator, shared_logger); };
       best_solution = generate_with_constraints(planner_config_.max_single_path_energy * 3600, 1, f);
       uav_index++;
     }
@@ -892,9 +964,12 @@ std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::start
 
       // This is important to wait for some time in case the goal was rejected
       // We can replace it to wait while the sate is pending
-      ros::Duration(2.0).sleep();
+      // ros::Duration(2.0).sleep();
 
-      if (action_client_ptr->getState().isDone()) {
+      bool finished_before_timeout = action_client_ptr->waitForResult(ros::Duration(2.0));
+      ROS_INFO("[IROC_CoverageManager:]: Finished before timeout: %d", finished_before_timeout);
+
+      if (finished_before_timeout) {
         auto result =  action_client_ptr->getResult();
         ss << result->message;
         ROS_INFO_STREAM("[IROC_CoverageManagerDebug]: result: " << ss.str());
