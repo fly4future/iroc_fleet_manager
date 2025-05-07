@@ -345,9 +345,9 @@ bool IROC_CoverageManager::changeFleetMissionStateCallback(mrs_msgs::String::Req
       for (auto& rh : fleet_mission_handlers_.handlers) {
         const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_activation);
         // Sleeping 5 seconds between activations as robots are starting in the same point.
-        ROS_INFO("[IROC_CoverageManager:]: Waiting 5 seconds between activations.");
-        ros::Duration(5).sleep();
-        ROS_INFO("[IROC_CoverageManager:]: Finished waiting.");
+        // ROS_INFO("[IROC_CoverageManager:]: Waiting 5 seconds between activations.");
+        // ros::Duration(5).sleep();
+        // ROS_INFO("[IROC_CoverageManager:]: Finished waiting.");
         if (!resp.success) { 
           success = false; 
           ROS_WARN_STREAM("[IROC_CoverageManager]: "<< "Call for robot \"" << rh.robot_name << "\" was not successful with message: " << resp.message << "\n");
@@ -771,12 +771,18 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
 
   // For saving the paths for each UAV
   coverage_paths_t coverage_paths;
+  // For accessing the robots information from mission goal
+  int uav_index = 0;
   for (const auto& polygon : decomposed_polygon) {
     mstsp_solver::final_solution_t best_solution;
     try
     {
+      // Setting the start position for each UAV
+      planner_config_.start_pos.first = mission.robots.at(uav_index).position.x;
+      planner_config_.start_pos.second= mission.robots.at(uav_index).position.y;
       auto f = [&](int n) { return solve_for_uavs(n, planner_config_, polygon, energy_calculator, shortest_path_calculator, shared_logger); };
       best_solution = generate_with_constraints(planner_config_.max_single_path_energy * 3600, 1, f);
+      uav_index++;
     }
     catch (const polygon_decomposition_error& e)
     {
@@ -798,7 +804,7 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
         // Fill the reference point
         point.position.x = p.x;
         point.position.y = p.y;
-        point.position.z = mission.height; 
+        point.position.z = mission.robots[0].height; // We are using same height for all robots 
         point.heading = 0.0;
         coverage_path.push_back(point);
       }
@@ -829,11 +835,11 @@ std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::start
   // Filling the mission_robots vector with the generated paths
   for (int it = 0; it < goal.mission.robots.size() ; it++) {
     iroc_fleet_manager::WaypointMissionRobot robot;
-    robot.name = goal.mission.robots[it];
+    robot.name = goal.mission.robots[it].name;
     robot.points = paths[it];
-    robot.terminal_action = goal.mission.terminal_action;
-    robot.height_id = goal.mission.height_id;
-    robot.frame_id = goal.mission.frame_id;
+    robot.terminal_action = goal.mission.robots[it].terminal_action;
+    robot.height_id = goal.mission.robots[it].height_id;
+    robot.frame_id = goal.mission.robots[it].frame_id;
     mission_robots.push_back(robot);
   }
 
@@ -886,7 +892,7 @@ std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::start
 
       // This is important to wait for some time in case the goal was rejected
       // We can replace it to wait while the sate is pending
-      ros::Duration(0.5).sleep();
+      ros::Duration(2.0).sleep();
 
       if (action_client_ptr->getState().isDone()) {
         auto result =  action_client_ptr->getResult();

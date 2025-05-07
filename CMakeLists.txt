@@ -18,6 +18,7 @@ set(CATKIN_DEPENDENCIES
   iroc_mission_handler
   actionlib
   actionlib_msgs
+  geometry_msgs
   genmsg
   )
 
@@ -43,6 +44,7 @@ add_message_files(DIRECTORY msg FILES
   WaypointMissionRobot.msg
   AutonomyTestRobot.msg
   CoverageMission.msg
+  CoverageMissionRobot.msg
   WaypointMissionRobotFeedback.msg
   WaypointMissionRobotResult.msg
   WaypointMissionInfo.msg
