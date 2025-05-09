@@ -965,11 +965,11 @@ std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::start
       // This is important to wait for some time in case the goal was rejected
       // We can replace it to wait while the sate is pending
       // ros::Duration(2.0).sleep();
+      //bool finished_before_timeout = action_client_ptr->waitForResult(ros::Duration(2.0));
+      // ROS_INFO("[IROC_CoverageManager:]: Finished before timeout: %d", finished_before_timeout);
 
-      bool finished_before_timeout = action_client_ptr->waitForResult(ros::Duration(2.0));
-      ROS_INFO("[IROC_CoverageManager:]: Finished before timeout: %d", finished_before_timeout);
-
-      if (finished_before_timeout) {
+      ros::Duration(0.5).sleep();
+      if (action_client_ptr->getState().isDone()) {
         auto result =  action_client_ptr->getResult();
         ss << result->message;
         ROS_INFO_STREAM("[IROC_CoverageManagerDebug]: result: " << ss.str());
