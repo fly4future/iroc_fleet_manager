@@ -1,0 +1,3 @@
+/home/rivermar/git/coverage_mission_planner_ros/build/CMakeFiles/rebuild_cache.dir
+/home/rivermar/git/coverage_mission_planner_ros/build/CMakeFiles/edit_cache.dir
+/home/rivermar/git/coverage_mission_planner_ros/build/CMakeFiles/coverage_mission_planner.dir

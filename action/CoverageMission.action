@@ -1,0 +1,10 @@
+# Define the goal
+iroc_fleet_manager/CoverageMission mission 
+---
+# Define the result
+bool success
+string message
+iroc_fleet_manager/WaypointMissionRobotResult[] robots_results
+---
+# Define a feedback message
+iroc_fleet_manager/WaypointMissionInfo info
