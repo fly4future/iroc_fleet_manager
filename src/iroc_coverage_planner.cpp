@@ -792,17 +792,11 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
   std::vector<std::vector<point_t>> no_fly_zones;
 
   // Fill the search area 
-  for (const auto& point : mission.search_area) {
-    ROS_INFO("[IROC_CoverageManager:]: Search area point: %f, %f", point.x, point.y);
+  for (const auto& point : mission.search_area) 
     fly_zone.emplace_back(point.x, point.y);
-  }
-  //Add the first point to close the polygon
-  fly_zone.emplace_back(mission.search_area[0].x, mission.search_area[0].y);
 
-  // Print the fly zone points
-  for (const auto& point : fly_zone) {
-    ROS_INFO("[IROC_CoverageManager:]: Fly zone point: %f, %f", point.first, point.second);
-  }
+  // Add the first point to close the polygon
+  fly_zone.emplace_back(mission.search_area[0].x, mission.search_area[0].y);
 
   // Initialize polygon and transform all the point into meters
   MapPolygon polygon = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin);
@@ -822,9 +816,6 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
   for (const auto& polygon : decomposed_polygon) {
     auto points_tmp = polygon.get_all_points();
     auto m_polygon_points = std::vector<point_t>{points_tmp.begin(), points_tmp.end()};
-    // Print polygon points
-    for (const auto& point : m_polygon_points) 
-      ROS_INFO("[IROC_CoverageManager:]: Polygon point: %f, %f", point.first, point.second);
     polygon_centroids.emplace_back(calculate_centroid(polygon));
   }
 
