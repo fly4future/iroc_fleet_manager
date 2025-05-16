@@ -798,6 +798,9 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
   // Add the first point to close the polygon
   fly_zone.emplace_back(mission.search_area[0].x, mission.search_area[0].y);
 
+  planner_config_.lat_lon_origin.first = mission.latlon_origin.x;
+  planner_config_.lat_lon_origin.second = mission.latlon_origin.y;
+
   // Initialize polygon and transform all the point into meters
   MapPolygon polygon = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin);
 
@@ -891,7 +894,6 @@ std::map<std::string,IROC_CoverageManager::result_t> IROC_CoverageManager::start
 
   std::vector<iroc_fleet_manager::WaypointMissionRobot> mission_robots; 
 
-  // TODO Here we get the coverage path from the planner 
   auto paths = getCoveragePaths(goal.mission);  
   ROS_INFO("[IROC_CoverageManager:]: Coverage paths size: %zu", paths.size());
 
