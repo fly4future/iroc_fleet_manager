@@ -61,11 +61,13 @@ generate_messages(
   )
 
 catkin_package(
+  INCLUDE_DIRS include
   LIBRARIES ${LIBRARIES}
   CATKIN_DEPENDS ${CATKIN_DEPENDENCIES}
   )
 
 include_directories(
+  include
   ${catkin_INCLUDE_DIRS}
   ${COVERAGE_PLANNER_SRC_DIR}/include
   )
@@ -144,6 +146,10 @@ target_link_libraries(IROCAutonomyTestManager
 ## --------------------------------------------------------------
 ## |                           Install                          |
 ## --------------------------------------------------------------
+
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
 
 install(TARGETS ${LIBRARIES} 
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
