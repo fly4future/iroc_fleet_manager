@@ -19,6 +19,15 @@ public:
 };
 //}
 
+/* processGoal //{ */
+
+std::vector<iroc_fleet_manager::WaypointMissionRobot>
+IROCFleetManager::processGoal(const iroc_fleet_manager::WaypointFleetManagerGoal& goal) const {
+
+return goal.robots;
+}
+//}
+
 }  // namespace iroc_fleet_manager
 
 #include <pluginlib/class_list_macros.h>
