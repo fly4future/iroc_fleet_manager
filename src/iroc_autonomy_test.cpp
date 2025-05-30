@@ -28,8 +28,8 @@ IROCAutonomyTestManager::processGoal(const iroc_fleet_manager::AutonomyTestGoal&
   // Fill in the waypoint mission robots
   for (const auto& robot: goal.robots) {
     waypoint_robot.name      = robot.name;
-    waypoint_robot.frame_id  = MissionManagerActionServerGoal::FRAME_ID_FCU; //Using current local _frame
-    waypoint_robot.height_id = MissionManagerActionServerGoal::HEIGHT_ID_FCU; //Defining FCU height
+    waypoint_robot.frame_id  = MissionHandlerActionServerGoal::FRAME_ID_FCU; //Using current local _frame
+    waypoint_robot.height_id = MissionHandlerActionServerGoal::HEIGHT_ID_FCU; //Defining FCU height
     waypoint_robot.points    = getAutonomyPoints(robot.segment_length);
     mission_robots.push_back(waypoint_robot);
   }

@@ -14,7 +14,7 @@
 /* custom msgs of MRS group */
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <mrs_msgs/String.h>
-#include <iroc_mission_handler/waypointMissionAction.h>
+#include <iroc_mission_handler/MissionAction.h>
 // #include <iroc_fleet_manager/WaypointFleetManagerAction.h>
 // TODO rename this messages to set standard MissionInfo, MissionRobot, MissionResult, as this is based on mission handler structure
 #include <iroc_fleet_manager/WaypointMissionRobot.h>
@@ -28,8 +28,8 @@
 namespace iroc_fleet_manager
 {
 // using namespace actionlib;
-typedef actionlib::SimpleActionClient<iroc_mission_handler::waypointMissionAction> MissionManagerClient;
-typedef iroc_mission_handler::waypointMissionGoal                                  MissionManagerActionServerGoal;
+typedef actionlib::SimpleActionClient<iroc_mission_handler::MissionAction> MissionHandlerClient;
+typedef iroc_mission_handler::MissionGoal                                  MissionHandlerActionServerGoal;
 
 /* class BaseFleetManager //{ */
 template <typename ActionType>
@@ -56,11 +56,12 @@ protected:
   struct robot_mission_handler_t
   {
     std::string                                  robot_name;
-    std::unique_ptr<MissionManagerClient>        action_client_ptr;
+    std::unique_ptr<MissionHandlerClient>        action_client_ptr;
     ros::ServiceClient                           sc_robot_activation;
     ros::ServiceClient                           sc_robot_pausing;
-    iroc_mission_handler::waypointMissionFeedback feedback;
-    iroc_mission_handler::waypointMissionResult   result;
+    // TODO make this nicer
+    iroc_mission_handler::MissionFeedback        missionHandler_F;
+    iroc_mission_handler::MissionResult          missionHandler_R;
     bool                                         got_result = false;
   };
 
@@ -87,8 +88,8 @@ protected:
   // action client
   void       missionActiveCallback(const std::string& robot_name) const;
   void       missionDoneCallback(const actionlib::SimpleClientGoalState& state,
-               const iroc_mission_handler::waypointMissionResultConstPtr& result, const std::string& robot_name);
-  void       missionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& feedback,
+               const iroc_mission_handler::MissionResultConstPtr& result, const std::string& robot_name);
+  void       missionFeedbackCallback(const iroc_mission_handler::MissionFeedbackConstPtr& feedback,
                const std::string& robot_name);
 
   // action server 
@@ -237,7 +238,7 @@ void BaseFleetManager<ActionType>::timerMain([[maybe_unused]] const ros::TimerEv
       //Check if any missions aborted early
       any_failure = std::any_of(fleet_mission_handlers_.handlers.begin(),
           fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
-          return handler.got_result && !handler.result.success;});
+          return handler.got_result && !handler.missionHandler_R.result.success;});
     }
 
     if (any_failure) {
@@ -261,7 +262,7 @@ void BaseFleetManager<ActionType>::timerMain([[maybe_unused]] const ros::TimerEv
 
       all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
           fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
-          return handler.result.success;});
+          return handler.missionHandler_R.result.success;});
     }
 
     //Finish mission when we get all the robots result
@@ -301,7 +302,7 @@ template <typename ActionType>
 void BaseFleetManager<ActionType>::timerFeedback([[maybe_unused]] const ros::TimerEvent& event) {
   
   if (!is_initialized_) {
-    ROS_WARN_THROTTLE(1, "[MissionManager]: Waiting for nodelet initialization");
+    ROS_WARN_THROTTLE(1, "[MissionHandler]: Waiting for nodelet initialization");
     return;
   }
   
@@ -489,7 +490,7 @@ void BaseFleetManager<ActionType>::missionActiveCallback(const std::string& robo
 /* missionDoneCallback //{ */
 template <typename ActionType>
 void BaseFleetManager<ActionType>::missionDoneCallback(const actionlib::SimpleClientGoalState& state,
-    const iroc_mission_handler::waypointMissionResultConstPtr& result,
+    const iroc_mission_handler::MissionResultConstPtr& result,
   const std::string& robot_name) {
 
   if (!active_mission_) {
@@ -525,7 +526,7 @@ void BaseFleetManager<ActionType>::missionDoneCallback(const actionlib::SimpleCl
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
     auto* rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
-    rh_ptr->result = *result;
+    rh_ptr->missionHandler_R = *result;
     rh_ptr->got_result = true;
   }
 }
@@ -533,7 +534,7 @@ void BaseFleetManager<ActionType>::missionDoneCallback(const actionlib::SimpleCl
 
 /* missionFeedbackCallback //{ */
 template <typename ActionType>
-void BaseFleetManager<ActionType>::missionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& feedback,
+void BaseFleetManager<ActionType>::missionFeedbackCallback(const iroc_mission_handler::MissionFeedbackConstPtr& feedback,
     const std::string& robot_name) {
   
   if (!active_mission_) {
@@ -543,7 +544,7 @@ void BaseFleetManager<ActionType>::missionFeedbackCallback(const iroc_mission_ha
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
     auto* rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
-    rh_ptr->feedback = *feedback;
+    rh_ptr->missionHandler_F = *feedback;
   }
 }
 //}
@@ -652,14 +653,14 @@ void BaseFleetManager<ActionType>::actionPublishFeedback() {
     //Fill the robots feedback vector
     for (const auto& rh : fleet_mission_handlers_.handlers) {
       robot_feedback.name = rh.robot_name;
-      robot_feedback.message = rh.feedback.message;  
-      robot_feedback.goal_idx = rh.feedback.goal_idx;
-      robot_feedback.distance_to_finish =rh.feedback.distance_to_finish;
-      robot_feedback.goal_estimated_arrival_time = rh.feedback.goal_estimated_arrival_time;
-      robot_feedback.mission_progress = rh.feedback.mission_progress;
-      robot_feedback.distance_to_closest_goal  = rh.feedback.distance_to_closest_goal;
-      robot_feedback.finish_estimated_arrival_time = rh.feedback.finish_estimated_arrival_time;
-      robot_feedback.goal_progress = rh.feedback.goal_progress;
+      robot_feedback.message = rh.missionHandler_F.feedback.message;  
+      robot_feedback.goal_idx = rh.missionHandler_F.feedback.goal_idx;
+      robot_feedback.distance_to_finish =rh.missionHandler_F.feedback.distance_to_finish;
+      robot_feedback.goal_estimated_arrival_time = rh.missionHandler_F.feedback.goal_estimated_arrival_time;
+      robot_feedback.mission_progress = rh.missionHandler_F.feedback.mission_progress;
+      robot_feedback.distance_to_closest_goal  = rh.missionHandler_F.feedback.distance_to_closest_goal;
+      robot_feedback.finish_estimated_arrival_time = rh.missionHandler_F.feedback.finish_estimated_arrival_time;
+      robot_feedback.goal_progress = rh.missionHandler_F.feedback.goal_progress;
       robots_feedback.emplace_back(robot_feedback);
     }
   
@@ -689,8 +690,8 @@ std::map<std::string, typename BaseFleetManager<ActionType>::result_t> BaseFleet
     for (const auto& robot : robots) {
       bool success = true;
       std::stringstream ss;
-      const std::string waypoint_action_client_topic = "/" + robot.name + nh_.resolveName("ac/waypoint_mission");
-      auto action_client_ptr                = std::make_unique<MissionManagerClient>(waypoint_action_client_topic, false);
+      const std::string action_client_topic = "/" + robot.name + nh_.resolveName("ac/waypoint_mission");
+      auto action_client_ptr                = std::make_unique<MissionHandlerClient>(action_client_topic, false);
 
       // Need to wait for server
       if (!action_client_ptr->waitForServer(ros::Duration(5.0))) {
@@ -702,12 +703,12 @@ std::map<std::string, typename BaseFleetManager<ActionType>::result_t> BaseFleet
       }
 
       ROS_INFO("[IROCFleetManager]: Created action client on topic \'ac/waypoint_mission\' -> \'%s\'",
-          waypoint_action_client_topic.c_str());
-      MissionManagerActionServerGoal action_goal;
-      action_goal.frame_id           = robot.frame_id;
-      action_goal.height_id          = robot.height_id; 
-      action_goal.terminal_action    = robot.terminal_action; 
-      action_goal.points             = robot.points;
+          action_client_topic.c_str());
+      MissionHandlerActionServerGoal action_goal;
+      action_goal.goal.frame_id           = robot.frame_id;
+      action_goal.goal.height_id          = robot.height_id; 
+      action_goal.goal.terminal_action    = robot.terminal_action; 
+      action_goal.goal.points             = robot.points;
 
       if (!action_client_ptr->isServerConnected()) {
         ss << "Action server from robot: " + robot.name + " is not connected. Check the iroc_mission_handler node.\n";
@@ -825,16 +826,16 @@ std::vector<iroc_fleet_manager::WaypointMissionRobotResult> BaseFleetManager<Act
     std::scoped_lock lock(fleet_mission_handlers_.mtx);
     for (auto& handler : fleet_mission_handlers_.handlers) {
       iroc_fleet_manager::WaypointMissionRobotResult robot_result;
-      if (handler.got_result && !handler.result.success) {
+      if (handler.got_result && !handler.missionHandler_R.result.success) {
         robot_result.name    = handler.robot_name;
-        robot_result.message = handler.result.message;
-        robot_result.success = handler.result.success;
+        robot_result.message = handler.missionHandler_R.result.message;
+        robot_result.success = handler.missionHandler_R.result.success;
       } 
 
       if (handler.got_result) {
         robot_result.name    = handler.robot_name;
-        robot_result.message = handler.result.message; 
-        robot_result.success = handler.result.success; 
+        robot_result.message = handler.missionHandler_R.result.message; 
+        robot_result.success = handler.missionHandler_R.result.success; 
       } else {
         robot_result.name    = handler.robot_name;
         robot_result.message = "Robot did not finished it's mission, mission was aborted.";
@@ -862,7 +863,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.feedback.message == "MISSION_LOADED";  
+        return handler.missionHandler_F.feedback.message == "MISSION_LOADED";  
     }
   );
 
@@ -873,7 +874,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.feedback.message == "EXECUTING";  
+        return handler.missionHandler_F.feedback.message == "EXECUTING";  
     }
   );
 
@@ -884,7 +885,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.feedback.message == "PAUSED";  
+        return handler.missionHandler_F.feedback.message == "PAUSED";  
     }
   );
 
@@ -895,7 +896,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.feedback.message == "IDLE";  
+        return handler.missionHandler_F.feedback.message == "IDLE";  
     }
   );
 
