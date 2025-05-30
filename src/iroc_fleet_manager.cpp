@@ -1,13 +1,10 @@
 /* includes //{ */
-
 #include <iroc_fleet_manager/base_fleet_manager.h>
-
+#include <iroc_fleet_manager/WaypointFleetManagerAction.h>
 //}
 
 namespace iroc_fleet_manager
 {
-
- typedef actionlib::SimpleActionServer<iroc_fleet_manager::WaypointFleetManagerAction> WaypointFleetManagerServer;
 
 /* class IROCFleetManager //{ */
 
