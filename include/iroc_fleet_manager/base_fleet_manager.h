@@ -16,7 +16,7 @@
 #include <mrs_msgs/String.h>
 #include <iroc_mission_handler/waypointMissionAction.h>
 // #include <iroc_fleet_manager/WaypointFleetManagerAction.h>
-// TODO rename this messages to set standard MissionInfo, robot, result, as this is based on mission handler structure
+// TODO rename this messages to set standard MissionInfo, MissionRobot, MissionResult, as this is based on mission handler structure
 #include <iroc_fleet_manager/WaypointMissionRobot.h>
 #include <iroc_fleet_manager/WaypointMissionRobotResult.h>
 #include <iroc_fleet_manager/WaypointMissionInfo.h>
