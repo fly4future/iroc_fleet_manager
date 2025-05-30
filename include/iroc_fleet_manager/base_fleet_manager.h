@@ -23,21 +23,20 @@
 
 namespace iroc_fleet_manager
 {
-using namespace actionlib;
-typedef SimpleActionClient<iroc_mission_handler::waypointMissionAction> MissionManagerClient;
-typedef iroc_mission_handler::waypointMissionGoal                       MissionManagerActionServerGoal;
-typedef iroc_fleet_manager::WaypointFleetManagerGoal                    ActionServerGoal;
-typedef iroc_fleet_manager::WaypointFleetManagerFeedback                ActionServerFeedback;
+// using namespace actionlib;
+typedef actionlib::SimpleActionClient<iroc_mission_handler::waypointMissionAction> MissionManagerClient;
+typedef iroc_mission_handler::waypointMissionGoal                                  MissionManagerActionServerGoal;
 
 /* class BaseFleetManager //{ */
-// TODO use only template for action type
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
+template <typename ActionType>
 class BaseFleetManager : public nodelet::Nodelet {
 public:
 
-  bool       changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res);
-  bool       changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request& req, iroc_fleet_manager::ChangeRobotMissionStateSrv::Response& res);
-
+  using ActionServer_T = actionlib::SimpleActionServer<ActionType>;
+  using GoalType       = typename ActionType::_action_goal_type::_goal_type;
+  using FeedbackType   = typename ActionType::_action_feedback_type::_feedback_type;
+  using ResultType     = typename ActionType::_action_result_type::_result_type;
+ 
   struct result_t
   {
     bool        success;
@@ -45,9 +44,9 @@ public:
   };
   
 protected:
-
+  
   // To be overriden by child classes
-  virtual std::vector<iroc_fleet_manager::WaypointMissionRobot> processGoal(const ActionGoal_T& goal) const = 0; 
+  virtual std::vector<iroc_fleet_manager::WaypointMissionRobot> processGoal(const GoalType& goal) const = 0; 
 
   // | ----------------- mission manager action client stuff ---------------- |
   struct robot_mission_handler_t
@@ -77,10 +76,12 @@ protected:
   void       onInit();
   void       timerMain(const ros::TimerEvent& event);
   void       timerFeedback(const ros::TimerEvent& event);
-  
+  bool       changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res);
+  bool       changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request& req, iroc_fleet_manager::ChangeRobotMissionStateSrv::Response& res);
+
   // action client
   void       missionActiveCallback(const std::string& robot_name) const;
-  void       missionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result, const std::string& robot_name);
+  void       missionDoneCallback(const actionlib::SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result, const std::string& robot_name);
   void       missionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name);
 
   // action server 
@@ -91,7 +92,7 @@ protected:
   // helper methods
   template <typename MissionRobots_T> 
   std::map<std::string, BaseFleetManager::result_t>           sendRobotGoals(const MissionRobots_T& goal);
-  ActionServerFeedback                                        processAggregatedFeedbackInfo(
+  FeedbackType                                                processAggregatedFeedbackInfo(
       const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback) const;
   std::tuple<std::string, std::string>                        processFeedbackMsg() const;
   robot_mission_handler_t*                                    findRobotHandler(
@@ -119,8 +120,8 @@ protected:
   std::atomic_bool active_mission_          = false;
   std::atomic_bool active_mission_change_   = false;
 
-  ActionServerGoal                                               action_server_goal_;
-  std::recursive_mutex                                           action_server_mutex_;
+  GoalType  action_server_goal_;
+  std::recursive_mutex action_server_mutex_;
 
 private:
 
@@ -131,8 +132,8 @@ private:
 
 /* onInit() //{ */
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::onInit() {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::onInit() {
 
   /* obtain node handle */
   nh_ = nodelet::Nodelet::getMTPrivateNodeHandle();
@@ -205,8 +206,8 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 
 /* timerMain() //{ */
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::timerMain([[maybe_unused]] const ros::TimerEvent& event) {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::timerMain([[maybe_unused]] const ros::TimerEvent& event) {
 
   if (!is_initialized_) {
     ROS_WARN_THROTTLE(1, "[iroc_fleet_manager]: Waiting for nodelet initialization");
@@ -288,8 +289,8 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 
 /* timerFeedback() //{ */
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::timerFeedback([[maybe_unused]] const ros::TimerEvent& event) {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::timerFeedback([[maybe_unused]] const ros::TimerEvent& event) {
   
   if (!is_initialized_) {
     ROS_WARN_THROTTLE(1, "[MissionManager]: Waiting for nodelet initialization");
@@ -309,8 +310,8 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 // | ----------------- service server callback ---------------- |
 
 /*  changeFleetMissionStateCallback()//{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-bool BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res) {
+template <typename ActionType>
+bool BaseFleetManager<ActionType>::changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res) {
   active_mission_change_ = true;
   std::scoped_lock lock(action_server_mutex_,fleet_mission_handlers_.mtx);
 
@@ -377,8 +378,8 @@ bool BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 
 /*  changeRobotMissionStateCallback()//{ */
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-bool BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request& req, iroc_fleet_manager::ChangeRobotMissionStateSrv::Response& res) {
+template <typename ActionType>
+bool BaseFleetManager<ActionType>::changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request& req, iroc_fleet_manager::ChangeRobotMissionStateSrv::Response& res) {
   
   active_mission_change_ = true;
   std::scoped_lock lock(action_server_mutex_,fleet_mission_handlers_.mtx);
@@ -459,16 +460,16 @@ bool BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 
 /* missionActiveCallback //{ */
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::missionActiveCallback(const std::string& robot_name) const {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::missionActiveCallback(const std::string& robot_name) const {
   ROS_INFO_STREAM("[IROCFleetManager]: Action server on robot " << robot_name << " is processing the goal.");
 }
 
 //}
 
 /* missionDoneCallback //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::missionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
+template <typename ActionType>
+void BaseFleetManager<ActionType>::missionDoneCallback(const actionlib::SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
   const std::string& robot_name) {
 
   if (!active_mission_) {
@@ -509,8 +510,8 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 ////}
 
 /* missionFeedbackCallback //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::missionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::missionFeedbackCallback(const iroc_mission_handler::waypointMissionFeedbackConstPtr& feedback, const std::string& robot_name) {
   
   if (!active_mission_) {
     return;
@@ -528,8 +529,8 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 // | ---------------------- action server callbacks --------------------- |
 /*  actionCallbackGoal()//{ */
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::actionCallbackGoal() {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::actionCallbackGoal() {
   std::scoped_lock  lock(action_server_mutex_);
   boost::shared_ptr<const iroc_fleet_manager::WaypointFleetManagerGoal> new_action_server_goal = action_server_ptr_->acceptNewGoal();
   ROS_INFO_STREAM("[IROCFleetManager]: Action server received a new goal: \n" << *new_action_server_goal);
@@ -585,8 +586,8 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 //}
 
 /*  actionCallbackPreempt()//{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::actionCallbackPreempt() {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::actionCallbackPreempt() {
   std::scoped_lock lock(action_server_mutex_);
   if (action_server_ptr_->isActive()) {
     if (action_server_ptr_->isNewGoalAvailable()) {
@@ -615,8 +616,8 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 //}
 
 /* actionPublishFeedback()//{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::actionPublishFeedback() {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::actionPublishFeedback() {
   std::scoped_lock lock(action_server_mutex_);
 
   //Collect the feedback from active robots in the mission 
@@ -648,9 +649,9 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 //}
 
 /* sendRobotGoals() //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
+template <typename ActionType>
 template <typename MissionRobots_T>
-std::map<std::string, typename BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::result_t> BaseFleetManager <ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::sendRobotGoals(const MissionRobots_T& robots){
+std::map<std::string, typename BaseFleetManager<ActionType>::result_t> BaseFleetManager <ActionType>::sendRobotGoals(const MissionRobots_T& robots){
   std::scoped_lock lck(fleet_mission_handlers_.mtx);
   std::map<std::string, BaseFleetManager::result_t> robot_results;
 
@@ -756,10 +757,10 @@ std::map<std::string, typename BaseFleetManager<ActionServer_T, ActionGoal_T, Ac
 ////}
 
 /* processAggregatedFeedbackInfo() //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-ActionServerFeedback BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback) const {
+template <typename ActionType>
+typename BaseFleetManager<ActionType>::FeedbackType BaseFleetManager<ActionType>::processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback) const {
 
-  ActionServerFeedback action_server_feedback;
+  FeedbackType action_server_feedback;
   std::vector<std::string> robots_msg;
   std::vector<double> robots_progress;
 
@@ -785,8 +786,8 @@ ActionServerFeedback BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult
 //}
 
 /* getRobotResults() //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-std::vector<iroc_fleet_manager::WaypointMissionRobotResult> BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::getRobotResults() { 
+template <typename ActionType>
+std::vector<iroc_fleet_manager::WaypointMissionRobotResult> BaseFleetManager<ActionType>::getRobotResults() { 
   // Get the robot results
   std::vector<iroc_fleet_manager::WaypointMissionRobotResult> robots_results;
 
@@ -823,8 +824,8 @@ std::vector<iroc_fleet_manager::WaypointMissionRobotResult> BaseFleetManager<Act
 //}
 
 /* processFeedbackMsg() //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-std::tuple<std::string, std::string> BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::processFeedbackMsg() const {
+template <typename ActionType>
+std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedbackMsg() const {
 
   auto all_loaded = std::all_of(
     fleet_mission_handlers_.handlers.begin(),
@@ -877,8 +878,8 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionServer_T, ActionGoal
 //}
 
 /* findRobotHandler() method //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-typename BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::robot_mission_handler_t* BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::findRobotHandler(const std::string& robot_name, fleet_mission_handlers_t& fleet_mission_handlers) const {
+template <typename ActionType>
+typename BaseFleetManager<ActionType>::robot_mission_handler_t* BaseFleetManager<ActionType>::findRobotHandler(const std::string& robot_name, fleet_mission_handlers_t& fleet_mission_handlers) const {
   for (auto& rh : fleet_mission_handlers.handlers) {
     if (rh.robot_name == robot_name)
       return &rh;
@@ -890,8 +891,8 @@ typename BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFe
 
 /* cancelRobotClients() //{ */
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::cancelRobotClients() {
+template <typename ActionType>
+void BaseFleetManager<ActionType>::cancelRobotClients() {
 
   {
     ROS_INFO("[IROCFleetManager]: Canceling robot clients...");
@@ -929,9 +930,9 @@ void BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedba
 //}
 
 /* callService() //{ */
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
+template <typename ActionType>
 template <typename Svc_T>
-typename BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::result_t BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::callService(ros::ServiceClient& sc, typename Svc_T::Request req) const {
+typename BaseFleetManager<ActionType>::result_t BaseFleetManager<ActionType>::callService(ros::ServiceClient& sc, typename Svc_T::Request req) const {
   typename Svc_T::Response res;
   if (sc.call(req, res)) {
     if (res.success) {
@@ -948,14 +949,14 @@ typename BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFe
   }
 }
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
+template <typename ActionType>
 template <typename Svc_T>
-typename BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::result_t BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::callService(ros::ServiceClient& sc) const {
+typename BaseFleetManager<ActionType>::result_t BaseFleetManager<ActionType>::callService(ros::ServiceClient& sc) const {
   return callService<Svc_T>(sc, {});
 }
 
-template <typename ActionServer_T, typename ActionGoal_T, typename ActionResult_T, typename ActionFeedback_T>
-typename BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::result_t BaseFleetManager<ActionServer_T, ActionGoal_T, ActionResult_T, ActionFeedback_T>::callService(ros::ServiceClient& sc, const bool val) const {
+template <typename ActionType>
+typename BaseFleetManager<ActionType>::result_t BaseFleetManager<ActionType>::callService(ros::ServiceClient& sc, const bool val) const {
   using svc_t = std_srvs::SetBool;
   svc_t::Request req;
   req.data = val;
