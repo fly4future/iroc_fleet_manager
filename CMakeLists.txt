@@ -41,12 +41,9 @@ add_action_files(DIRECTORY action FILES
   )
 # messages
 add_message_files(DIRECTORY msg FILES
-  WaypointMissionRobot.msg
   AutonomyTestRobot.msg
   CoverageMission.msg
   CoverageMissionRobot.msg
-  WaypointMissionRobotFeedback.msg
-  WaypointMissionRobotResult.msg
   WaypointMissionInfo.msg
   )
 # messages
@@ -56,6 +53,7 @@ add_service_files(DIRECTORY srv FILES
 generate_messages(
   DEPENDENCIES 
   actionlib_msgs 
+  iroc_mission_handler
   mrs_msgs
   std_msgs
   )

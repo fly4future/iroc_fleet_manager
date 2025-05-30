@@ -11,14 +11,14 @@ namespace iroc_fleet_manager
 class IROCFleetManager : public iroc_fleet_manager::BaseFleetManager<iroc_fleet_manager::WaypointFleetManagerAction> {
 public:
 
-  std::vector<iroc_fleet_manager::WaypointMissionRobot> processGoal(const iroc_fleet_manager::WaypointFleetManagerGoal& goal) const override;
+  std::vector<iroc_mission_handler::MissionRobotGoal> processGoal(const iroc_fleet_manager::WaypointFleetManagerGoal& goal) const override;
 
 };
 //}
 
 /* processGoal //{ */
 
-std::vector<iroc_fleet_manager::WaypointMissionRobot>
+std::vector<iroc_mission_handler::MissionRobotGoal>
 IROCFleetManager::processGoal(const iroc_fleet_manager::WaypointFleetManagerGoal& goal) const {
 
   return goal.robots;

@@ -15,12 +15,10 @@
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <mrs_msgs/String.h>
 #include <iroc_mission_handler/MissionAction.h>
-// #include <iroc_fleet_manager/WaypointFleetManagerAction.h>
-// TODO rename this messages to set standard MissionInfo, MissionRobot, MissionResult, as this is based on mission handler structure
-#include <iroc_fleet_manager/WaypointMissionRobot.h>
-#include <iroc_fleet_manager/WaypointMissionRobotResult.h>
+#include <iroc_mission_handler/MissionRobotGoal.h>
+#include <iroc_mission_handler/MissionRobotResult.h>
 #include <iroc_fleet_manager/WaypointMissionInfo.h>
-#include <iroc_fleet_manager/WaypointMissionRobotFeedback.h>
+#include <iroc_mission_handler/MissionRobotFeedback.h>
 #include <unistd.h>
 #include <iostream>
 #include <numeric>
@@ -50,7 +48,7 @@ public:
 protected:
   
   // To be overriden by child classes
-  virtual std::vector<iroc_fleet_manager::WaypointMissionRobot> processGoal(const GoalType& goal) const = 0; 
+  virtual std::vector<iroc_mission_handler::MissionRobotGoal> processGoal(const GoalType& goal) const = 0; 
 
   // | ----------------- mission manager action client stuff ---------------- |
   struct robot_mission_handler_t
@@ -101,12 +99,12 @@ protected:
   template <typename MissionRobots_T> 
   std::map<std::string, BaseFleetManager::result_t>           sendRobotGoals(const MissionRobots_T& goal);
   FeedbackType                                                processAggregatedFeedbackInfo(
-      const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback) const;
+      const std::vector<iroc_mission_handler::MissionRobotFeedback>& robots_feedback) const;
   std::tuple<std::string, std::string>                        processFeedbackMsg() const;
   robot_mission_handler_t*                                    findRobotHandler(
       const std::string& robot_name, fleet_mission_handlers_t& mission_handlers) const; 
   void                                                        cancelRobotClients();
-  std::vector<iroc_fleet_manager::WaypointMissionRobotResult> getRobotResults();
+  std::vector<iroc_mission_handler::MissionRobotResult> getRobotResults();
 
   template <typename Svc_T>
   result_t callService(ros::ServiceClient& sc, typename Svc_T::Request req) const;
@@ -513,14 +511,14 @@ void BaseFleetManager<ActionType>::missionDoneCallback(const actionlib::SimpleCl
     return;
   }
 
-  if (result->success) {
+  if (result->result.success) {
     ROS_INFO_STREAM("[IROCFleetManager]: Action server on robot " << robot_name << " finished with state: \""
         << state.toString() << "\". Result message is: \""
-          << result->message << "\"");
+          << result->result.message << "\"");
   } else {
     ROS_WARN_STREAM("[IROCFleetManager]: Action server on robot " << robot_name << " finished with state: \""
         << state.toString() << "\". Result message is: \""
-          << result->message << "\"");
+          << result->result.message << "\"");
   }
 
   {
@@ -582,7 +580,7 @@ void BaseFleetManager<ActionType>::actionCallbackGoal() {
 
   if (!all_success) {
       ResultType action_server_result;
-      iroc_fleet_manager::WaypointMissionRobotResult robot_result;
+      iroc_mission_handler::MissionRobotResult robot_result;
       for (const auto& result : results) {
         std::stringstream ss;
         robot_result.name = result.first;
@@ -646,10 +644,10 @@ void BaseFleetManager<ActionType>::actionPublishFeedback() {
   std::scoped_lock lock(action_server_mutex_);
 
   //Collect the feedback from active robots in the mission 
-  std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback> robots_feedback;
+  std::vector<iroc_mission_handler::MissionRobotFeedback> robots_feedback;
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
-    iroc_fleet_manager::WaypointMissionRobotFeedback robot_feedback;
+    iroc_mission_handler::MissionRobotFeedback robot_feedback;
     //Fill the robots feedback vector
     for (const auto& rh : fleet_mission_handlers_.handlers) {
       robot_feedback.name = rh.robot_name;
@@ -747,7 +745,7 @@ std::map<std::string, typename BaseFleetManager<ActionType>::result_t> BaseFleet
 
       if (action_client_ptr->getState().isDone()) {
         auto result =  action_client_ptr->getResult();
-        ss << result->message;
+        ss << result->result.message;
         ROS_INFO_STREAM("[IROCFleetManagerDebug]: result: " << ss.str());
         robot_results[robot.name].message = ss.str();
         robot_results[robot.name].success = false; 
@@ -789,7 +787,7 @@ std::map<std::string, typename BaseFleetManager<ActionType>::result_t> BaseFleet
 /* processAggregatedFeedbackInfo() //{ */
 template <typename ActionType>
 typename BaseFleetManager<ActionType>::FeedbackType BaseFleetManager<ActionType>::processAggregatedFeedbackInfo(
-    const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback) const {
+    const std::vector<iroc_mission_handler::MissionRobotFeedback>& robots_feedback) const {
 
   FeedbackType action_server_feedback;
   std::vector<std::string> robots_msg;
@@ -818,14 +816,14 @@ typename BaseFleetManager<ActionType>::FeedbackType BaseFleetManager<ActionType>
 
 /* getRobotResults() //{ */
 template <typename ActionType>
-std::vector<iroc_fleet_manager::WaypointMissionRobotResult> BaseFleetManager<ActionType>::getRobotResults() { 
+std::vector<iroc_mission_handler::MissionRobotResult> BaseFleetManager<ActionType>::getRobotResults() { 
   // Get the robot results
-  std::vector<iroc_fleet_manager::WaypointMissionRobotResult> robots_results;
+  std::vector<iroc_mission_handler::MissionRobotResult> robots_results;
 
   {
     std::scoped_lock lock(fleet_mission_handlers_.mtx);
     for (auto& handler : fleet_mission_handlers_.handlers) {
-      iroc_fleet_manager::WaypointMissionRobotResult robot_result;
+      iroc_mission_handler::MissionRobotResult robot_result;
       if (handler.got_result && !handler.missionHandler_R.result.success) {
         robot_result.name    = handler.robot_name;
         robot_result.message = handler.missionHandler_R.result.message;
