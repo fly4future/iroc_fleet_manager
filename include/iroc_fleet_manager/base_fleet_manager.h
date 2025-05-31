@@ -58,8 +58,8 @@ protected:
     ros::ServiceClient                           sc_robot_activation;
     ros::ServiceClient                           sc_robot_pausing;
     // TODO make this nicer
-    iroc_mission_handler::MissionFeedback        missionHandler_F;
-    iroc_mission_handler::MissionResult          missionHandler_R;
+    iroc_mission_handler::MissionFeedback        current_feedback;
+    iroc_mission_handler::MissionResult          current_result;
     bool                                         got_result = false;
   };
 
@@ -236,7 +236,7 @@ void BaseFleetManager<ActionType>::timerMain([[maybe_unused]] const ros::TimerEv
       //Check if any missions aborted early
       any_failure = std::any_of(fleet_mission_handlers_.handlers.begin(),
           fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
-          return handler.got_result && !handler.missionHandler_R.result.success;});
+          return handler.got_result && !handler.current_result.result.success;});
     }
 
     if (any_failure) {
@@ -260,7 +260,7 @@ void BaseFleetManager<ActionType>::timerMain([[maybe_unused]] const ros::TimerEv
 
       all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
           fleet_mission_handlers_.handlers.end(), [](const auto& handler) {
-          return handler.missionHandler_R.result.success;});
+          return handler.current_result.result.success;});
     }
 
     //Finish mission when we get all the robots result
@@ -524,7 +524,7 @@ void BaseFleetManager<ActionType>::missionDoneCallback(const actionlib::SimpleCl
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
     auto* rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
-    rh_ptr->missionHandler_R = *result;
+    rh_ptr->current_result = *result;
     rh_ptr->got_result = true;
   }
 }
@@ -542,7 +542,7 @@ void BaseFleetManager<ActionType>::missionFeedbackCallback(const iroc_mission_ha
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
     auto* rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
-    rh_ptr->missionHandler_F = *feedback;
+    rh_ptr->current_feedback = *feedback;
   }
 }
 //}
@@ -647,20 +647,10 @@ void BaseFleetManager<ActionType>::actionPublishFeedback() {
   std::vector<iroc_mission_handler::MissionRobotFeedback> robots_feedback;
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
-    iroc_mission_handler::MissionRobotFeedback robot_feedback;
+
     //Fill the robots feedback vector
-    for (const auto& rh : fleet_mission_handlers_.handlers) {
-      robot_feedback.name = rh.robot_name;
-      robot_feedback.message = rh.missionHandler_F.feedback.message;  
-      robot_feedback.goal_idx = rh.missionHandler_F.feedback.goal_idx;
-      robot_feedback.distance_to_finish =rh.missionHandler_F.feedback.distance_to_finish;
-      robot_feedback.goal_estimated_arrival_time = rh.missionHandler_F.feedback.goal_estimated_arrival_time;
-      robot_feedback.mission_progress = rh.missionHandler_F.feedback.mission_progress;
-      robot_feedback.distance_to_closest_goal  = rh.missionHandler_F.feedback.distance_to_closest_goal;
-      robot_feedback.finish_estimated_arrival_time = rh.missionHandler_F.feedback.finish_estimated_arrival_time;
-      robot_feedback.goal_progress = rh.missionHandler_F.feedback.goal_progress;
-      robots_feedback.emplace_back(robot_feedback);
-    }
+    for (const auto& rh : fleet_mission_handlers_.handlers) 
+      robots_feedback.emplace_back(rh.current_feedback.feedback);
   
     if (action_server_ptr_->isActive()) {
       auto action_server_feedback = processAggregatedFeedbackInfo(robots_feedback);
@@ -824,16 +814,16 @@ std::vector<iroc_mission_handler::MissionRobotResult> BaseFleetManager<ActionTyp
     std::scoped_lock lock(fleet_mission_handlers_.mtx);
     for (auto& handler : fleet_mission_handlers_.handlers) {
       iroc_mission_handler::MissionRobotResult robot_result;
-      if (handler.got_result && !handler.missionHandler_R.result.success) {
+      if (handler.got_result && !handler.current_result.result.success) {
         robot_result.name    = handler.robot_name;
-        robot_result.message = handler.missionHandler_R.result.message;
-        robot_result.success = handler.missionHandler_R.result.success;
+        robot_result.message = handler.current_result.result.message;
+        robot_result.success = handler.current_result.result.success;
       } 
 
       if (handler.got_result) {
         robot_result.name    = handler.robot_name;
-        robot_result.message = handler.missionHandler_R.result.message; 
-        robot_result.success = handler.missionHandler_R.result.success; 
+        robot_result.message = handler.current_result.result.message; 
+        robot_result.success = handler.current_result.result.success; 
       } else {
         robot_result.name    = handler.robot_name;
         robot_result.message = "Robot did not finished it's mission, mission was aborted.";
@@ -861,7 +851,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.missionHandler_F.feedback.message == "MISSION_LOADED";  
+        return handler.current_feedback.feedback.message == "MISSION_LOADED";  
     }
   );
 
@@ -872,7 +862,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.missionHandler_F.feedback.message == "EXECUTING";  
+        return handler.current_feedback.feedback.message == "EXECUTING";  
     }
   );
 
@@ -883,7 +873,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.missionHandler_F.feedback.message == "PAUSED";  
+        return handler.current_feedback.feedback.message == "PAUSED";  
     }
   );
 
@@ -894,7 +884,7 @@ std::tuple<std::string, std::string> BaseFleetManager<ActionType>::processFeedba
     fleet_mission_handlers_.handlers.begin(),
     fleet_mission_handlers_.handlers.end(),
     [](const auto& handler) { 
-        return handler.missionHandler_F.feedback.message == "IDLE";  
+        return handler.current_feedback.feedback.message == "IDLE";  
     }
   );
 
