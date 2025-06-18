@@ -58,6 +58,7 @@ generate_messages(
   actionlib_msgs 
   mrs_msgs
   std_msgs
+  iroc_mission_handler
   )
 
 catkin_package(

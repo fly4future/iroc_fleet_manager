@@ -106,7 +106,7 @@ private:
 
   // | ------------------ Additional functions ------------------ |
   std::map<std::string, IROCAutonomyTestManager::result_t> startRobotClients(const ActionServerGoal& goal);
-  std::vector<mrs_msgs::Reference> getAutonomyPoints(double segment_length);
+  std::vector<iroc_mission_handler::Waypoint> getAutonomyPoints(double segment_length);
   ActionServerFeedback processAggregatedFeedbackInfo(const std::vector<iroc_fleet_manager::WaypointMissionRobotFeedback>& robots_feedback);
   std::tuple<std::string, std::string> processFeedbackMsg();
   robot_mission_handler_t* findRobotHandler(const std::string& robot_name, fleet_mission_handlers_t& mission_handlers); 
@@ -740,7 +740,7 @@ std::map<std::string,IROCAutonomyTestManager::result_t> IROCAutonomyTestManager:
 //}
 
 /* getAutonomyPoints() //{ */
-std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(double segment_length) {
+std::vector<iroc_mission_handler::Waypoint> IROCAutonomyTestManager::getAutonomyPoints(double segment_length) {
 
   std::vector<mrs_msgs::Reference> points;
   mrs_msgs::Reference point;
@@ -810,8 +810,20 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   point.heading = (2* M_PI);  
   points.push_back(point);
 
-  return points;
+  // Convert mrs_msgs::Reference to iroc_mission_handler::Waypoint
+  std::vector<iroc_mission_handler::Waypoint> autonomy_points;
+  autonomy_points.reserve(points.size());
+  for (const auto& p : points) {
+    iroc_mission_handler::Waypoint wp;
+    wp.reference_point.position.x = p.position.x;
+    wp.reference_point.position.y = p.position.y;
+    wp.reference_point.position.z = p.position.z;
+    wp.reference_point.heading = p.heading;
+    
+    autonomy_points.push_back(wp);
+  }
 
+  return autonomy_points;
 }
 
 //}

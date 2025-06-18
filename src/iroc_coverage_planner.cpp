@@ -118,7 +118,7 @@ private:
   std::vector<std::string> lost_robot_names_;
 
   // Additional type for coverage planner
-  typedef std::vector<std::vector<mrs_msgs::Reference>> coverage_paths_t;
+  typedef std::vector<std::vector<iroc_mission_handler::Waypoint>> coverage_paths_t;
 
   void waypointMissionActiveCallback(const std::string& robot_name);
   void waypointMissionDoneCallback(const SimpleClientGoalState& state, const iroc_mission_handler::waypointMissionResultConstPtr& result,
@@ -859,7 +859,7 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
     auto best_paths = best_solution.paths;
     for (auto& path : best_paths)
     {
-      std::vector<mrs_msgs::Reference> coverage_path;
+      std::vector<iroc_mission_handler::Waypoint> coverage_path;
       mrs_msgs::Reference point; 
       for (auto& p : path)
       {
@@ -872,7 +872,10 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(co
         point.position.y = p.y;
         point.position.z = mission.robots[0].height; // We are using same height for all robots 
         point.heading = 0.0;
-        coverage_path.push_back(point);
+
+        iroc_mission_handler::Waypoint waypoint;
+        waypoint.reference_point = point;
+        coverage_path.push_back(waypoint);
       }
       coverage_paths.push_back(coverage_path);
     }  
