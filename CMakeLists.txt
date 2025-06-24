@@ -41,12 +41,9 @@ add_action_files(DIRECTORY action FILES
   )
 # messages
 add_message_files(DIRECTORY msg FILES
-  WaypointMissionRobot.msg
   AutonomyTestRobot.msg
   CoverageMission.msg
   CoverageMissionRobot.msg
-  WaypointMissionRobotFeedback.msg
-  WaypointMissionRobotResult.msg
   WaypointMissionInfo.msg
   )
 # messages
@@ -56,16 +53,19 @@ add_service_files(DIRECTORY srv FILES
 generate_messages(
   DEPENDENCIES 
   actionlib_msgs 
+  iroc_mission_handler
   mrs_msgs
   std_msgs
   )
 
 catkin_package(
+  INCLUDE_DIRS include
   LIBRARIES ${LIBRARIES}
   CATKIN_DEPENDS ${CATKIN_DEPENDENCIES}
   )
 
 include_directories(
+  include
   ${catkin_INCLUDE_DIRS}
   ${COVERAGE_PLANNER_SRC_DIR}/include
   )
@@ -144,6 +144,10 @@ target_link_libraries(IROCAutonomyTestManager
 ## --------------------------------------------------------------
 ## |                           Install                          |
 ## --------------------------------------------------------------
+
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
 
 install(TARGETS ${LIBRARIES} 
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
