@@ -114,7 +114,7 @@ protected:
   sendRobotGoals(const MissionRobots_T &goal);
   FeedbackType processAggregatedFeedbackInfo(
       const std::vector<iroc_mission_handler::MissionFeedback>
-          &robots_feedback) const;
+          &robot_feedbacks) const;
   std::tuple<std::string, std::string> processFeedbackMsg() const;
   robot_mission_handler_t *
   findRobotHandler(const std::string &robot_name,
@@ -285,7 +285,7 @@ void BaseFleetManager<ActionType>::timerMain(
       action_server_result.success = false;
       action_server_result.message =
           "Early failure detected, aborting mission.";
-      action_server_result.robots_results = getRobotResults();
+      action_server_result.robot_results = getRobotResults();
       active_mission_ = false;
       action_server_ptr_->setAborted(action_server_result);
       cancelRobotClients();
@@ -316,7 +316,7 @@ void BaseFleetManager<ActionType>::timerMain(
         action_server_result.success = false;
         action_server_result.message =
             "Not all robots finished successfully, finishing mission";
-        action_server_result.robots_results = getRobotResults();
+        action_server_result.robot_results = getRobotResults();
         active_mission_ = false;
         action_server_ptr_->setAborted(action_server_result);
         cancelRobotClients();
@@ -330,7 +330,7 @@ void BaseFleetManager<ActionType>::timerMain(
       action_server_result.success = true;
       action_server_result.message =
           "All robots finished successfully, mission finished";
-      action_server_result.robots_results = getRobotResults();
+      action_server_result.robot_results = getRobotResults();
 
       active_mission_ = false;
       action_server_ptr_->setSucceeded(action_server_result);
@@ -617,7 +617,7 @@ void BaseFleetManager<ActionType>::missionDoneCallback(
         "Probably mission_handler died, and action server connection was "
         "lost!, reconnection is not currently handled, if mission handler was "
         "restarted need to upload a new mission!";
-    action_server_result.robots_results = getRobotResults();
+    action_server_result.robot_results = getRobotResults();
 
     action_server_ptr_->setAborted(action_server_result);
     cancelRobotClients();
@@ -694,7 +694,7 @@ void BaseFleetManager<ActionType>::actionCallbackGoal() {
     ResultType action_server_result;
     action_server_result.success = false;
     action_server_result.message = "Not  initialized yet";
-    action_server_result.robots_results = getRobotResults();
+    action_server_result.robot_results = getRobotResults();
     ROS_WARN("[IROCFleetManager]: not initialized yet");
     action_server_ptr_->setAborted(action_server_result);
     return;
@@ -718,7 +718,7 @@ void BaseFleetManager<ActionType>::actionCallbackGoal() {
       robot_result.name = result.first;
       robot_result.message = result.second.message;
       robot_result.success = result.second.success;
-      action_server_result.robots_results.emplace_back(robot_result);
+      action_server_result.robot_results.emplace_back(robot_result);
       if (!result.second.success) {
         ss << result.first
            << " failed with response: " << result.second.message;
@@ -783,17 +783,17 @@ void BaseFleetManager<ActionType>::actionPublishFeedback() {
   std::scoped_lock lock(action_server_mutex_);
 
   // Collect the feedback from active robots in the mission
-  std::vector<iroc_mission_handler::MissionFeedback> robots_feedback;
+  std::vector<iroc_mission_handler::MissionFeedback> robot_feedbacks;
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
 
     // Fill the robots feedback vector
     for (const auto &rh : fleet_mission_handlers_.handlers)
-      robots_feedback.emplace_back(rh.current_feedback);
+      robot_feedbacks.emplace_back(rh.current_feedback);
 
     if (action_server_ptr_->isActive()) {
       auto action_server_feedback =
-          processAggregatedFeedbackInfo(robots_feedback);
+          processAggregatedFeedbackInfo(robot_feedbacks);
       action_server_ptr_->publishFeedback(action_server_feedback);
     }
   }
@@ -950,13 +950,13 @@ template <typename ActionType>
 typename BaseFleetManager<ActionType>::FeedbackType
 BaseFleetManager<ActionType>::processAggregatedFeedbackInfo(
     const std::vector<iroc_mission_handler::MissionFeedback>
-        &robots_feedback) const {
+        &robot_feedbacks) const {
 
   FeedbackType action_server_feedback;
   std::vector<std::string> robots_msg;
   std::vector<double> robots_progress;
 
-  for (const auto &rbf : robots_feedback) {
+  for (const auto &rbf : robot_feedbacks) {
     robots_msg.emplace_back(rbf.message);
     robots_progress.emplace_back(rbf.mission_progress);
   }
@@ -972,7 +972,7 @@ BaseFleetManager<ActionType>::processAggregatedFeedbackInfo(
   action_server_feedback.info.progress = mission_progress;
   action_server_feedback.info.message = message;
   action_server_feedback.info.state = state;
-  action_server_feedback.info.robots_feedback = robots_feedback;
+  action_server_feedback.info.robot_feedbacks = robot_feedbacks;
 
   return action_server_feedback;
 }
@@ -992,7 +992,7 @@ template <typename ActionType>
 std::vector<iroc_mission_handler::MissionResult>
 BaseFleetManager<ActionType>::getRobotResults() {
   // Get the robot results
-  std::vector<iroc_mission_handler::MissionResult> robots_results;
+  std::vector<iroc_mission_handler::MissionResult> robot_results;
 
   {
     std::scoped_lock lock(fleet_mission_handlers_.mtx);
@@ -1014,18 +1014,18 @@ BaseFleetManager<ActionType>::getRobotResults() {
             "Robot did not finished it's mission, mission was aborted.";
         robot_result.success = false;
       }
-      robots_results.emplace_back(robot_result);
+      robot_results.emplace_back(robot_result);
     }
   }
 
   // Print the robots result
-  for (auto &robot_result : robots_results) {
+  for (auto &robot_result : robot_results) {
     ROS_INFO("[IROCFleetManager]: Robot: %s, result: %s success: %d",
              robot_result.name.c_str(), robot_result.message.c_str(),
              robot_result.success);
   }
 
-  return robots_results;
+  return robot_results;
 }
 //}
 
