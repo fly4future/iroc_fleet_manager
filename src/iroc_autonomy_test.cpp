@@ -10,7 +10,7 @@ namespace iroc_fleet_manager {
 class IROCAutonomyTestManager : public iroc_fleet_manager::BaseFleetManager<
                                     iroc_fleet_manager::AutonomyTestAction> {
 public:
-  std::vector<iroc_mission_handler::MissionRobotGoal>
+  std::vector<iroc_mission_handler::MissionGoal>
   processGoal(const iroc_fleet_manager::AutonomyTestGoal &goal) const override;
 
 private:
@@ -21,13 +21,13 @@ private:
 
 /* processGoal //{ */
 
-std::vector<iroc_mission_handler::MissionRobotGoal>
+std::vector<iroc_mission_handler::MissionGoal>
 IROCAutonomyTestManager::processGoal(
     const iroc_fleet_manager::AutonomyTestGoal &goal) const {
 
-  std::vector<iroc_mission_handler::MissionRobotGoal> mission_robots;
+  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
 
-  iroc_mission_handler::MissionRobotGoal waypoint_robot;
+  iroc_mission_handler::MissionGoal waypoint_robot;
   // Fill in the waypoint mission robots
   for (const auto &robot : goal.robots) {
     waypoint_robot.name = robot.name;

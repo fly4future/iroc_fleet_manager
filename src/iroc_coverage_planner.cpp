@@ -24,7 +24,7 @@ namespace iroc_fleet_manager {
 class IROC_CoverageManager : public iroc_fleet_manager::BaseFleetManager<
                                  iroc_fleet_manager::CoverageMissionAction> {
 public:
-  std::vector<iroc_mission_handler::MissionRobotGoal> processGoal(
+  std::vector<iroc_mission_handler::MissionGoal> processGoal(
       const iroc_fleet_manager::CoverageMissionGoal &goal) const override;
 
 private:
@@ -45,7 +45,7 @@ private:
 
 /* processGoal //{ */
 
-std::vector<iroc_mission_handler::MissionRobotGoal>
+std::vector<iroc_mission_handler::MissionGoal>
 IROC_CoverageManager::processGoal(
     const iroc_fleet_manager::CoverageMissionGoal &goal) const {
 
@@ -68,13 +68,13 @@ IROC_CoverageManager::processGoal(
     ros::shutdown();
   }
 
-  std::vector<iroc_mission_handler::MissionRobotGoal> mission_robots;
+  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   auto paths = getCoveragePaths(goal.mission);
   ROS_INFO("[IROC_CoverageManager:]: Coverage paths size: %zu", paths.size());
 
   // Filling the mission_robots vector with the generated paths
   for (int it = 0; it < goal.mission.robots.size(); it++) {
-    iroc_mission_handler::MissionRobotGoal robot;
+    iroc_mission_handler::MissionGoal robot;
     robot.name = goal.mission.robots[it].name;
     robot.points = paths[it];
     robot.terminal_action = goal.mission.robots[it].terminal_action;
