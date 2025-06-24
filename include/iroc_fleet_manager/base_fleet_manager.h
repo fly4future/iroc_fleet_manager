@@ -1122,7 +1122,6 @@ BaseFleetManager<ActionType>::findRobotHandler(
  * already).
  *
  */
-
 template <typename ActionType>
 void BaseFleetManager<ActionType>::cancelRobotClients() {
 

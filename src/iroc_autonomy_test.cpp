@@ -1,36 +1,42 @@
 /* includes //{ */
-#include <iroc_fleet_manager/base_fleet_manager.h>
 #include <iroc_fleet_manager/AutonomyTestAction.h>
+#include <iroc_fleet_manager/base_fleet_manager.h>
 //}
 
-namespace iroc_fleet_manager
-{
+namespace iroc_fleet_manager {
 
 /* class IROCAutonomyTestManager //{ */
 
-class IROCAutonomyTestManager : public iroc_fleet_manager::BaseFleetManager<iroc_fleet_manager::AutonomyTestAction> {
+class IROCAutonomyTestManager : public iroc_fleet_manager::BaseFleetManager<
+                                    iroc_fleet_manager::AutonomyTestAction> {
 public:
-  std::vector<iroc_mission_handler::MissionRobotGoal> processGoal(const iroc_fleet_manager::AutonomyTestGoal& goal) const override;
+  std::vector<iroc_mission_handler::MissionRobotGoal>
+  processGoal(const iroc_fleet_manager::AutonomyTestGoal &goal) const override;
 
 private:
-  std::vector<mrs_msgs::Reference> getAutonomyPoints(double segment_length) const;
+  std::vector<mrs_msgs::Reference>
+  getAutonomyPoints(double segment_length) const;
 };
 //}
 
 /* processGoal //{ */
 
 std::vector<iroc_mission_handler::MissionRobotGoal>
-IROCAutonomyTestManager::processGoal(const iroc_fleet_manager::AutonomyTestGoal& goal) const {
+IROCAutonomyTestManager::processGoal(
+    const iroc_fleet_manager::AutonomyTestGoal &goal) const {
 
-  std::vector<iroc_mission_handler::MissionRobotGoal> mission_robots; 
+  std::vector<iroc_mission_handler::MissionRobotGoal> mission_robots;
 
   iroc_mission_handler::MissionRobotGoal waypoint_robot;
   // Fill in the waypoint mission robots
-  for (const auto& robot: goal.robots) {
-    waypoint_robot.name      = robot.name;
-    waypoint_robot.frame_id  = MissionHandlerActionServerGoal::FRAME_ID_FCU; //Using current local _frame
-    waypoint_robot.height_id = MissionHandlerActionServerGoal::HEIGHT_ID_FCU; //Defining FCU height
-    waypoint_robot.points    = getAutonomyPoints(robot.segment_length);
+  for (const auto &robot : goal.robots) {
+    waypoint_robot.name = robot.name;
+    waypoint_robot.frame_id =
+        MissionHandlerActionServerGoal::FRAME_ID_FCU; // Using current local
+                                                      // _frame
+    waypoint_robot.height_id =
+        MissionHandlerActionServerGoal::HEIGHT_ID_FCU; // Defining FCU height
+    waypoint_robot.points = getAutonomyPoints(robot.segment_length);
     mission_robots.push_back(waypoint_robot);
   }
 
@@ -41,7 +47,14 @@ IROCAutonomyTestManager::processGoal(const iroc_fleet_manager::AutonomyTestGoal&
 // | -------------------- support functions ------------------- |
 
 /* getAutonomyPoints() //{ */
-std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(double segment_length) const {
+/*!
+ * Helper method to obtain the reference points of the pre-defined autonomy test
+ * trajectory, intended to be a simple cross-like movement based on the position
+ * of the UAV.
+ *
+ */
+std::vector<mrs_msgs::Reference>
+IROCAutonomyTestManager::getAutonomyPoints(double segment_length) const {
 
   std::vector<mrs_msgs::Reference> points;
   mrs_msgs::Reference point;
@@ -61,7 +74,7 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   point.position.y = 0.0;
   points.push_back(point);
 
-  // Front 
+  // Front
   point.position.x = segment_length;
   points.push_back(point);
 
@@ -86,38 +99,38 @@ std::vector<mrs_msgs::Reference> IROCAutonomyTestManager::getAutonomyPoints(doub
   points.push_back(point);
 
   // 360-degree pirouette (3 points)
-  point.heading = 0.0;  // 90 degrees
+  point.heading = 0.0; // 90 degrees
   points.push_back(point);
 
-  point.heading = (2* M_PI) / 3.0;  
+  point.heading = (2 * M_PI) / 3.0;
   points.push_back(point);
 
-  point.heading = (4* M_PI) / 3.0;  
+  point.heading = (4 * M_PI) / 3.0;
   points.push_back(point);
 
-  point.heading = (2* M_PI);  
+  point.heading = (2 * M_PI);
   points.push_back(point);
 
   // // 360-degree pirouette (3 points)
-  point.heading = 0.0;  // 90 degrees
+  point.heading = 0.0; // 90 degrees
   points.push_back(point);
 
-  point.heading = (2* M_PI) / 3.0;  
+  point.heading = (2 * M_PI) / 3.0;
   points.push_back(point);
 
-  point.heading = (4* M_PI) / 3.0;  
+  point.heading = (4 * M_PI) / 3.0;
   points.push_back(point);
 
-  point.heading = (2* M_PI);  
+  point.heading = (2 * M_PI);
   points.push_back(point);
 
   return points;
-
 }
 
 //}
 
-}  // namespace iroc_fleet_manager
+} // namespace iroc_fleet_manager
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::IROCAutonomyTestManager, nodelet::Nodelet);
+PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::IROCAutonomyTestManager,
+                       nodelet::Nodelet);
