@@ -4,8 +4,7 @@ iroc_fleet_manager/AutonomyTestRobot[] robots
 # Define the result
 bool success
 string message
-iroc_fleet_manager/WaypointMissionRobotResult[] robots_results
+iroc_mission_handler/MissionResult[] robot_results
 ---
 # Define a feedback message
 iroc_fleet_manager/WaypointMissionInfo info
-
