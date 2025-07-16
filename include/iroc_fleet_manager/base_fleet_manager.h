@@ -344,8 +344,8 @@ void BaseFleetManager<ActionType>::timerMain(
 
 /* timerFeedback() //{ */
 /*!
- * Continously gathers the information from robots and wraps
- * their eedback into a general feedback message.
+ * Continuously gathers the information from robots and wraps
+ * their feedback into a general feedback message.
  *
  * @tparam ActionType Type representing the action/mission type for the fleet
  */
@@ -444,9 +444,9 @@ bool BaseFleetManager<ActionType>::changeFleetMissionStateCallback(
   }
 
   if (success) {
-    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Succesfully processed the  "
+    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Successfully processed the  "
                     << req.value << " request.");
-    ss << "Succesfully processed the  " << req.value << " request.\n";
+    ss << "Successfully processed the  " << req.value << " request.\n";
   } else {
     ROS_WARN("[IROCAutonomyTestManager]: Failure: %s", res.message.c_str());
   };
@@ -547,9 +547,9 @@ bool BaseFleetManager<ActionType>::changeRobotMissionStateCallback(
   }
 
   if (success) {
-    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Succesfully processed the  "
+    ROS_INFO_STREAM("[IROCAutonomyTestManager]: Successfully processed the  "
                     << req.type << " request for " << req.robot_name << ".");
-    ss << "Succesfully processed the  " << req.type << " request for "
+    ss << "Successfully processed the  " << req.type << " request for "
        << req.robot_name << " <.\n";
   } else {
     ROS_WARN("[IROCAutonomyTestManager]: Failure: %s", res.message.c_str());
@@ -734,7 +734,7 @@ void BaseFleetManager<ActionType>::actionCallbackGoal() {
     return;
   }
   ROS_INFO(
-      "[IROCFleetManager]: Succesfully sent the goal to robots in mission.");
+      "[IROCFleetManager]: Successfully sent the goal to robots in mission.");
 
   active_mission_ = true;
   action_server_goal_ = *new_action_server_goal;
@@ -756,7 +756,7 @@ void BaseFleetManager<ActionType>::actionCallbackPreempt() {
       ROS_WARN_STREAM("[IROCFleetManager]: Preempted by the client");
       action_server_ptr_->setPreempted(action_server_result);
       cancelRobotClients();
-      ROS_INFO("[IROCFleetManager]: Mission stopped by preemtption.");
+      ROS_INFO("[IROCFleetManager]: Mission stopped by preemption.");
     } else {
       ROS_INFO("[IROCFleetManager]: Cancel toggled for ActionServer.");
 
