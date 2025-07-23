@@ -14,7 +14,7 @@ public:
   processGoal(const iroc_fleet_manager::AutonomyTestGoal &goal) const override;
 
 private:
-  std::vector<mrs_msgs::Reference>
+  std::vector<iroc_mission_handler::Waypoint>
   getAutonomyPoints(double segment_length) const;
 };
 //}
@@ -53,7 +53,7 @@ IROCAutonomyTestManager::processGoal(
  * of the UAV.
  *
  */
-std::vector<mrs_msgs::Reference>
+std::vector<iroc_mission_handler::Waypoint>
 IROCAutonomyTestManager::getAutonomyPoints(double segment_length) const {
 
   std::vector<mrs_msgs::Reference> points;
@@ -124,7 +124,20 @@ IROCAutonomyTestManager::getAutonomyPoints(double segment_length) const {
   point.heading = (2 * M_PI);
   points.push_back(point);
 
-  return points;
+  // Convert mrs_msgs::Reference to iroc_mission_handler::Waypoint
+  std::vector<iroc_mission_handler::Waypoint> autonomy_points;
+  autonomy_points.reserve(points.size());
+  for (const auto& p : points) {
+    iroc_mission_handler::Waypoint wp;
+    wp.reference_point.position.x = p.position.x;
+    wp.reference_point.position.y = p.position.y;
+    wp.reference_point.position.z = p.position.z;
+    wp.reference_point.heading = p.heading;
+    
+    autonomy_points.push_back(wp);
+  }
+
+  return autonomy_points;
 }
 
 //}

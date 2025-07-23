@@ -31,7 +31,7 @@ private:
   mutable algorithm_config_t planner_config_;
 
   // Additional type for coverage planner
-  typedef std::vector<std::vector<mrs_msgs::Reference>> coverage_paths_t;
+  typedef std::vector<std::vector<iroc_mission_handler::Waypoint>> coverage_paths_t;
 
   // | ------------------ Additional functions ------------------ |
   algorithm_config_t
@@ -338,7 +338,7 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(
 
     auto best_paths = best_solution.paths;
     for (auto &path : best_paths) {
-      std::vector<mrs_msgs::Reference> coverage_path;
+      std::vector<iroc_mission_handler::Waypoint> coverage_path;
       mrs_msgs::Reference point;
       for (auto &p : path) {
         // TODO Replace with mrs_lib transformer?
@@ -352,7 +352,10 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(
         point.position.z =
             mission.robots[0].height; // We are using same height for all robots
         point.heading = 0.0;
-        coverage_path.push_back(point);
+
+        iroc_mission_handler::Waypoint waypoint;
+        waypoint.reference_point = point;
+        coverage_path.push_back(waypoint);
       }
       coverage_paths.push_back(coverage_path);
     }
