@@ -19,9 +19,9 @@
 
 namespace iroc_fleet_manager {
 
-/* class IROC_CoverageManager //{ */
+/* class CoveragePlanner //{ */
 
-class IROC_CoverageManager : public iroc_fleet_manager::BaseFleetManager<
+class CoveragePlanner : public iroc_fleet_manager::BaseFleetManager<
                                  iroc_fleet_manager::CoverageMissionAction> {
 public:
   std::vector<iroc_mission_handler::MissionGoal> processGoal(
@@ -46,11 +46,11 @@ private:
 /* processGoal //{ */
 
 std::vector<iroc_mission_handler::MissionGoal>
-IROC_CoverageManager::processGoal(
+CoveragePlanner::processGoal(
     const iroc_fleet_manager::CoverageMissionGoal &goal) const {
 
   /* load parameters */
-  mrs_lib::ParamLoader param_loader(nh_, "IROC_CoverageManager");
+  mrs_lib::ParamLoader param_loader(nh_, "CoveragePlanner");
 
   std::string custom_config_path;
   param_loader.loadParam("custom_config", custom_config_path);
@@ -64,13 +64,13 @@ IROC_CoverageManager::processGoal(
   planner_config_ = parse_algorithm_config(param_loader);
 
   if (!param_loader.loadedSuccessfully()) {
-    ROS_ERROR("[IROC_CoverageManager]: Could not load all parameters!");
+    ROS_ERROR("[CoveragePlanner]: Could not load all parameters!");
     ros::shutdown();
   }
 
   std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   auto paths = getCoveragePaths(goal.mission);
-  ROS_INFO("[IROC_CoverageManager:]: Coverage paths size: %zu", paths.size());
+  ROS_INFO("[CoveragePlanner:]: Coverage paths size: %zu", paths.size());
 
   // Filling the mission_robots vector with the generated paths
   for (int it = 0; it < goal.mission.robots.size(); it++) {
@@ -90,7 +90,7 @@ IROC_CoverageManager::processGoal(
 
 /* parse_algorithm_config() //{ */
 
-algorithm_config_t IROC_CoverageManager::parse_algorithm_config(
+algorithm_config_t CoveragePlanner::parse_algorithm_config(
     mrs_lib::ParamLoader &param_loader) const {
   const std::string yaml_prefix = "coverage_planner/";
   algorithm_config_t algorithm_config;
@@ -251,7 +251,7 @@ assign_closest_polygons(const std::vector<point_t> &uav_positions,
  * 2. Computes for each robot the optimal path in it's closest polygon.
  *
  */
-IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(
+CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(
     const iroc_fleet_manager::CoverageMission &mission) const {
 
   // Fly zone and no fly zones
@@ -280,7 +280,7 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(
   EnergyCalculator energy_calculator{planner_config_.energy_calculator_config,
                                      shared_logger};
   ROS_INFO_STREAM(
-      "[IROC_CoverageManager:]: Energy calculator created. Optimal speed: "
+      "[CoveragePlanner:]: Energy calculator created. Optimal speed: "
       << energy_calculator.get_optimal_speed());
 
   // Decompose polygon for each UAV
@@ -305,7 +305,7 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(
   auto assigned_polygons =
       assign_closest_polygons(uav_positions, decomposed_polygon);
 
-  ROS_INFO("[IROC_CoverageManager:]: Size of decomposed polygon: %zu",
+  ROS_INFO("[CoveragePlanner:]: Size of decomposed polygon: %zu",
            decomposed_polygon.size());
 
   // For saving the paths for each UAV
@@ -332,7 +332,7 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(
       uav_index++;
     } catch (const polygon_decomposition_error &e) {
       ROS_WARN_STREAM(
-          "[IROC_CoverageManager:]: Error while decomposing the polygon");
+          "[CoveragePlanner:]: Error while decomposing the polygon");
       return coverage_paths_t();
     }
 
@@ -368,5 +368,5 @@ IROC_CoverageManager::coverage_paths_t IROC_CoverageManager::getCoveragePaths(
 } // namespace iroc_fleet_manager
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::IROC_CoverageManager,
+PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::CoveragePlanner,
                        nodelet::Nodelet);

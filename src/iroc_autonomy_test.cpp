@@ -5,9 +5,9 @@
 
 namespace iroc_fleet_manager {
 
-/* class IROCAutonomyTestManager //{ */
+/* class AutonomyTestPlanner //{ */
 
-class IROCAutonomyTestManager : public iroc_fleet_manager::BaseFleetManager<
+class AutonomyTestPlanner : public iroc_fleet_manager::BaseFleetManager<
                                     iroc_fleet_manager::AutonomyTestAction> {
 public:
   std::vector<iroc_mission_handler::MissionGoal>
@@ -22,7 +22,7 @@ private:
 /* processGoal //{ */
 
 std::vector<iroc_mission_handler::MissionGoal>
-IROCAutonomyTestManager::processGoal(
+AutonomyTestPlanner::processGoal(
     const iroc_fleet_manager::AutonomyTestGoal &goal) const {
 
   std::vector<iroc_mission_handler::MissionGoal> mission_robots;
@@ -54,7 +54,7 @@ IROCAutonomyTestManager::processGoal(
  *
  */
 std::vector<iroc_mission_handler::Waypoint>
-IROCAutonomyTestManager::getAutonomyPoints(double segment_length) const {
+AutonomyTestPlanner::getAutonomyPoints(double segment_length) const {
 
   std::vector<mrs_msgs::Reference> points;
   mrs_msgs::Reference point;
@@ -145,5 +145,5 @@ IROCAutonomyTestManager::getAutonomyPoints(double segment_length) const {
 } // namespace iroc_fleet_manager
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::IROCAutonomyTestManager,
+PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::AutonomyTestPlanner,
                        nodelet::Nodelet);

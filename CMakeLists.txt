@@ -23,9 +23,9 @@ set(CATKIN_DEPENDENCIES
 )
 
 set(LIBRARIES
-  IROCFleetManager
-  IROC_CoverageManager
-  IROCAutonomyTestManager
+  WaypointPlanner
+  CoveragePlanner
+  AutonomyTestPlanner
   CoveragePlannerLib
 )
 
@@ -72,20 +72,20 @@ include_directories(
   ${COVERAGE_PLANNER_SRC_DIR}/include
 )
 
-# IROCFleetManager
+# WaypointPlanner
 
 ## Declare a C++ library
-add_library(IROCFleetManager
+add_library(WaypointPlanner
   src/iroc_fleet_manager.cpp
 )
 
-add_dependencies(IROCFleetManager
+add_dependencies(WaypointPlanner
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(IROCFleetManager
+target_link_libraries(WaypointPlanner
   ${catkin_LIBRARIES}
 )
 
@@ -110,36 +110,36 @@ target_include_directories(CoveragePlannerLib
   ${COVERAGE_PLANNER_SRC_DIR}/include/CoveragePlannerLib
 )
 
-# IROC_CoverageManager
+# CoveragePlanner
 ## Declare a C++ library
-add_library(IROC_CoverageManager
+add_library(CoveragePlanner
   src/iroc_coverage_planner.cpp
 )
 
-add_dependencies(IROC_CoverageManager
+add_dependencies(CoveragePlanner
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(IROC_CoverageManager
+target_link_libraries(CoveragePlanner
   CoveragePlannerLib
   ${catkin_LIBRARIES}
 )
 
-# IROCAutonomyTestManager
+# AutonomyTestPlanner
 ## Declare a C++ library
-add_library(IROCAutonomyTestManager
+add_library(AutonomyTestPlanner
   src/iroc_autonomy_test.cpp
 )
 
-add_dependencies(IROCAutonomyTestManager
+add_dependencies(AutonomyTestPlanner
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(IROCAutonomyTestManager
+target_link_libraries(AutonomyTestPlanner
   ${catkin_LIBRARIES}
 )
 

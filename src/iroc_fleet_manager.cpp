@@ -5,9 +5,9 @@
 
 namespace iroc_fleet_manager {
 
-/* class IROCFleetManager //{ */
+/* class WaypointPlanner //{ */
 
-class IROCFleetManager : public iroc_fleet_manager::BaseFleetManager<
+class WaypointPlanner : public iroc_fleet_manager::BaseFleetManager<
                              iroc_fleet_manager::WaypointFleetManagerAction> {
 public:
   std::vector<iroc_mission_handler::MissionGoal> processGoal(
@@ -18,7 +18,7 @@ public:
 /* processGoal //{ */
 
 std::vector<iroc_mission_handler::MissionGoal>
-IROCFleetManager::processGoal(
+WaypointPlanner::processGoal(
     const iroc_fleet_manager::WaypointFleetManagerGoal &goal) const {
 
   return goal.robots;
@@ -28,4 +28,4 @@ IROCFleetManager::processGoal(
 } // namespace iroc_fleet_manager
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::IROCFleetManager, nodelet::Nodelet);
+PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::WaypointPlanner, nodelet::Nodelet);
