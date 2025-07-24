@@ -27,6 +27,7 @@
 
   <export>
     <nodelet plugin="${prefix}/nodelets.xml" />
+    <iroc_fleet_manager plugin="${prefix}/plugins.xml" />
   </export>
 
 </package>

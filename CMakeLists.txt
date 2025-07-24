@@ -24,6 +24,7 @@ set(CATKIN_DEPENDENCIES
 
 set(LIBRARIES
   WaypointPlanner
+  WaypointPlannerr #To replace previous WaypointPlanner
   CoveragePlanner
   AutonomyTestPlanner
   CoveragePlannerLib
@@ -86,6 +87,23 @@ add_dependencies(WaypointPlanner
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(WaypointPlanner
+  ${catkin_LIBRARIES}
+)
+
+# WaypointPlanner
+
+## Declare a C++ library
+add_library(WaypointPlannerr
+  src/waypoint_planner.cpp
+)
+
+add_dependencies(WaypointPlannerr
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(WaypointPlannerr
   ${catkin_LIBRARIES}
 )
 

@@ -1,0 +1,5 @@
+<library path="lib/libWaypointPlanner">
+  <class name="iroc_fleet_manager/WaypointPlanner" type="iroc_fleet_manager::waypoint_planner::WaypointPlanner" base_class_type="iroc_fleet_manager::Planner">
+    <description>WaypointPlanner</description>
+  </class>
+</library>
