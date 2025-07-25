@@ -1,8 +1,10 @@
 #include <ros/ros.h>
 
 /* includes //{ */
-// #include <iroc_fleet_manager/WaypointFleetManagerAction.h>
+#include <any>
+#include <iroc_fleet_manager/WaypointFleetManagerAction.h>
 #include <iroc_fleet_manager/planner.h>
+
 //}
 
 namespace iroc_fleet_manager {
@@ -18,6 +20,8 @@ public:
 
   bool activate(void);
   void deactivate(void);
+  std::vector<iroc_mission_handler::MissionGoal>
+  processGoal(const std::any &goal) const override;
 
   std::string _name_;
 
@@ -47,7 +51,7 @@ bool WaypointPlanner::initialize(const ros::NodeHandle &parent_nh,
 }
 
 bool WaypointPlanner::activate(void) {
- 
+
   int some_number = 0;
   ROS_INFO("[%s]: activated with some_number=%d", _name_.c_str(), some_number);
 
@@ -63,20 +67,17 @@ void WaypointPlanner::deactivate(void) {
   ROS_INFO("[%s]: deactivated", _name_.c_str());
 }
 
-// std::vector<iroc_mission_handler::MissionGoal> processGoal(
-//     const iroc_fleet_manager::WaypointFleetManagerGoal &goal) const override;
-// };
-//}
+std::vector<iroc_mission_handler::MissionGoal>
+WaypointPlanner::processGoal(const std::any &goal) const {
 
-/* processGoal //{ */
+  if (auto wp_goal = std::any_cast<const WaypointFleetManagerGoal>(&goal)) {
+    return wp_goal->robots;
+  }
 
-// std::vector<iroc_mission_handler::MissionGoal>
-// WaypointPlanner::processGoal(
-//     const iroc_fleet_manager::WaypointFleetManagerGoal &goal) const {
-//
-//   return goal.robots;
-// }
-//}
+  ROS_ERROR_STREAM("[WaypointPlanner] got unsupported goal type "
+                   << goal.type().name());
+  return {};
+}
 
 } // namespace waypoint_planner
 

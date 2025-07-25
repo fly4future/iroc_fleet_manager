@@ -1,8 +1,9 @@
 #ifndef IROC_FLEET_MANAGER_PLANNER
 #define IROC_FLEET_MANAGER_PLANNER
 
-// #include <iroc_mission_handler/MissionAction.h>
+#include <iroc_mission_handler/MissionAction.h>
 #include <ros/ros.h>
+#include <any>  
 
 namespace iroc_fleet_manager {
 
@@ -38,14 +39,13 @@ public:
 
   /**
    * @brief Request for planner to process an incoming goal
-   *
+   * @param goal of the planner, specific type to be declared in child classes 
    * @return the goals of the robots in the fleet.
    */
 
-  // template <typename GoalType>
-  // virtual std::vector<iroc_mission_handler::MissionGoal>
-  // processGoal(const GoalType &goal) const = 0;
-  //
+  virtual std::vector<iroc_mission_handler::MissionGoal>
+  processGoal(const std::any &goal) const = 0;
+
   virtual ~Planner() = default;
 };
 

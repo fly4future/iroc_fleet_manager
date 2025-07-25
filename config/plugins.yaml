@@ -1,0 +1,5 @@
+# define "running instances" of plugins, there can be more than one for each
+#
+WaypointPlanner:
+  address: "iroc_fleet_manager/WaypointPlanner" # this is taken from the plugin's package.xml
+  name_space: "waypoint_planner" # useful for loading parameters into difference instances of the same plugin

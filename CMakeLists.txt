@@ -23,6 +23,7 @@ set(CATKIN_DEPENDENCIES
 )
 
 set(LIBRARIES
+  FleetManager
   WaypointPlanner
   WaypointPlannerr #To replace previous WaypointPlanner
   CoveragePlanner
@@ -72,6 +73,24 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${COVERAGE_PLANNER_SRC_DIR}/include
 )
+
+# FleetManager
+
+## Declare a C++ library
+add_library(FleetManager
+  src/fleet_manager.cpp
+  )
+
+add_dependencies(FleetManager
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  )
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(FleetManager
+  # IROCFleetManager
+  ${catkin_LIBRARIES}
+  )
 
 # WaypointPlanner
 
