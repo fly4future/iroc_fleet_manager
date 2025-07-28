@@ -24,6 +24,7 @@
   <depend>mrs_lib</depend>
   <depend>iroc_mission_handler</depend>
   <depend>geometry_msgs</depend>
+  <depend>pluginlib</depend>
 
   <export>
     <nodelet plugin="${prefix}/nodelets.xml" />

@@ -1,0 +1,11 @@
+# the list of "names" of the loaded plugins
+# each plugin's properties are defined in 'plugins.yaml'
+planners : [
+  "WaypointPlanner",
+]
+
+# the first loaded plugin
+# should be within "plugins"
+initial_planner: "WaypointPlanner"
+
+update_timer_rate: 1 # [Hz]

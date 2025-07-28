@@ -51,6 +51,10 @@ private:
   std::vector<boost::shared_ptr<iroc_fleet_manager::Planner>>
       planner_list_; // list of planners, routines are callable from this
   std::mutex mutex_planner_list_;
+
+  std::string _initial_planner_name_;
+  int _initial_planner_idx_ = 0;
+  int active_planner_idx_;
 };
 
 void FleetManager::onInit() {
@@ -61,6 +65,8 @@ void FleetManager::onInit() {
   ros::Time::waitForValid();
 
   mrs_lib::ParamLoader param_loader(nh_, "FleetManager");
+
+  param_loader.loadParam("initial_planner", _initial_planner_name_);
 
   // --------------------------------------------------------------
   // |                      load the plugins                      |
@@ -92,21 +98,68 @@ void FleetManager::onInit() {
       planner_list_.push_back(
           planner_loader_->createInstance(new_planner.address.c_str()));
     } catch (pluginlib::CreateClassException &ex1) {
-      ROS_ERROR(
-          "[FleetManager]: CreateClassException for the plugin '%s'",
-          new_planner.address.c_str());
+      ROS_ERROR("[FleetManager]: CreateClassException for the plugin '%s'",
+                new_planner.address.c_str());
       ROS_ERROR("[FleetManager]: Error: %s", ex1.what());
       ros::shutdown();
     } catch (pluginlib::PluginlibException &ex) {
-      ROS_ERROR(
-          "[FleetManager]: PluginlibException for the plugin '%s'",
-          new_planner.address.c_str());
+      ROS_ERROR("[FleetManager]: PluginlibException for the plugin '%s'",
+                new_planner.address.c_str());
       ROS_ERROR("[FleetManager]: Error: %s", ex.what());
       ros::shutdown();
     }
   }
 
   ROS_INFO("[FleetManager]: planners were loaded");
+
+  for (int i = 0; i < int(planner_list_.size()); i++) {
+    try {
+      std::map<std::string, PlannerParams>::iterator it;
+      it = planners_.find(_planner_names_[i]);
+
+      ROS_INFO("[FleetManager]: initializing the plugin '%s'",
+               it->second.address.c_str());
+      planner_list_[i]->initialize(nh_, _planner_names_[i],
+                                   it->second.name_space);
+    } catch (std::runtime_error &ex) {
+      ROS_ERROR("[FleetManager]: exception caught during plugin "
+                "initialization: '%s'",
+                ex.what());
+    }
+  }
+
+  ROS_INFO("[FleetManager]: plugins were initialized");
+
+  // | ---------- check the existance of initial plugin --------- |
+  {
+    bool check = false;
+
+    for (int i = 0; i < int(_planner_names_.size()); i++) {
+
+      std::string planner_name = _planner_names_[i];
+
+      if (planner_name == _initial_planner_name_) {
+        check = true;
+        _initial_planner_idx_ = i;
+        break;
+      }
+    }
+    if (!check) {
+      ROS_ERROR("[FleetManager]: the initial plugin (%s) is not within "
+                "the loaded plugins",
+                _initial_planner_name_.c_str());
+      ros::shutdown();
+    }
+  }
+
+  // | ---------- activate the first plugin on the list --------- |
+
+  ROS_INFO("[FleetManager]: activating plugin with idx %d on the list "
+           "(named: %s)",
+           _initial_planner_idx_, _planner_names_[_initial_planner_idx_].c_str());
+
+  planner_list_[_initial_planner_idx_]->activate();
+  active_planner_idx_ = _initial_planner_idx_;
 
   ROS_INFO("[FleetManager]: initialized");
   ROS_INFO("[FleetManager]: --------------------");
