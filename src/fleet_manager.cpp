@@ -3,7 +3,9 @@
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/terminal_state.h>
 #include <actionlib/server/simple_action_server.h>
+#include <mrs_lib/subscribe_handler.h>
 
+#include <boost/smart_ptr/shared_ptr.hpp>
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/param_loader.h>
 
@@ -14,18 +16,22 @@ namespace iroc_fleet_manager {
 class PlannerParams {
 
 public:
-  PlannerParams(const std::string &address, const std::string &name_space);
+  PlannerParams(const std::string &address, const std::string &name_space,
+                const std::string &action_type);
 
 public:
   std::string address;
   std::string name_space;
+  std::string action_type;
 };
 
 PlannerParams::PlannerParams(const std::string &address,
-                             const std::string &name_space) {
+                             const std::string &name_space,
+                             const std::string &action_type) {
 
   this->address = address;
   this->name_space = name_space;
+  this->action_type = action_type;
 }
 
 // using namespace actionlib;
@@ -37,24 +43,77 @@ class FleetManager : public nodelet::Nodelet {
 public:
   virtual void onInit();
 
+  struct result_t {
+    bool success;
+    std::string message;
+  };
+
 private:
   ros::NodeHandle nh_;
+  bool is_initialized_ = false;
+  ros::Timer timer_main_;
+  ros::Timer timer_feedback_;
+
+  // | ----------------------- ROS service servers ---------------------- |
+  ros::ServiceServer ss_change_fleet_mission_state_;
+  ros::ServiceServer ss_change_robot_mission_state_;
+
+  std::atomic_bool active_mission_ = false;
+  std::atomic_bool active_mission_change_ = false;
 
   // | --------------- dynamic loading of planners -------------- |
+
+  struct planner_t {
+    std::string name;
+    PlannerParams params;
+    boost::shared_ptr<iroc_fleet_manager::Planner> instance;
+    std::any action_server;
+    std::mutex mutex_planner_list_;
+  };
+
+  struct planners_handler_t {
+    std::vector<planner_t> planners;
+  } planner_handlers_;
 
   std::unique_ptr<pluginlib::ClassLoader<iroc_fleet_manager::Planner>>
       planner_loader_; // pluginlib loader of dynamically loaded planners
   std::vector<std::string> _planner_names_; // list of planner names
-                                            //
   std::map<std::string, PlannerParams>
       planners_; // map between planner names and planner params
+  std::map<std::string, std::any>
+      planners_action_servers_; // map between planner names and action servers
   std::vector<boost::shared_ptr<iroc_fleet_manager::Planner>>
       planner_list_; // list of planners, routines are callable from this
   std::mutex mutex_planner_list_;
+  std::mutex mutex_action_server_;
 
   std::string _initial_planner_name_;
   int _initial_planner_idx_ = 0;
   int active_planner_idx_;
+
+  // | ----------------- mission handler action client stuff ---------------- |
+
+  // Handlers for the interaction with the robot's action clients with
+  // MissionHandler
+  struct robot_mission_handler_t {
+    std::string robot_name;
+    std::unique_ptr<MissionHandlerClient> action_client_ptr;
+    ros::ServiceClient sc_robot_activation;
+    ros::ServiceClient sc_robot_pausing;
+    iroc_mission_handler::MissionFeedback current_feedback;
+    iroc_mission_handler::MissionResult current_result;
+    bool got_result = false;
+  };
+
+  struct fleet_mission_handlers_t {
+    std::recursive_mutex mtx;
+    std::vector<robot_mission_handler_t> handlers;
+  } fleet_mission_handlers_;
+
+  std::vector<std::string> lost_robot_names_;
+
+  void timerMain(const ros::TimerEvent &event);
+  void timerFeedback(const ros::TimerEvent &event);
 };
 
 void FleetManager::onInit() {
@@ -65,6 +124,27 @@ void FleetManager::onInit() {
   ros::Time::waitForValid();
 
   mrs_lib::ParamLoader param_loader(nh_, "FleetManager");
+
+  std::string custom_config_path;
+  param_loader.loadParam("custom_config", custom_config_path);
+
+  if (custom_config_path != "") {
+    param_loader.addYamlFile(custom_config_path);
+  }
+
+  param_loader.addYamlFileFromParam("config");
+
+  const auto main_timer_rate =
+      param_loader.loadParam2<double>("main_timer_rate");
+  const auto feedback_timer_rate =
+      param_loader.loadParam2<double>("feedback_timer_rate");
+  const auto no_message_timeout =
+      param_loader.loadParam2<ros::Duration>("no_message_timeout");
+
+  if (!param_loader.loadedSuccessfully()) {
+    ROS_ERROR("[IROCAutonomyTestManager]: Could not load all parameters!");
+    ros::shutdown();
+  }
 
   param_loader.loadParam("initial_planner", _initial_planner_name_);
 
@@ -84,26 +164,28 @@ void FleetManager::onInit() {
     // load the plugin parameters
     std::string address;
     std::string name_space;
+    std::string action_type;
 
     param_loader.loadParam(planner_name + "/address", address);
     param_loader.loadParam(planner_name + "/name_space", name_space);
+    param_loader.loadParam(planner_name + "/action_type", action_type);
 
-    PlannerParams new_planner(address, name_space);
+    PlannerParams new_planner(address, name_space, action_type);
     planners_.insert(
         std::pair<std::string, PlannerParams>(planner_name, new_planner));
 
     try {
-      ROS_INFO("[FleetManager]: loading the plugin '%s'",
+      ROS_INFO("[FleetManager]: loading the planner '%s'",
                new_planner.address.c_str());
       planner_list_.push_back(
           planner_loader_->createInstance(new_planner.address.c_str()));
     } catch (pluginlib::CreateClassException &ex1) {
-      ROS_ERROR("[FleetManager]: CreateClassException for the plugin '%s'",
+      ROS_ERROR("[FleetManager]: CreateClassException for the planner '%s'",
                 new_planner.address.c_str());
       ROS_ERROR("[FleetManager]: Error: %s", ex1.what());
       ros::shutdown();
     } catch (pluginlib::PluginlibException &ex) {
-      ROS_ERROR("[FleetManager]: PluginlibException for the plugin '%s'",
+      ROS_ERROR("[FleetManager]: PluginlibException for the planner '%s'",
                 new_planner.address.c_str());
       ROS_ERROR("[FleetManager]: Error: %s", ex.what());
       ros::shutdown();
@@ -117,20 +199,29 @@ void FleetManager::onInit() {
       std::map<std::string, PlannerParams>::iterator it;
       it = planners_.find(_planner_names_[i]);
 
-      ROS_INFO("[FleetManager]: initializing the plugin '%s'",
+      ROS_INFO("[FleetManager]: initializing the planner '%s'",
                it->second.address.c_str());
       planner_list_[i]->initialize(nh_, _planner_names_[i],
-                                   it->second.name_space);
+                                   it->second.name_space,
+                                   it->second.action_type);
+
+      // Creating planner action server
+      auto planner_server =
+          planner_list_[i]->createActionServer(nh_, ros::this_node::getName());
+
+      planners_action_servers_.insert(
+          std::pair<std::string, std::any>(_planner_names_[i], planner_server));
+
     } catch (std::runtime_error &ex) {
-      ROS_ERROR("[FleetManager]: exception caught during plugin "
+      ROS_ERROR("[FleetManager]: exception caught during planner "
                 "initialization: '%s'",
                 ex.what());
     }
   }
 
-  ROS_INFO("[FleetManager]: plugins were initialized");
+  ROS_INFO("[FleetManager]: planners were initialized");
 
-  // | ---------- check the existance of initial plugin --------- |
+  // | ---------- check the existance of initial planner --------- |
   {
     bool check = false;
 
@@ -145,25 +236,176 @@ void FleetManager::onInit() {
       }
     }
     if (!check) {
-      ROS_ERROR("[FleetManager]: the initial plugin (%s) is not within "
-                "the loaded plugins",
+      ROS_ERROR("[FleetManager]: the initial planner (%s) is not within "
+                "the loaded planners",
                 _initial_planner_name_.c_str());
       ros::shutdown();
     }
   }
 
-  // | ---------- activate the first plugin on the list --------- |
+  // | ---------- activate the first planner on the list --------- |
 
-  ROS_INFO("[FleetManager]: activating plugin with idx %d on the list "
+  ROS_INFO("[FleetManager]: activating planner with idx %d on the list "
            "(named: %s)",
-           _initial_planner_idx_, _planner_names_[_initial_planner_idx_].c_str());
+           _initial_planner_idx_,
+           _planner_names_[_initial_planner_idx_].c_str());
 
   planner_list_[_initial_planner_idx_]->activate();
   active_planner_idx_ = _initial_planner_idx_;
 
+  // | ----------------------- subscribers ---------------------- |
+
+  mrs_lib::SubscribeHandlerOptions shopts;
+  shopts.nh = nh_;
+  shopts.node_name = "IROCAutonomyTestManager";
+  shopts.no_message_timeout = no_message_timeout;
+  shopts.threadsafe = true;
+  shopts.autostart = true;
+  shopts.queue_size = 10;
+  shopts.transport_hints = ros::TransportHints().tcpNoDelay();
+
+  // | ------------------------- timers ------------------------- |
+
+  timer_main_ = nh_.createTimer(ros::Rate(main_timer_rate),
+                                &FleetManager::timerMain, this);
+  timer_feedback_ = nh_.createTimer(ros::Rate(feedback_timer_rate),
+                                    &FleetManager::timerFeedback, this);
+
   ROS_INFO("[FleetManager]: initialized");
   ROS_INFO("[FleetManager]: --------------------");
 }
+
+/*!
+ * Main Timer: Responsible of monitoring and validating the progress of the
+ * missions for each robot within the fleet.
+ *
+ * Workflow:
+ * 1. Provides a successful mission response if all robots finished
+ * successfully.
+ * 2. Aborts the mission for all robots if any robot reports a failure.
+ *
+ */
+void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
+
+  if (!is_initialized_) {
+    ROS_WARN_THROTTLE(
+        1, "[iroc_fleet_manager]: Waiting for nodelet initialization");
+    return;
+  }
+
+  // Activate based on asynchronous service call which locks the action server
+  // and fleet_mission_handler mutexes
+  if (active_mission_change_ || !active_mission_) {
+    return;
+  }
+
+  bool all_success = false;
+  bool got_all_results = false;
+  bool any_failure = false;
+
+  {
+    std::scoped_lock lock(mutex_action_server_);
+    {
+      std::scoped_lock lock(fleet_mission_handlers_.mtx);
+      // Check if any missions aborted early
+      any_failure = std::any_of(
+          fleet_mission_handlers_.handlers.begin(),
+          fleet_mission_handlers_.handlers.end(), [](const auto &handler) {
+            return handler.got_result && !handler.current_result.success;
+          });
+    }
+
+    if (any_failure) {
+      ROS_WARN("[IROCFleetManager]: Early failure detected, aborting mission.");
+      // TODO
+      // ResultType action_server_result;
+      // action_server_result.success = false;
+      // action_server_result.message =
+      //     "Early failure detected, aborting mission.";
+      // action_server_result.robot_results = getRobotResults();
+      // active_mission_ = false;
+      // action_server_ptr_->setAborted(action_server_result);
+      // cancelRobotClients();
+      ROS_INFO("[IROCFleetManager]: Mission aborted.");
+      return;
+    }
+
+    {
+      std::scoped_lock lock(fleet_mission_handlers_.mtx);
+      got_all_results =
+          std::all_of(fleet_mission_handlers_.handlers.begin(),
+                      fleet_mission_handlers_.handlers.end(),
+                      [](const auto &handler) { return handler.got_result; });
+
+      all_success = std::all_of(
+          fleet_mission_handlers_.handlers.begin(),
+          fleet_mission_handlers_.handlers.end(),
+          [](const auto &handler) { return handler.current_result.success; });
+    }
+
+    // Finish mission when we get all the robots result
+    if (got_all_results) {
+      if (!all_success) {
+        ROS_WARN("[IROCFleetManager]: Not all robots finished successfully, "
+                 "finishing mission. ");
+        // TODO
+        // ResultType action_server_result;
+        // action_server_result.success = false;
+        // action_server_result.message =
+        //     "Not all robots finished successfully, finishing mission";
+        // action_server_result.robot_results = getRobotResults();
+        // active_mission_ = false;
+        // action_server_ptr_->setAborted(action_server_result);
+        // cancelRobotClients();
+        ROS_INFO("[IROCFleetManager]: Mission finished.");
+        return;
+      }
+
+      ROS_INFO("[IROCFleetManager]: All robots finished successfully, "
+               "finishing mission.");
+      // TODO
+      // ResultType action_server_result;
+      // action_server_result.success = true;
+      // action_server_result.message =
+      //     "All robots finished successfully, mission finished";
+      // action_server_result.robot_results = getRobotResults();
+      //
+      // active_mission_ = false;
+      // action_server_ptr_->setSucceeded(action_server_result);
+      // cancelRobotClients();
+      ROS_INFO("[IROCFleetManager]: Mission finished.");
+    }
+  }
+}
+
+//}
+
+/* timerFeedback() //{ */
+/*!
+ * Continuously gathers the information from robots and wraps
+ * their feedback into a general feedback message.
+ *
+ * @tparam ActionType Type representing the action/mission type for the fleet
+ */
+void FleetManager::timerFeedback(
+    [[maybe_unused]] const ros::TimerEvent &event) {
+
+  if (!is_initialized_) {
+    ROS_WARN_THROTTLE(1,
+                      "[MissionHandler]: Waiting for nodelet initialization");
+    return;
+  }
+
+  // Activate based on asynchronous service call which locks the action server
+  // and fleet_mission_handler mutexes
+  if (active_mission_change_ || !active_mission_) {
+    return;
+  }
+
+  //TODO
+  // actionPublishFeedback();
+}
+//}
 
 } // namespace iroc_fleet_manager
 
