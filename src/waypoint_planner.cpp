@@ -12,25 +12,20 @@ namespace iroc_fleet_manager {
 
 namespace waypoint_planner {
 
-using ActionServer_T =
-    actionlib::SimpleActionServer<WaypointFleetManagerAction>;
+// using ActionServer_T =
+// actionlib::SimpleActionServer<WaypointFleetManagerAction>;
 /* class WaypointPlanner //{ */
 
 class WaypointPlanner : public iroc_fleet_manager::Planner {
 public:
   bool initialize(const ros::NodeHandle &parent_nh, const std::string &name,
                   const std::string &name_space,
-                  const std::string &action_type);
+                  const std::string &action_type) override;
 
-  bool activate(void);
-  void deactivate(void);
+  bool activate(void) override;
+  void deactivate(void) override;
   std::vector<iroc_mission_handler::MissionGoal>
-  processGoal(const std::any &goal) const override;
-  std::any createActionServer(ros::NodeHandle &nh,
-                              const std::string &action_name) override;
-  boost::shared_ptr<ResultBase> createResult() override;
-  boost::shared_ptr<GoalBase> createGoal() override;
-  boost::shared_ptr<FeedbackBase> createFeedback() override;
+  createGoal(const std::string &goal) const override;
 
   std::string _name_;
   std::string _action_type_;
@@ -38,7 +33,6 @@ public:
 private:
   bool is_initialized_ = false;
   bool is_active_ = false;
-  std::shared_ptr<ActionServer_T> action_server_;
 };
 
 bool WaypointPlanner::initialize(const ros::NodeHandle &parent_nh,
@@ -83,24 +77,8 @@ void WaypointPlanner::deactivate(void) {
 }
 
 std::vector<iroc_mission_handler::MissionGoal>
-WaypointPlanner::processGoal(const std::any &goal) const {
-
-  if (auto wp_goal = std::any_cast<const WaypointFleetManagerGoal>(&goal)) {
-    return wp_goal->robots;
-  }
-
-  ROS_ERROR_STREAM("[WaypointPlanner] got unsupported goal type "
-                   << goal.type().name());
-  return {};
-}
-
-std::any WaypointPlanner::createActionServer(ros::NodeHandle &nh,
-                                             const std::string &action_name) {
-  ROS_INFO("[WaypointPlanner] Created action server with type: %s ",
-           _action_type_.c_str());
-
-  action_server_ = std::make_shared<ActionServer_T>(nh, action_name, false);
-  return std::any(action_server_);
+createGoal(const std::string &goal) {
+  ROS_INFO("Received goal :%s , to implement function", goal.c_str());
 }
 
 } // namespace waypoint_planner

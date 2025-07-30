@@ -1,0 +1,12 @@
+# @type Defines the type of mission, should match with the dynamically loaded planners
+# @data JSON format string with the mission request  
+string type
+string data
+---
+# Define the result
+bool success
+string message
+iroc_mission_handler/MissionResult[] robot_results
+---
+# Define a feedback message
+iroc_fleet_manager/WaypointMissionInfo info

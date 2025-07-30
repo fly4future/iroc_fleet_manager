@@ -67,7 +67,6 @@ private:
     std::string name;
     PlannerParams params;
     boost::shared_ptr<iroc_fleet_manager::Planner> instance;
-    std::any action_server;
     std::mutex mutex_planner_list_;
   };
 
@@ -80,12 +79,9 @@ private:
   std::vector<std::string> _planner_names_; // list of planner names
   std::map<std::string, PlannerParams>
       planners_; // map between planner names and planner params
-  std::map<std::string, std::any>
-      planners_action_servers_; // map between planner names and action servers
   std::vector<boost::shared_ptr<iroc_fleet_manager::Planner>>
       planner_list_; // list of planners, routines are callable from this
   std::mutex mutex_planner_list_;
-  std::mutex mutex_action_server_;
 
   std::string _initial_planner_name_;
   int _initial_planner_idx_ = 0;
@@ -205,13 +201,6 @@ void FleetManager::onInit() {
                                    it->second.name_space,
                                    it->second.action_type);
 
-      // Creating planner action server
-      auto planner_server =
-          planner_list_[i]->createActionServer(nh_, ros::this_node::getName());
-
-      planners_action_servers_.insert(
-          std::pair<std::string, std::any>(_planner_names_[i], planner_server));
-
     } catch (std::runtime_error &ex) {
       ROS_ERROR("[FleetManager]: exception caught during planner "
                 "initialization: '%s'",
@@ -257,7 +246,7 @@ void FleetManager::onInit() {
 
   mrs_lib::SubscribeHandlerOptions shopts;
   shopts.nh = nh_;
-  shopts.node_name = "IROCAutonomyTestManager";
+  shopts.node_name = "FleetManager";
   shopts.no_message_timeout = no_message_timeout;
   shopts.threadsafe = true;
   shopts.autostart = true;
@@ -266,146 +255,12 @@ void FleetManager::onInit() {
 
   // | ------------------------- timers ------------------------- |
 
-  timer_main_ = nh_.createTimer(ros::Rate(main_timer_rate),
-                                &FleetManager::timerMain, this);
-  timer_feedback_ = nh_.createTimer(ros::Rate(feedback_timer_rate),
-                                    &FleetManager::timerFeedback, this);
-
   ROS_INFO("[FleetManager]: initialized");
   ROS_INFO("[FleetManager]: --------------------");
 }
 
-/*!
- * Main Timer: Responsible of monitoring and validating the progress of the
- * missions for each robot within the fleet.
- *
- * Workflow:
- * 1. Provides a successful mission response if all robots finished
- * successfully.
- * 2. Aborts the mission for all robots if any robot reports a failure.
- *
- */
-void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
-
-  if (!is_initialized_) {
-    ROS_WARN_THROTTLE(
-        1, "[iroc_fleet_manager]: Waiting for nodelet initialization");
-    return;
-  }
-
-  // Activate based on asynchronous service call which locks the action server
-  // and fleet_mission_handler mutexes
-  if (active_mission_change_ || !active_mission_) {
-    return;
-  }
-
-  bool all_success = false;
-  bool got_all_results = false;
-  bool any_failure = false;
-
-  {
-    std::scoped_lock lock(mutex_action_server_);
-    {
-      std::scoped_lock lock(fleet_mission_handlers_.mtx);
-      // Check if any missions aborted early
-      any_failure = std::any_of(
-          fleet_mission_handlers_.handlers.begin(),
-          fleet_mission_handlers_.handlers.end(), [](const auto &handler) {
-            return handler.got_result && !handler.current_result.success;
-          });
-    }
-
-    if (any_failure) {
-      ROS_WARN("[IROCFleetManager]: Early failure detected, aborting mission.");
-      // TODO
-      // ResultType action_server_result;
-      // action_server_result.success = false;
-      // action_server_result.message =
-      //     "Early failure detected, aborting mission.";
-      // action_server_result.robot_results = getRobotResults();
-      // active_mission_ = false;
-      // action_server_ptr_->setAborted(action_server_result);
-      // cancelRobotClients();
-      ROS_INFO("[IROCFleetManager]: Mission aborted.");
-      return;
-    }
-
-    {
-      std::scoped_lock lock(fleet_mission_handlers_.mtx);
-      got_all_results =
-          std::all_of(fleet_mission_handlers_.handlers.begin(),
-                      fleet_mission_handlers_.handlers.end(),
-                      [](const auto &handler) { return handler.got_result; });
-
-      all_success = std::all_of(
-          fleet_mission_handlers_.handlers.begin(),
-          fleet_mission_handlers_.handlers.end(),
-          [](const auto &handler) { return handler.current_result.success; });
-    }
-
-    // Finish mission when we get all the robots result
-    if (got_all_results) {
-      if (!all_success) {
-        ROS_WARN("[IROCFleetManager]: Not all robots finished successfully, "
-                 "finishing mission. ");
-        // TODO
-        // ResultType action_server_result;
-        // action_server_result.success = false;
-        // action_server_result.message =
-        //     "Not all robots finished successfully, finishing mission";
-        // action_server_result.robot_results = getRobotResults();
-        // active_mission_ = false;
-        // action_server_ptr_->setAborted(action_server_result);
-        // cancelRobotClients();
-        ROS_INFO("[IROCFleetManager]: Mission finished.");
-        return;
-      }
-
-      ROS_INFO("[IROCFleetManager]: All robots finished successfully, "
-               "finishing mission.");
-      // TODO
-      // ResultType action_server_result;
-      // action_server_result.success = true;
-      // action_server_result.message =
-      //     "All robots finished successfully, mission finished";
-      // action_server_result.robot_results = getRobotResults();
-      //
-      // active_mission_ = false;
-      // action_server_ptr_->setSucceeded(action_server_result);
-      // cancelRobotClients();
-      ROS_INFO("[IROCFleetManager]: Mission finished.");
-    }
-  }
-}
-
 //}
 
-/* timerFeedback() //{ */
-/*!
- * Continuously gathers the information from robots and wraps
- * their feedback into a general feedback message.
- *
- * @tparam ActionType Type representing the action/mission type for the fleet
- */
-void FleetManager::timerFeedback(
-    [[maybe_unused]] const ros::TimerEvent &event) {
-
-  if (!is_initialized_) {
-    ROS_WARN_THROTTLE(1,
-                      "[MissionHandler]: Waiting for nodelet initialization");
-    return;
-  }
-
-  // Activate based on asynchronous service call which locks the action server
-  // and fleet_mission_handler mutexes
-  if (active_mission_change_ || !active_mission_) {
-    return;
-  }
-
-  //TODO
-  // actionPublishFeedback();
-}
-//}
 
 } // namespace iroc_fleet_manager
 

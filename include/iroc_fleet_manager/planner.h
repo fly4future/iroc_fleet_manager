@@ -1,10 +1,7 @@
 #ifndef IROC_FLEET_MANAGER_PLANNER
 #define IROC_FLEET_MANAGER_PLANNER
 
-#include <actionlib/server/simple_action_server.h>
-#include <any>
 #include <iroc_mission_handler/MissionAction.h>
-#include <memory>
 #include <ros/ros.h>
 
 namespace iroc_fleet_manager {
@@ -43,26 +40,11 @@ public:
 
   /**
    * @brief Request for planner to process an incoming goal
-   * @param goal of the planner, specific type to be declared in child classes 
+   * @param incoming goal for the planner, string with JSON format type
    * @return the goals of the robots in the fleet.
    */
-
   virtual std::vector<iroc_mission_handler::MissionGoal>
-  processGoal(const std::any &goal) const = 0;
-
-  /**
-   * @brief Creation of action server
-   * @param nh: the node handle of Fleet Manager
-   * @param action_name: name of the action
-   * @return action server unique_ptr for specific action type
-   */
-  virtual std::any createActionServer(ros::NodeHandle &nh,
-                                      const std::string &action_name) = 0;
-
-  // Factory methods - each planner creates its specific types
-  virtual boost::shared_ptr<GoalBase> createGoal() = 0;
-  virtual boost::shared_ptr<ResultBase> createResult() = 0;
-  virtual boost::shared_ptr<FeedbackBase> createFeedback() = 0;
+  createGoal(const std::string &goal) const = 0;
 
   virtual ~Planner() = default;
 };
