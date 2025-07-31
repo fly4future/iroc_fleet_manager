@@ -36,6 +36,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 #actions
 add_action_files(DIRECTORY action FILES
+  FleetManager.action
   WaypointFleetManager.action
   AutonomyTest.action
   CoverageMission.action

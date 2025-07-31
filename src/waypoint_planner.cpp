@@ -1,12 +1,5 @@
-#include <memory>
-#include <ros/ros.h>
-
-/* includes //{ */
-#include <any>
 #include <iroc_fleet_manager/WaypointFleetManagerAction.h>
 #include <iroc_fleet_manager/planner.h>
-
-//}
 
 namespace iroc_fleet_manager {
 
@@ -77,8 +70,10 @@ void WaypointPlanner::deactivate(void) {
 }
 
 std::vector<iroc_mission_handler::MissionGoal>
-createGoal(const std::string &goal) {
+WaypointPlanner::createGoal(const std::string &goal) const {
+  std::vector<iroc_mission_handler::MissionGoal> robots;
   ROS_INFO("Received goal :%s , to implement function", goal.c_str());
+  return robots;
 }
 
 } // namespace waypoint_planner
