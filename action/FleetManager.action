@@ -1,7 +1,7 @@
 # @type Defines the type of mission, should match with the dynamically loaded planners
 # @data JSON format string with the mission request  
 string type
-string data
+string details
 ---
 # Define the result
 bool success

@@ -3,8 +3,11 @@
 
 #include <iroc_mission_handler/MissionAction.h>
 #include <ros/ros.h>
+#include <iroc_fleet_manager/json_var_parser.h>
 
 namespace iroc_fleet_manager {
+
+using json = nlohmann::json;
 
 class Planner {
 public:

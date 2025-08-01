@@ -79,6 +79,7 @@ include_directories(
 ## Declare a C++ library
 add_library(FleetManager
   src/fleet_manager.cpp
+  src/json_var_parser.cpp
   )
 
 add_dependencies(FleetManager

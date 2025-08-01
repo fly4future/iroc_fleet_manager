@@ -153,6 +153,8 @@ private:
   std::tuple<std::string, std::string> processFeedbackMsg() const;
   void cancelRobotClients();
   std::vector<iroc_mission_handler::MissionResult> getRobotResults();
+  std::vector<iroc_mission_handler::MissionGoal>
+  processGoal(const iroc_fleet_manager::FleetManagerGoal &goal);
 };
 
 void FleetManager::onInit() {
@@ -253,37 +255,37 @@ void FleetManager::onInit() {
 
   ROS_INFO("[FleetManager]: planners were initialized");
 
-  // | ---------- check the existance of initial planner --------- |
-  {
-    bool check = false;
+  // // | ---------- check the existance of initial planner --------- |
+  // {
+  //   bool check = false;
+  //
+  //   for (int i = 0; i < int(_planner_names_.size()); i++) {
+  //
+  //     std::string planner_name = _planner_names_[i];
+  //
+  //     if (planner_name == _initial_planner_name_) {
+  //       check = true;
+  //       _initial_planner_idx_ = i;
+  //       break;
+  //     }
+  //   }
+  //   if (!check) {
+  //     ROS_ERROR("[FleetManager]: the initial planner (%s) is not within "
+  //               "the loaded planners",
+  //               _initial_planner_name_.c_str());
+  //     ros::shutdown();
+  //   }
+  // }
 
-    for (int i = 0; i < int(_planner_names_.size()); i++) {
-
-      std::string planner_name = _planner_names_[i];
-
-      if (planner_name == _initial_planner_name_) {
-        check = true;
-        _initial_planner_idx_ = i;
-        break;
-      }
-    }
-    if (!check) {
-      ROS_ERROR("[FleetManager]: the initial planner (%s) is not within "
-                "the loaded planners",
-                _initial_planner_name_.c_str());
-      ros::shutdown();
-    }
-  }
-
-  // | ---------- activate the first planner on the list --------- |
-
-  ROS_INFO("[FleetManager]: activating planner with idx %d on the list "
-           "(named: %s)",
-           _initial_planner_idx_,
-           _planner_names_[_initial_planner_idx_].c_str());
-
-  planner_list_[_initial_planner_idx_]->activate();
-  active_planner_idx_ = _initial_planner_idx_;
+  // // | ---------- activate the first planner on the list --------- |
+  //
+  // ROS_INFO("[FleetManager]: activating planner with idx %d on the list "
+  //          "(named: %s)",
+  //          _initial_planner_idx_,
+  //          _planner_names_[_initial_planner_idx_].c_str());
+  //
+  // planner_list_[_initial_planner_idx_]->activate();
+  // active_planner_idx_ = _initial_planner_idx_;
 
   // | ----------------------- subscribers ---------------------- |
 
@@ -314,6 +316,7 @@ void FleetManager::onInit() {
 
   ROS_INFO("[FleetManager]: initialized");
   ROS_INFO("[FleetManager]: --------------------");
+  is_initialized_ = true;
 }
 
 /*!
@@ -330,8 +333,8 @@ void FleetManager::onInit() {
 void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
 
   if (!is_initialized_) {
-    ROS_WARN_THROTTLE(
-        1, "[iroc_fleet_manager]: Waiting for nodelet initialization");
+    // ROS_WARN_THROTTLE(
+    //     1, "[iroc_fleet_manager]: Waiting for nodelet initialization");
     return;
   }
 
@@ -426,8 +429,9 @@ void FleetManager::timerFeedback(
     [[maybe_unused]] const ros::TimerEvent &event) {
 
   if (!is_initialized_) {
-    ROS_WARN_THROTTLE(1,
-                      "[MissionHandler]: Waiting for nodelet initialization");
+    // ROS_WARN_THROTTLE(1,
+    //                   "[MissionHandler]: Waiting for nodelet
+    //                   initialization");
     return;
   }
 
@@ -560,10 +564,10 @@ void FleetManager::actionCallbackGoal() {
     return;
   }
 
-  // Call the virtual method (will call derived class implementation)
-  // TODO: here we will call the active planner to process the goal
-  // const auto mission_robots = processGoal(*new_action_server_goal);
-  std::vector<iroc_mission_handler::MissionGoal> mission_robots; // to remove
+  const auto mission_robots = processGoal(*new_action_server_goal);
+  ROS_INFO("[FleetManager] I will do something soon!");
+
+  return; // to remove
 
   // Start each robot action/service clients with mission_handler
   const auto results = sendRobotGoals(mission_robots);
@@ -833,6 +837,43 @@ FleetManager::sendRobotGoals(
   }
 
   return robot_results;
+}
+
+std::vector<iroc_mission_handler::MissionGoal>
+FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
+  // Here we make the validation with the planners
+  // First we check if the type matches the loaded planners
+  // check the existance of the requested planner
+  bool check = false;
+  int planner_idx;
+
+  for (int i = 0; i < int(_planner_names_.size()); i++) {
+    std::string planner_name = _planner_names_[i];
+
+    if (planner_name == goal.type) {
+      check = true;
+      planner_idx = i;
+      break;
+    }
+  }
+  if (!check) {
+    ROS_ERROR("[FleetManager]: the initial planner (%s) is not within "
+              "the loaded planners",
+              goal.type.c_str());
+  }
+  ROS_INFO(
+      "[FleetManager] received a request for %s, activating the planner...",
+      goal.type.c_str());
+
+  // activate the planner
+  planner_list_[planner_idx]->activate();
+  active_planner_idx_ = planner_idx;
+
+  // Validate the goal with the planner 
+  const auto mission_robots =
+      planner_list_[planner_idx]->createGoal(goal.details);
+
+  return mission_robots;
 }
 
 /*!

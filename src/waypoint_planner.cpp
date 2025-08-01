@@ -71,9 +71,34 @@ void WaypointPlanner::deactivate(void) {
 
 std::vector<iroc_mission_handler::MissionGoal>
 WaypointPlanner::createGoal(const std::string &goal) const {
-  std::vector<iroc_mission_handler::MissionGoal> robots;
-  ROS_INFO("Received goal :%s , to implement function", goal.c_str());
-  return robots;
+  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
+  ROS_INFO("Received goal :%s , (WIP) to implement function", goal.c_str());
+
+  json json_msg;
+  try {
+    json_msg = json::parse(goal);
+  } catch (const json::exception &e) {
+    ROS_ERROR_STREAM_THROTTLE(
+        1.0, "[WaypointPlanner]: Bad json input: " << e.what());
+  }
+
+  json robots;
+  const auto succ = parse_vars(json_msg, {{"robots", &robots}});
+
+  // if (!succ)
+  // return;
+
+  if (!robots.is_array()) {
+    ROS_WARN_STREAM_THROTTLE(1.0, "[WaypointPlanner]: Bad mission input: Expected an array.");
+
+    // res.status = httplib::StatusCode::BadRequest_400;
+    // ss << "Bad mission input: Expected an array";
+    // json json_response_msg = {{"message", ss.str()}};
+    // res.set_content(json_response_msg.dump(), "application/json");
+    // return;
+  }
+
+  return mission_robots;
 }
 
 } // namespace waypoint_planner
