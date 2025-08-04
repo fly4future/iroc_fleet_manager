@@ -1,19 +1,30 @@
-#include "iroc_fleet_manager/planner.h"
+// ROS
 #include "nodelet/nodelet.h"
-#include <actionlib/client/simple_action_client.h>
-#include <actionlib/client/terminal_state.h>
-#include <actionlib/server/simple_action_server.h>
-#include <mrs_lib/subscribe_handler.h>
-
-#include <iroc_fleet_manager/FleetManagerAction.h>
-
-#include <boost/smart_ptr/shared_ptr.hpp>
-#include <mrs_lib/mutex.h>
-#include <mrs_lib/param_loader.h>
-#include <numeric>
+#include "ros/console.h"
 #include <pluginlib/class_loader.h>
 #include <std_srvs/SetBool.h>
 #include <std_srvs/Trigger.h>
+
+// Simple action library
+#include <actionlib/client/simple_action_client.h>
+#include <actionlib/client/terminal_state.h>
+#include <actionlib/server/simple_action_server.h>
+
+// Fleet manager
+#include "iroc_fleet_manager/planner.h"
+#include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
+#include <iroc_fleet_manager/FleetManagerAction.h>
+
+// MRS Lib
+#include <boost/smart_ptr/shared_ptr.hpp>
+#include <mrs_lib/mutex.h>
+#include <mrs_lib/param_loader.h>
+#include <mrs_lib/subscribe_handler.h>
+#include <mrs_msgs/String.h>
+
+// Third party
+#include <boost/smart_ptr/shared_ptr.hpp>
+#include <numeric>
 
 namespace iroc_fleet_manager {
 
@@ -140,6 +151,12 @@ private:
   void timerMain(const ros::TimerEvent &event);
   void timerFeedback(const ros::TimerEvent &event);
 
+  bool changeFleetMissionStateCallback(mrs_msgs::String::Request &req,
+                                       mrs_msgs::String::Response &res);
+  bool changeRobotMissionStateCallback(
+      iroc_fleet_manager::ChangeRobotMissionStateSrv::Request &req,
+      iroc_fleet_manager::ChangeRobotMissionStateSrv::Response &res);
+
   // helper methods
   std::map<std::string, FleetManager::result_t>
   // check this, we could generalize the interaction MissionHandler
@@ -155,6 +172,14 @@ private:
   std::vector<iroc_mission_handler::MissionResult> getRobotResults();
   std::vector<iroc_mission_handler::MissionGoal>
   processGoal(const iroc_fleet_manager::FleetManagerGoal &goal);
+
+  template <typename Svc_T>
+  result_t callService(ros::ServiceClient &sc,
+                       typename Svc_T::Request req) const;
+
+  template <typename Svc_T> result_t callService(ros::ServiceClient &sc) const;
+
+  result_t callService(ros::ServiceClient &sc, const bool val) const;
 };
 
 void FleetManager::onInit() {
@@ -183,7 +208,7 @@ void FleetManager::onInit() {
       param_loader.loadParam2<ros::Duration>("no_message_timeout");
 
   if (!param_loader.loadedSuccessfully()) {
-    ROS_ERROR("[IROCAutonomyTestManager]: Could not load all parameters!");
+    ROS_ERROR("[FleetManager]: Could not load all parameters!");
     ros::shutdown();
   }
 
@@ -305,6 +330,21 @@ void FleetManager::onInit() {
   timer_feedback_ = nh_.createTimer(ros::Rate(feedback_timer_rate),
                                     &FleetManager::timerFeedback, this);
 
+  // | --------------------- service servers -------------------- |
+
+  ss_change_fleet_mission_state_ = nh_.advertiseService(
+      nh_.resolveName("svc/change_fleet_mission_state"),
+      &FleetManager::changeFleetMissionStateCallback, this);
+  ROS_INFO("[FleetManager]: Created ServiceServer on service "
+           "\'svc_server/change_mission_state\' -> \'%s\'",
+           ss_change_fleet_mission_state_.getService().c_str());
+  ss_change_robot_mission_state_ = nh_.advertiseService(
+      nh_.resolveName("svc/change_robot_mission_state"),
+      &FleetManager::changeRobotMissionStateCallback, this);
+  ROS_INFO("[FleetManager]: Created ServiceServer on service "
+           "\'svc_server/change_robot_mission_state\' -> \'%s\'",
+           ss_change_robot_mission_state_.getService().c_str());
+
   // // | ------------------ action server methods ----------------- |
   action_server_ptr_ =
       std::make_unique<ActionServer_T>(nh_, ros::this_node::getName(), false);
@@ -360,7 +400,7 @@ void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
     }
 
     if (any_failure) {
-      ROS_WARN("[IROCFleetManager]: Early failure detected, aborting mission.");
+      ROS_WARN("[FleetManager]: Early failure detected, aborting mission.");
       ResultType action_server_result;
       action_server_result.success = false;
       action_server_result.message =
@@ -369,7 +409,7 @@ void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
       active_mission_ = false;
       action_server_ptr_->setAborted(action_server_result);
       cancelRobotClients();
-      ROS_INFO("[IROCFleetManager]: Mission aborted.");
+      ROS_INFO("[FleetManager]: Mission aborted.");
       return;
     }
 
@@ -389,7 +429,7 @@ void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
     // Finish mission when we get all the robots result
     if (got_all_results) {
       if (!all_success) {
-        ROS_WARN("[IROCFleetManager]: Not all robots finished successfully, "
+        ROS_WARN("[FleetManager]: Not all robots finished successfully, "
                  "finishing mission. ");
         ResultType action_server_result;
         action_server_result.success = false;
@@ -399,11 +439,11 @@ void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
         active_mission_ = false;
         action_server_ptr_->setAborted(action_server_result);
         cancelRobotClients();
-        ROS_INFO("[IROCFleetManager]: Mission finished.");
+        ROS_INFO("[FleetManager]: Mission finished.");
         return;
       }
 
-      ROS_INFO("[IROCFleetManager]: All robots finished successfully, "
+      ROS_INFO("[FleetManager]: All robots finished successfully, "
                "finishing mission.");
       ResultType action_server_result;
       action_server_result.success = true;
@@ -414,7 +454,7 @@ void FleetManager::timerMain([[maybe_unused]] const ros::TimerEvent &event) {
       active_mission_ = false;
       action_server_ptr_->setSucceeded(action_server_result);
       cancelRobotClients();
-      ROS_INFO("[IROCFleetManager]: Mission finished.");
+      ROS_INFO("[FleetManager]: Mission finished.");
     }
   }
 }
@@ -443,6 +483,196 @@ void FleetManager::timerFeedback(
 
   actionPublishFeedback();
 }
+
+// | ----------------- service server callback ---------------- |
+
+/*!
+
+ * Handles the incoming request to change the
+ * state of the mission: Start, Pause or Stop.
+ *
+ * @tparam ActionType Type representing the action/mission type for the fleet
+ */
+bool FleetManager::changeFleetMissionStateCallback(
+    mrs_msgs::String::Request &req, mrs_msgs::String::Response &res) {
+  active_mission_change_ = true;
+  std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
+
+  ROS_INFO_STREAM("[FleetManager]: Received a " << req.value
+                                                << " request for the fleet");
+  std::stringstream ss;
+  bool success = true;
+  if (action_server_ptr_->isActive()) {
+    if (req.value == "start") {
+      ROS_INFO_STREAM("[FleetManager]: Calling mission activation.");
+      for (auto &rh : fleet_mission_handlers_.handlers) {
+        const auto resp =
+            callService<std_srvs::Trigger>(rh.sc_robot_activation);
+        if (!resp.success) {
+          success = false;
+          ROS_WARN_STREAM("[FleetManager]: "
+                          << "Call for robot \"" << rh.robot_name
+                          << "\" was not successful with message: "
+                          << resp.message << "\n");
+          ss << "Call for robot \"" << rh.robot_name
+             << "\" was not successful with message: " << resp.message << "\n";
+        }
+      }
+    } else if (req.value == "pause") {
+      ROS_INFO_STREAM("[FleetManager]: Calling mission pausing.");
+      for (auto &rh : fleet_mission_handlers_.handlers) {
+        const auto resp = callService<std_srvs::Trigger>(rh.sc_robot_pausing);
+        if (!resp.success) {
+          success = false;
+          ROS_WARN_STREAM("[FleetManager]: "
+                          << "Call for robot \"" << rh.robot_name
+                          << "\" was not successful with message: "
+                          << resp.message << "\n");
+          ss << "Call for robot \"" << rh.robot_name
+             << "\" was not successful with message: " << resp.message << "\n";
+        }
+      }
+    } else if (req.value == "stop") {
+      ROS_INFO_STREAM("[FleetManager]: Calling mission stopping.");
+      for (auto &rh : fleet_mission_handlers_.handlers) {
+        const auto action_client_state = rh.action_client_ptr->getState();
+        if (action_client_state.isDone()) {
+          ss << "robot \"" << rh.robot_name << "\" mission done, skipping\n";
+          ROS_WARN_STREAM("[FleetManager]: Robot \""
+                          << rh.robot_name << "\" mission done. Skipping.");
+        } else {
+          ROS_INFO_STREAM("[FleetManager]: Cancelling \"" << rh.robot_name
+                                                          << "\" mission.");
+          rh.action_client_ptr->cancelGoal();
+          rh.action_client_ptr->waitForResult(ros::Duration(1.0));
+        }
+      }
+    } else {
+      success = false;
+      ss << "Unsupported type\n";
+    }
+
+  } else {
+    success = false;
+    ss << "No active mission.\n";
+  }
+
+  if (success) {
+    ROS_INFO_STREAM("[FleetManager]: Successfully processed the  "
+                    << req.value << " request.");
+    ss << "Successfully processed the  " << req.value << " request.\n";
+  } else {
+    ROS_WARN("[FleetManager]: Failure: %s", res.message.c_str());
+  };
+
+  res.success = success;
+  res.message = ss.str();
+  active_mission_change_ = false;
+  return true;
+}
+
+/*!
+ * Handles the incoming request to change the
+ * state of an individual robot mission: Start, Pause or Stop.
+ *
+ * @tparam ActionType Type representing the action/mission type for the fleet
+ */
+bool FleetManager::changeRobotMissionStateCallback(
+    iroc_fleet_manager::ChangeRobotMissionStateSrv::Request &req,
+    iroc_fleet_manager::ChangeRobotMissionStateSrv::Response &res) {
+
+  active_mission_change_ = true;
+  std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
+  ROS_INFO_STREAM("[FleetManager]: Received a " << req.type << " request for "
+                                                << req.robot_name);
+  std::stringstream ss;
+  auto *rh_ptr = findRobotHandler(req.robot_name, fleet_mission_handlers_);
+  if (rh_ptr == nullptr) {
+    ss << "robot \"" << req.robot_name
+       << "\" not found as a part of the mission, skipping\n";
+    ROS_WARN_STREAM("[FleetManager]: Robot \""
+                    << req.robot_name
+                    << "\" not found as a part of the mission. Skipping.");
+    res.message = ss.str();
+    res.success = false;
+    return true;
+  }
+
+  bool success = true;
+  if (action_server_ptr_->isActive()) {
+    if (req.type == "start") {
+      ROS_INFO_STREAM("[FleetManager]: Calling mission pausing for robot: "
+                      << req.robot_name << ".");
+      const auto resp =
+          callService<std_srvs::Trigger>(rh_ptr->sc_robot_activation);
+      if (!resp.success) {
+        success = false;
+        ROS_WARN_STREAM("[FleetManager]: "
+                        << "Call for robot \"" << req.robot_name
+                        << "\" was not successful with message: "
+                        << resp.message << "\n");
+        ss << "Call for robot \"" << req.robot_name
+           << "\" was not successful with message: " << resp.message << "\n";
+      } else {
+        ss << "Call successful.\n";
+      }
+    } else if (req.type == "pause") {
+      ROS_INFO_STREAM("[FleetManager]: Calling mission pausing for robot: "
+                      << req.robot_name << ".");
+      const auto resp =
+          callService<std_srvs::Trigger>(rh_ptr->sc_robot_pausing);
+      if (!resp.success) {
+        success = false;
+        ROS_WARN_STREAM("[FleetManager]: "
+                        << "Call for robot \"" << req.robot_name
+                        << "\" was not successful with message: "
+                        << resp.message << "\n");
+        ss << "Call for robot \"" << req.robot_name
+           << "\" was not successful with message: " << resp.message << "\n";
+      } else {
+        ss << "Call successful.\n";
+      }
+    } else if (req.type == "stop") {
+      ROS_INFO_STREAM("[FleetManager]: Calling mission stopping.");
+      const auto action_client_state = rh_ptr->action_client_ptr->getState();
+      if (action_client_state.isDone()) {
+        ss << "robot \"" << rh_ptr->robot_name << "\" mission done, skipping\n";
+        success = false;
+        ROS_WARN_STREAM("[FleetManager]: Robot \""
+                        << rh_ptr->robot_name << "\" mission done. Skipping.");
+      } else {
+        ss << "Call successful.\n";
+        ROS_INFO_STREAM("[FleetManager]: Cancelling \"" << rh_ptr->robot_name
+                                                        << "\" mission.");
+        rh_ptr->action_client_ptr->cancelGoal();
+        rh_ptr->action_client_ptr->waitForResult(ros::Duration(1.0));
+      }
+    } else {
+      success = false;
+      ss << "Unsupported type\n";
+    }
+
+  } else {
+    success = false;
+    ss << "No active mission\n";
+  }
+
+  if (success) {
+    ROS_INFO_STREAM("[FleetManager]: Successfully processed the  "
+                    << req.type << " request for " << req.robot_name << ".");
+    ss << "Successfully processed the  " << req.type << " request for "
+       << req.robot_name << " <.\n";
+  } else {
+    ROS_WARN("[FleetManager]: Failure: %s", res.message.c_str());
+  };
+
+  res.success = success;
+  res.message = ss.str();
+  active_mission_change_ = false;
+  return true;
+}
+
+//}
 
 // | ---------------------- action server callbacks --------------------- |
 
@@ -565,9 +795,9 @@ void FleetManager::actionCallbackGoal() {
   }
 
   const auto mission_robots = processGoal(*new_action_server_goal);
-  ROS_INFO("[FleetManager] I will do something soon!");
+  ROS_INFO("[FleetManager] I am doing something now!");
 
-  return; // to remove
+  // return; // to remove
 
   // Start each robot action/service clients with mission_handler
   const auto results = sendRobotGoals(mission_robots);
@@ -610,16 +840,16 @@ void FleetManager::actionCallbackPreempt() {
   if (action_server_ptr_->isActive()) {
     if (action_server_ptr_->isNewGoalAvailable()) {
 
-      ROS_INFO("[IROCFleetManager]: Preemption toggled for ActionServer.");
+      ROS_INFO("[FleetManager]: Preemption toggled for ActionServer.");
       ResultType action_server_result;
       action_server_result.success = false;
       action_server_result.message = "Preempted by client";
-      ROS_WARN_STREAM("[IROCFleetManager]: Preempted by the client");
+      ROS_WARN_STREAM("[FleetManager]: Preempted by the client");
       action_server_ptr_->setPreempted(action_server_result);
       cancelRobotClients();
-      ROS_INFO("[IROCFleetManager]: Mission stopped by preemption.");
+      ROS_INFO("[FleetManager]: Mission stopped by preemption.");
     } else {
-      ROS_INFO("[IROCFleetManager]: Cancel toggled for ActionServer.");
+      ROS_INFO("[FleetManager]: Cancel toggled for ActionServer.");
 
       ResultType action_server_result;
       action_server_result.success = false;
@@ -627,7 +857,7 @@ void FleetManager::actionCallbackPreempt() {
       active_mission_ = false;
       action_server_ptr_->setAborted(action_server_result);
       cancelRobotClients();
-      ROS_INFO("[IROCFleetManager]: Mission stopped.");
+      ROS_INFO("[FleetManager]: Mission stopped.");
     }
   }
 }
@@ -869,9 +1099,14 @@ FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
   planner_list_[planner_idx]->activate();
   active_planner_idx_ = planner_idx;
 
-  // Validate the goal with the planner 
+  // Validate the goal with the planner
   const auto mission_robots =
       planner_list_[planner_idx]->createGoal(goal.details);
+
+  // Debug
+  for (const auto &robot : mission_robots) {
+    ROS_INFO("[FleetManager] Got : %s ", robot.name.c_str());
+  }
 
   return mission_robots;
 }
@@ -1034,6 +1269,47 @@ void FleetManager::cancelRobotClients() {
     }
   }
 }
+
+/* callService() //{ */
+template <typename Svc_T>
+typename FleetManager::result_t
+FleetManager::callService(ros::ServiceClient &sc,
+                          typename Svc_T::Request req) const {
+  typename Svc_T::Response res;
+  if (sc.call(req, res)) {
+    if (res.success) {
+      ROS_INFO_STREAM("Called service \""
+                      << sc.getService() << "\" with response \"" << res.message
+                      << "\".");
+      return {true, res.message};
+    } else {
+      ROS_WARN_STREAM("Called service \""
+                      << sc.getService() << "\" with response \"" << res.message
+                      << "\".");
+      return {false, res.message};
+    }
+  } else {
+    const std::string msg =
+        "Failed to call service \"" + sc.getService() + "\".";
+    ROS_WARN_STREAM(msg);
+    return {false, msg};
+  }
+}
+
+template <typename Svc_T>
+typename FleetManager::result_t
+FleetManager::callService(ros::ServiceClient &sc) const {
+  return callService<Svc_T>(sc, {});
+}
+
+typename FleetManager::result_t
+FleetManager::callService(ros::ServiceClient &sc, const bool val) const {
+  using svc_t = std_srvs::SetBool;
+  svc_t::Request req;
+  req.data = val;
+  return callService<svc_t>(sc, req);
+}
+//}
 
 } // namespace iroc_fleet_manager
 

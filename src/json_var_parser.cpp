@@ -8,7 +8,7 @@ bool parse_var(const json &js, std::pair<std::string_view, parseable_t> &var) {
 
   if (!js.contains(var_name)) {
     ROS_ERROR_STREAM_THROTTLE(
-        1.0, "[IROCBridge]: JSON doesn't have the expected member \""
+        1.0, "[Var-parser]: JSON doesn't have the expected member \""
                  << var_name << "\".");
     return false;
   }
@@ -22,7 +22,7 @@ bool parse_var(const json &js, std::pair<std::string_view, parseable_t> &var) {
         } catch (json::exception &e) {
           json type_check = T{};
           ROS_ERROR_STREAM_THROTTLE(
-              1.0, "[IROCBridge]: Cannot parse member \""
+              1.0, "[Var-parser]: Cannot parse member \""
                        << var_name << "\" (value: " << js.at(var_name)
                        << ") as type \"" << type_check.type_name()
                        << "\": " << e.what());
