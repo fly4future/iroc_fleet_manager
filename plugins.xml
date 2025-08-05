@@ -3,3 +3,8 @@
     <description>WaypointPlanner</description>
   </class>
 </library>
+<library path="lib/libCoveragePlanner">
+  <class name="iroc_fleet_manager/CoveragePlanner" type="iroc_fleet_manager::waypoint_planner::CoveragePlanner" base_class_type="iroc_fleet_manager::Planner">
+    <description>CoveragePlanner</description>
+  </class>
+</library>

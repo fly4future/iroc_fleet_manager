@@ -18,7 +18,7 @@ public:
 
   bool activate(void) override;
   void deactivate(void) override;
-  std::vector<iroc_mission_handler::MissionGoal>
+  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
   createGoal(const std::string &goal) const override;
 
   std::string _name_;
@@ -70,9 +70,13 @@ void WaypointPlanner::deactivate(void) {
   ROS_INFO("[%s]: deactivated", _name_.c_str());
 }
 
-std::vector<iroc_mission_handler::MissionGoal>
+std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
 WaypointPlanner::createGoal(const std::string &goal) const {
-  ROS_INFO("Received goal :%s , (WIP) to implement function", goal.c_str()); // to remove
+  ROS_INFO("Received goal :%s ",
+           goal.c_str()); // to remove
+                          //
+  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
+  result_t result;
 
   json json_msg;
   try {
@@ -80,22 +84,28 @@ WaypointPlanner::createGoal(const std::string &goal) const {
   } catch (const json::exception &e) {
     ROS_ERROR_STREAM_THROTTLE(
         1.0, "[WaypointPlanner]: Bad json input: " << e.what());
+    result.success = false;
+    result.message = "BadRequest_400: Bad JSON input";
+    return std::make_tuple(result, mission_robots);
   }
 
   json robots;
   const auto succ = parse_vars(json_msg, {{"robots", &robots}});
 
-  // if (!succ)
-  // return;
+  if (!succ) {
+    result.success = false;
+    result.message = "Missing robots key";
+    return std::make_tuple(result, mission_robots);
+  }
 
   if (!robots.is_array()) {
     ROS_WARN_STREAM_THROTTLE(
         1.0, "[WaypointPlanner]: Bad mission input: Expected an array.");
-    // TODO: return a proper response
+    result.success = false;
+    result.message = "Bad mission input, 'robots' key is not an array";
+    return std::make_tuple(result, mission_robots);
   }
 
-  // Process the robots assigned into the mission
-  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   mission_robots.reserve(robots.size());
 
   for (const auto &robot : robots) {
@@ -112,34 +122,40 @@ WaypointPlanner::createGoal(const std::string &goal) const {
                            {"points", &points},
                            {"terminal_action", &terminal_action}});
 
-    if (!succ)
-      ROS_WARN("(WIP) Something failed, to be implemented");
-    // return; // TODO: return a proper response
+    if (!succ) {
+      ROS_WARN("Failure parsing the expected format for the waypoint mission.");
+      result.success = false;
+      result.message =
+          "Failure parsing the expected keys for the waypoint mission.";
+      return std::make_tuple(result, mission_robots);
+    }
 
     if (!points.is_array()) {
       ROS_ERROR_STREAM_THROTTLE(
           1.0, "[WaypointPlanner]: Bad points input: Expected an array.");
-      // return; // TODO: return a proper response
+      result.success = false;
+      result.message = "Bad mission input, 'points' key is not an array";
+      return std::make_tuple(result, mission_robots);
     }
 
     // TODO: How will validate the available robots?
     {
-    // std::stringstream ss;
-    // std::scoped_lock lck(robot_handlers_.mtx);
-    // auto *rh_ptr = findRobotHandler(name, robot_handlers_);
-    //
-    // if (!rh_ptr) {
-    //   ROS_ERROR_STREAM_THROTTLE(1.0, "[IROCBridge]: Robot \""
-    //                                      << name
-    //                                      << "\" not found. Ignoring.");
-    //   res.status = httplib::StatusCode::BadRequest_400;
-    //   ss << "robot \"" << name << "\" not found, ignoring";
-    //   json json_response_msg = {{"message", ss.str()}};
-    //   res.set_content(json_response_msg.dump(), "application/json");
-    //   return;
-    // }
+      // std::stringstream ss;
+      // std::scoped_lock lck(robot_handlers_.mtx);
+      // auto *rh_ptr = findRobotHandler(name, robot_handlers_);
+      //
+      // if (!rh_ptr) {
+      //   ROS_ERROR_STREAM_THROTTLE(1.0, "[IROCBridge]: Robot \""
+      //                                      << name
+      //                                      << "\" not found. Ignoring.");
+      //   res.status = httplib::StatusCode::BadRequest_400;
+      //   ss << "robot \"" << name << "\" not found, ignoring";
+      //   json json_response_msg = {{"message", ss.str()}};
+      //   res.set_content(json_response_msg.dump(), "application/json");
+      //   return;
+      // }
     }
- 
+
     std::vector<iroc_mission_handler::Waypoint> waypoints;
     waypoints.reserve(points.size());
 
@@ -151,9 +167,12 @@ WaypointPlanner::createGoal(const std::string &goal) const {
                                            {"y", &ref.position.y},
                                            {"z", &ref.position.z},
                                            {"heading", &ref.heading}});
-      if (!succ)
-        // return; // TODO: return proper response
-        ROS_INFO("(WIP), TODO, we need to return a proper response here");
+      if (!succ) {
+        ROS_WARN("Failed to parsed expected format of reference msg");
+        result.success = false;
+        result.message = "Failed to parsed expected format of reference msg";
+        return std::make_tuple(result, mission_robots);
+      }
 
       waypoint.reference_point = ref;
 
@@ -167,9 +186,14 @@ WaypointPlanner::createGoal(const std::string &goal) const {
           const auto succ = parse_vars(
               subtask, {{"type", &type}, {"parameters", &parameters}});
 
-          if (!succ)
-            // return; // TODO: return proper response
-            ROS_INFO("(WIP), TODO, we need to return a proper response here");
+          if (!succ) {
+            ROS_WARN("Failed to parsed expected format of subtasks: 'type' and "
+                     "'parameters'");
+            result.success = false;
+            result.message = "Failed to parsed expected format of subtasks: "
+                             "'type' and 'parameters'";
+            return std::make_tuple(result, mission_robots);
+          }
           subtask_obj.type = type;
           subtask_obj.parameters = parameters;
           subtasks.push_back(subtask_obj);
@@ -191,7 +215,10 @@ WaypointPlanner::createGoal(const std::string &goal) const {
     mission_robots.push_back(robot_goal);
   } // robots iteration
 
-  return mission_robots;
+  ROS_INFO("[WaypointPlanner] Goal created successfully!");
+  result.success = true;
+  result.message = "Goal created successfully";
+  return std::make_tuple(result, mission_robots);
 }
 
 } // namespace waypoint_planner

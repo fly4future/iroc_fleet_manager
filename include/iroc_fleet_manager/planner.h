@@ -7,6 +7,11 @@
 
 namespace iroc_fleet_manager {
 
+struct result_t {
+  bool success;
+  std::string message;
+};
+
 using json = nlohmann::json;
 
 class Planner {
@@ -46,7 +51,7 @@ public:
    * @param incoming goal for the planner, string with JSON format type
    * @return the goals of the robots in the fleet.
    */
-  virtual std::vector<iroc_mission_handler::MissionGoal>
+  virtual std::tuple<result_t,std::vector<iroc_mission_handler::MissionGoal>>
   createGoal(const std::string &goal) const = 0;
 
   virtual ~Planner() = default;

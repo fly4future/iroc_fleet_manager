@@ -16,7 +16,6 @@
 #include <iroc_fleet_manager/FleetManagerAction.h>
 
 // MRS Lib
-#include <boost/smart_ptr/shared_ptr.hpp>
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/subscribe_handler.h>
@@ -25,8 +24,12 @@
 // Third party
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <numeric>
+#include <tuple>
 
 namespace iroc_fleet_manager {
+
+// Forward declaration of result struct
+// struct result_t;
 
 class PlannerParams {
 
@@ -63,11 +66,6 @@ using ResultType = typename ActionType::_action_result_type::_result_type;
 class FleetManager : public nodelet::Nodelet {
 public:
   virtual void onInit();
-
-  struct result_t {
-    bool success;
-    std::string message;
-  };
 
 private:
   ros::NodeHandle nh_;
@@ -158,7 +156,7 @@ private:
       iroc_fleet_manager::ChangeRobotMissionStateSrv::Response &res);
 
   // helper methods
-  std::map<std::string, FleetManager::result_t>
+  std::map<std::string, result_t>
   // check this, we could generalize the interaction MissionHandler
   sendRobotGoals(const std::vector<iroc_mission_handler::MissionGoal> &robots);
   robot_mission_handler_t *
@@ -170,7 +168,7 @@ private:
   std::tuple<std::string, std::string> processFeedbackMsg() const;
   void cancelRobotClients();
   std::vector<iroc_mission_handler::MissionResult> getRobotResults();
-  std::vector<iroc_mission_handler::MissionGoal>
+  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
   processGoal(const iroc_fleet_manager::FleetManagerGoal &goal);
 
   template <typename Svc_T>
@@ -794,10 +792,16 @@ void FleetManager::actionCallbackGoal() {
     return;
   }
 
-  const auto mission_robots = processGoal(*new_action_server_goal);
-  ROS_INFO("[FleetManager] I am doing something now!");
+  const auto [result, mission_robots] = processGoal(*new_action_server_goal);
 
-  // return; // to remove
+  if (!result.success) {
+    ResultType action_server_result;
+    action_server_result.success = false;
+    action_server_result.message = result.message;
+    action_server_result.robot_results = getRobotResults();
+    ROS_WARN("[FleetManager]: Goal creation process failed");
+    action_server_ptr_->setAborted(action_server_result);
+  }
 
   // Start each robot action/service clients with mission_handler
   const auto results = sendRobotGoals(mission_robots);
@@ -943,11 +947,10 @@ FleetManager::getRobotResults() {
  * 3. Provides a successful response if all the requested robots for the mission
  * where successfully initialized.
  */
-std::map<std::string, typename FleetManager::result_t>
-FleetManager::sendRobotGoals(
+std::map<std::string, result_t> FleetManager::sendRobotGoals(
     const std::vector<iroc_mission_handler::MissionGoal> &robots) {
   std::scoped_lock lck(fleet_mission_handlers_.mtx);
-  std::map<std::string, FleetManager::result_t> robot_results;
+  std::map<std::string, result_t> robot_results;
 
   // Clear the previous handlers
   fleet_mission_handlers_.handlers.clear();
@@ -1069,11 +1072,12 @@ FleetManager::sendRobotGoals(
   return robot_results;
 }
 
-std::vector<iroc_mission_handler::MissionGoal>
+std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
 FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
   // Here we make the validation with the planners
   // First we check if the type matches the loaded planners
   // check the existance of the requested planner
+  result_t result;
   bool check = false;
   int planner_idx;
 
@@ -1090,6 +1094,9 @@ FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
     ROS_ERROR("[FleetManager]: the initial planner (%s) is not within "
               "the loaded planners",
               goal.type.c_str());
+    result.success = false;
+    result.message = "Requested planner is not within the loaded planners";
+    return std::make_tuple(result, std::vector<iroc_mission_handler::MissionGoal>());
   }
   ROS_INFO(
       "[FleetManager] received a request for %s, activating the planner...",
@@ -1100,15 +1107,24 @@ FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
   active_planner_idx_ = planner_idx;
 
   // Validate the goal with the planner
-  const auto mission_robots =
-      planner_list_[planner_idx]->createGoal(goal.details);
+  const auto [goal_creation_result, mission_robots] = planner_list_[planner_idx]->createGoal(goal.details);
+
+  // Check if the goal was created successfully
+  if (!goal_creation_result.success) {
+    result.success = false;
+    result.message = goal_creation_result.message; 
+    return std::make_tuple(result, std::vector<iroc_mission_handler::MissionGoal>());
+  }
 
   // Debug
   for (const auto &robot : mission_robots) {
     ROS_INFO("[FleetManager] Got : %s ", robot.name.c_str());
   }
 
-  return mission_robots;
+  result.success = true;
+  result.message = "Goal created successfully";
+
+  return std::make_tuple(result, mission_robots);
 }
 
 /*!
@@ -1272,9 +1288,8 @@ void FleetManager::cancelRobotClients() {
 
 /* callService() //{ */
 template <typename Svc_T>
-typename FleetManager::result_t
-FleetManager::callService(ros::ServiceClient &sc,
-                          typename Svc_T::Request req) const {
+result_t FleetManager::callService(ros::ServiceClient &sc,
+                                   typename Svc_T::Request req) const {
   typename Svc_T::Response res;
   if (sc.call(req, res)) {
     if (res.success) {
@@ -1297,13 +1312,12 @@ FleetManager::callService(ros::ServiceClient &sc,
 }
 
 template <typename Svc_T>
-typename FleetManager::result_t
-FleetManager::callService(ros::ServiceClient &sc) const {
+result_t FleetManager::callService(ros::ServiceClient &sc) const {
   return callService<Svc_T>(sc, {});
 }
 
-typename FleetManager::result_t
-FleetManager::callService(ros::ServiceClient &sc, const bool val) const {
+result_t FleetManager::callService(ros::ServiceClient &sc,
+                                            const bool val) const {
   using svc_t = std_srvs::SetBool;
   svc_t::Request req;
   req.data = val;
