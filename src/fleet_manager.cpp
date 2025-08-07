@@ -15,6 +15,15 @@
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
 #include <iroc_fleet_manager/FleetManagerAction.h>
 
+// Robot diagnostics
+#include <mrs_robot_diagnostics/CollisionAvoidanceInfo.h>
+#include <mrs_robot_diagnostics/ControlInfo.h>
+#include <mrs_robot_diagnostics/GeneralRobotInfo.h>
+#include <mrs_robot_diagnostics/StateEstimationInfo.h>
+#include <mrs_robot_diagnostics/SystemHealthInfo.h>
+#include <mrs_robot_diagnostics/UavInfo.h>
+#include <mrs_robot_diagnostics/enums/robot_type.h>
+
 // MRS Lib
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/param_loader.h>
@@ -25,6 +34,8 @@
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <numeric>
 #include <tuple>
+
+#include <iroc_fleet_manager/common_handlers.h>
 
 namespace iroc_fleet_manager {
 
@@ -71,6 +82,7 @@ private:
   ros::NodeHandle nh_;
   bool is_initialized_ = false;
   ros::Timer timer_main_;
+  ros::Timer timer_update_;
   ros::Timer timer_feedback_;
 
   // Action server
@@ -96,6 +108,28 @@ private:
   struct planners_handler_t {
     std::vector<planner_t> planners;
   } planner_handlers_;
+
+  struct robot_diagnostics_topics_t {
+    std::string robot_name;
+    mrs_lib::SubscribeHandler<mrs_robot_diagnostics::GeneralRobotInfo>
+        sh_general_robot_info;
+    mrs_lib::SubscribeHandler<mrs_robot_diagnostics::StateEstimationInfo>
+        sh_state_estimation_info;
+    mrs_lib::SubscribeHandler<mrs_robot_diagnostics::ControlInfo>
+        sh_control_info;
+    mrs_lib::SubscribeHandler<mrs_robot_diagnostics::CollisionAvoidanceInfo>
+        sh_collision_avoidance_info;
+    mrs_lib::SubscribeHandler<mrs_robot_diagnostics::UavInfo> sh_uav_info;
+    mrs_lib::SubscribeHandler<mrs_robot_diagnostics::SystemHealthInfo>
+        sh_system_health_info;
+  };
+
+  struct robot_topic_handlers_t {
+    std::recursive_mutex mtx;
+    std::vector<robot_diagnostics_topics_t> handlers;
+  } robot_handlers_;
+
+  CommonRobotHandlers_t common_robot_handlers_;
 
   std::unique_ptr<pluginlib::ClassLoader<iroc_fleet_manager::Planner>>
       planner_loader_; // pluginlib loader of dynamically loaded planners
@@ -147,6 +181,7 @@ private:
   void actionPublishFeedback(void);
 
   void timerMain(const ros::TimerEvent &event);
+  void timerUpdate(const ros::TimerEvent &event);
   void timerFeedback(const ros::TimerEvent &event);
 
   bool changeFleetMissionStateCallback(mrs_msgs::String::Request &req,
@@ -178,6 +213,9 @@ private:
   template <typename Svc_T> result_t callService(ros::ServiceClient &sc) const;
 
   result_t callService(ros::ServiceClient &sc, const bool val) const;
+
+  // contains handlers that are shared with fleet manager and planners
+  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 };
 
 void FleetManager::onInit() {
@@ -187,9 +225,16 @@ void FleetManager::onInit() {
   /* waits for the ROS to publish clock */
   ros::Time::waitForValid();
 
+  // --------------------------------------------------------------
+  // |         common handler for fleet manager and planners      |
+  // --------------------------------------------------------------
+
+  common_handlers_ = std::make_shared<iroc_fleet_manager::CommonHandlers_t>();
+
   mrs_lib::ParamLoader param_loader(nh_, "FleetManager");
 
   std::string custom_config_path;
+  std::string network_config_path;
   param_loader.loadParam("custom_config", custom_config_path);
 
   if (custom_config_path != "") {
@@ -198,16 +243,86 @@ void FleetManager::onInit() {
 
   param_loader.addYamlFileFromParam("config");
 
+  param_loader.loadParam("network_config", network_config_path);
+
+  if (network_config_path != "") {
+    param_loader.addYamlFile(network_config_path);
+  }
+
   const auto main_timer_rate =
       param_loader.loadParam2<double>("main_timer_rate");
   const auto feedback_timer_rate =
       param_loader.loadParam2<double>("feedback_timer_rate");
   const auto no_message_timeout =
       param_loader.loadParam2<ros::Duration>("no_message_timeout");
+  const auto robot_names =
+      param_loader.loadParam2<std::vector<std::string>>("network/robot_names");
 
   if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[FleetManager]: Could not load all parameters!");
     ros::shutdown();
+  }
+
+  // | ----------------------- subscribers ---------------------- |
+
+  mrs_lib::SubscribeHandlerOptions shopts;
+  shopts.nh = nh_;
+  shopts.node_name = "FleetManager";
+  shopts.no_message_timeout = no_message_timeout;
+  shopts.threadsafe = true;
+  shopts.autostart = true;
+  shopts.queue_size = 10;
+  shopts.transport_hints = ros::TransportHints().tcpNoDelay();
+
+  // populate the robot handlers vector
+  {
+    std::scoped_lock lck(robot_handlers_.mtx);
+
+    robot_handlers_.handlers.reserve(robot_names.size());
+    for (const auto &robot_name : robot_names) {
+      robot_diagnostics_topics_t robot_topics;
+      robot_topics.robot_name = robot_name;
+
+      const std::string general_robot_info_topic_name =
+          "/" + robot_name + nh_.resolveName("in/general_robot_info");
+      robot_topics.sh_general_robot_info =
+          mrs_lib::SubscribeHandler<mrs_robot_diagnostics::GeneralRobotInfo>(
+              shopts, general_robot_info_topic_name);
+
+      const std::string state_estimation_info_topic_name =
+          "/" + robot_name + nh_.resolveName("in/state_estimation_info");
+      robot_topics.sh_state_estimation_info =
+          mrs_lib::SubscribeHandler<mrs_robot_diagnostics::StateEstimationInfo>(
+              shopts, state_estimation_info_topic_name);
+
+      const std::string control_info_topic_name =
+          "/" + robot_name + nh_.resolveName("in/control_info");
+      robot_topics.sh_control_info =
+          mrs_lib::SubscribeHandler<mrs_robot_diagnostics::ControlInfo>(
+              shopts, control_info_topic_name);
+
+      const std::string collision_avoidance_info_topic_name =
+          "/" + robot_name + nh_.resolveName("in/collision_avoidance_info");
+      robot_topics.sh_collision_avoidance_info = mrs_lib::SubscribeHandler<
+          mrs_robot_diagnostics::CollisionAvoidanceInfo>(
+          shopts, collision_avoidance_info_topic_name);
+
+      const std::string uav_info_topic_name =
+          "/" + robot_name + nh_.resolveName("in/uav_info");
+      robot_topics.sh_uav_info =
+          mrs_lib::SubscribeHandler<mrs_robot_diagnostics::UavInfo>(
+              shopts, uav_info_topic_name);
+
+      const std::string system_health_info_topic_name =
+          "/" + robot_name + nh_.resolveName("in/system_health_info");
+      robot_topics.sh_system_health_info =
+          mrs_lib::SubscribeHandler<mrs_robot_diagnostics::SystemHealthInfo>(
+              shopts, system_health_info_topic_name);
+
+      // move is necessary because copy construction of the subscribe handlers
+      // is deleted due to mutexes
+      robot_handlers_.handlers.emplace_back(std::move(robot_topics));
+    }
   }
 
   param_loader.loadParam("initial_planner", _initial_planner_name_);
@@ -257,22 +372,25 @@ void FleetManager::onInit() {
   }
 
   ROS_INFO("[FleetManager]: planners were loaded");
+  {
+    std::scoped_lock lck(robot_handlers_.mtx);
 
-  for (int i = 0; i < int(planner_list_.size()); i++) {
-    try {
-      std::map<std::string, PlannerParams>::iterator it;
-      it = planners_.find(_planner_names_[i]);
+    for (int i = 0; i < int(planner_list_.size()); i++) {
+      try {
+        std::map<std::string, PlannerParams>::iterator it;
+        it = planners_.find(_planner_names_[i]);
 
-      ROS_INFO("[FleetManager]: initializing the planner '%s'",
-               it->second.address.c_str());
-      planner_list_[i]->initialize(nh_, _planner_names_[i],
-                                   it->second.name_space,
-                                   it->second.action_type);
+        ROS_INFO("[FleetManager]: initializing the planner '%s'",
+                 it->second.address.c_str());
+        planner_list_[i]->initialize(nh_, _planner_names_[i],
+                                     it->second.name_space,
+                                     it->second.action_type, common_handlers_);
 
-    } catch (std::runtime_error &ex) {
-      ROS_ERROR("[FleetManager]: exception caught during planner "
-                "initialization: '%s'",
-                ex.what());
+      } catch (std::runtime_error &ex) {
+        ROS_ERROR("[FleetManager]: exception caught during planner "
+                  "initialization: '%s'",
+                  ex.what());
+      }
     }
   }
 
@@ -310,21 +428,13 @@ void FleetManager::onInit() {
   // planner_list_[_initial_planner_idx_]->activate();
   // active_planner_idx_ = _initial_planner_idx_;
 
-  // | ----------------------- subscribers ---------------------- |
-
-  mrs_lib::SubscribeHandlerOptions shopts;
-  shopts.nh = nh_;
-  shopts.node_name = "FleetManager";
-  shopts.no_message_timeout = no_message_timeout;
-  shopts.threadsafe = true;
-  shopts.autostart = true;
-  shopts.queue_size = 10;
-  shopts.transport_hints = ros::TransportHints().tcpNoDelay();
-
   // | ------------------------- timers ------------------------- |
 
   timer_main_ = nh_.createTimer(ros::Rate(main_timer_rate),
                                 &FleetManager::timerMain, this);
+  timer_update_ = nh_.createTimer(ros::Rate(main_timer_rate),
+                                  &FleetManager::timerUpdate, this);
+
   timer_feedback_ = nh_.createTimer(ros::Rate(feedback_timer_rate),
                                     &FleetManager::timerFeedback, this);
 
@@ -480,6 +590,53 @@ void FleetManager::timerFeedback(
   }
 
   actionPublishFeedback();
+}
+
+void FleetManager::timerUpdate([[maybe_unused]] const ros::TimerEvent &event) {
+  std::scoped_lock lck(robot_handlers_.mtx);
+
+  // Updating the common handler with the latest messages
+  for (auto &rh : robot_handlers_.handlers) {
+    const auto &robot_name = rh.robot_name;
+
+    if (rh.sh_general_robot_info.newMsg()) {
+      const auto msg = rh.sh_general_robot_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].general_robot_info =
+          std::move(msg);
+    }
+
+    if (rh.sh_state_estimation_info.newMsg()) {
+      const auto msg = rh.sh_state_estimation_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].state_estimation_info =
+          std::move(msg);
+    }
+
+    if (rh.sh_control_info.newMsg()) {
+      const auto msg = rh.sh_control_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].control_info =
+          std::move(msg);
+    }
+
+    if (rh.sh_collision_avoidance_info.newMsg()) {
+      const auto msg = rh.sh_collision_avoidance_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].collision_avoidance_info =
+          std::move(msg);
+    }
+
+    if (rh.sh_uav_info.newMsg()) {
+      const auto msg = rh.sh_uav_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].uav_info = std::move(msg);
+    }
+
+    if (rh.sh_system_health_info.newMsg()) {
+      const auto msg = rh.sh_system_health_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].system_health_info =
+          std::move(msg);
+    }
+  }
+  // Updating the common handler with latest message
+  common_handlers_->handlers =
+      std::make_shared<CommonRobotHandlers_t>(common_robot_handlers_);
 }
 
 // | ----------------- service server callback ---------------- |
@@ -1096,7 +1253,8 @@ FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
               goal.type.c_str());
     result.success = false;
     result.message = "Requested planner is not within the loaded planners";
-    return std::make_tuple(result, std::vector<iroc_mission_handler::MissionGoal>());
+    return std::make_tuple(result,
+                           std::vector<iroc_mission_handler::MissionGoal>());
   }
   ROS_INFO(
       "[FleetManager] received a request for %s, activating the planner...",
@@ -1106,14 +1264,18 @@ FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
   planner_list_[planner_idx]->activate();
   active_planner_idx_ = planner_idx;
 
+  std::scoped_lock lck(robot_handlers_.mtx);
+
   // Validate the goal with the planner
-  const auto [goal_creation_result, mission_robots] = planner_list_[planner_idx]->createGoal(goal.details);
+  const auto [goal_creation_result, mission_robots] =
+      planner_list_[planner_idx]->createGoal(goal.details);
 
   // Check if the goal was created successfully
   if (!goal_creation_result.success) {
     result.success = false;
-    result.message = goal_creation_result.message; 
-    return std::make_tuple(result, std::vector<iroc_mission_handler::MissionGoal>());
+    result.message = goal_creation_result.message;
+    return std::make_tuple(result,
+                           std::vector<iroc_mission_handler::MissionGoal>());
   }
 
   // Debug
@@ -1317,7 +1479,7 @@ result_t FleetManager::callService(ros::ServiceClient &sc) const {
 }
 
 result_t FleetManager::callService(ros::ServiceClient &sc,
-                                            const bool val) const {
+                                   const bool val) const {
   using svc_t = std_srvs::SetBool;
   svc_t::Request req;
   req.data = val;

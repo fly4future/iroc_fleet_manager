@@ -13,8 +13,9 @@ namespace waypoint_planner {
 class WaypointPlanner : public iroc_fleet_manager::Planner {
 public:
   bool initialize(const ros::NodeHandle &parent_nh, const std::string &name,
-                  const std::string &name_space,
-                  const std::string &action_type) override;
+                  const std::string &name_space, const std::string &action_type,
+                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t>
+                      common_handlers) override;
 
   bool activate(void) override;
   void deactivate(void) override;
@@ -27,18 +28,20 @@ public:
 private:
   bool is_initialized_ = false;
   bool is_active_ = false;
+  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 };
 
-bool WaypointPlanner::initialize(const ros::NodeHandle &parent_nh,
-                                 const std::string &name,
-                                 const std::string &name_space,
-                                 const std::string &action_type) {
+bool WaypointPlanner::initialize(
+    const ros::NodeHandle &parent_nh, const std::string &name,
+    const std::string &name_space, const std::string &action_type,
+    std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
 
   // nh_ will behave just like normal NodeHandle
   ros::NodeHandle nh_(parent_nh, name_space);
 
   _name_ = name;
   _action_type_ = action_type;
+  common_handlers_ = common_handlers;
 
   ros::Time::waitForValid();
 
@@ -74,7 +77,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
 WaypointPlanner::createGoal(const std::string &goal) const {
   ROS_INFO("Received goal :%s ",
            goal.c_str()); // to remove
-                          //
+
   std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   result_t result;
 

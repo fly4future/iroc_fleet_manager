@@ -1,9 +1,10 @@
 #ifndef IROC_FLEET_MANAGER_PLANNER
 #define IROC_FLEET_MANAGER_PLANNER
 
+#include <iroc_fleet_manager/common_handlers.h>
+#include <iroc_fleet_manager/json_var_parser.h>
 #include <iroc_mission_handler/MissionAction.h>
 #include <ros/ros.h>
-#include <iroc_fleet_manager/json_var_parser.h>
 
 namespace iroc_fleet_manager {
 
@@ -30,7 +31,9 @@ public:
    */
   virtual bool initialize(const ros::NodeHandle &nh, const std::string &name,
                           const std::string &name_space,
-                          const std::string &action_type) = 0;
+                          const std::string &action_type,
+                          std::shared_ptr<iroc_fleet_manager::CommonHandlers_t>
+                              common_handlers) = 0;
 
   /**
    * @brief It is called before the planner will be required and used. Should
@@ -51,7 +54,7 @@ public:
    * @param incoming goal for the planner, string with JSON format type
    * @return the goals of the robots in the fleet.
    */
-  virtual std::tuple<result_t,std::vector<iroc_mission_handler::MissionGoal>>
+  virtual std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
   createGoal(const std::string &goal) const = 0;
 
   virtual ~Planner() = default;
