@@ -16,6 +16,7 @@
 #include <iroc_fleet_manager/FleetManagerAction.h>
 
 // Robot diagnostics
+#include <mrs_msgs/SafetyAreaManagerDiagnostics.h>
 #include <mrs_robot_diagnostics/CollisionAvoidanceInfo.h>
 #include <mrs_robot_diagnostics/ControlInfo.h>
 #include <mrs_robot_diagnostics/GeneralRobotInfo.h>
@@ -45,22 +46,18 @@ namespace iroc_fleet_manager {
 class PlannerParams {
 
 public:
-  PlannerParams(const std::string &address, const std::string &name_space,
-                const std::string &action_type);
+  PlannerParams(const std::string &address, const std::string &name_space);
 
 public:
   std::string address;
   std::string name_space;
-  std::string action_type;
 };
 
 PlannerParams::PlannerParams(const std::string &address,
-                             const std::string &name_space,
-                             const std::string &action_type) {
+                             const std::string &name_space) {
 
   this->address = address;
   this->name_space = name_space;
-  this->action_type = action_type;
 }
 
 // using namespace actionlib;
@@ -82,7 +79,7 @@ private:
   ros::NodeHandle nh_;
   bool is_initialized_ = false;
   ros::Timer timer_main_;
-  ros::Timer timer_update_;
+  ros::Timer timer_update_common_handlers_;
   ros::Timer timer_feedback_;
 
   // Action server
@@ -122,6 +119,9 @@ private:
     mrs_lib::SubscribeHandler<mrs_robot_diagnostics::UavInfo> sh_uav_info;
     mrs_lib::SubscribeHandler<mrs_robot_diagnostics::SystemHealthInfo>
         sh_system_health_info;
+    // TODO: add into robot diagnostics?
+    mrs_lib::SubscribeHandler<mrs_msgs::SafetyAreaManagerDiagnostics>
+        sh_safety_area_info;
   };
 
   struct robot_topic_handlers_t {
@@ -181,7 +181,7 @@ private:
   void actionPublishFeedback(void);
 
   void timerMain(const ros::TimerEvent &event);
-  void timerUpdate(const ros::TimerEvent &event);
+  void timerUpdateCommonHandlers(const ros::TimerEvent &event);
   void timerFeedback(const ros::TimerEvent &event);
 
   bool changeFleetMissionStateCallback(mrs_msgs::String::Request &req,
@@ -233,13 +233,7 @@ void FleetManager::onInit() {
 
   mrs_lib::ParamLoader param_loader(nh_, "FleetManager");
 
-  std::string custom_config_path;
   std::string network_config_path;
-  param_loader.loadParam("custom_config", custom_config_path);
-
-  if (custom_config_path != "") {
-    param_loader.addYamlFile(custom_config_path);
-  }
 
   param_loader.addYamlFileFromParam("config");
 
@@ -319,6 +313,12 @@ void FleetManager::onInit() {
           mrs_lib::SubscribeHandler<mrs_robot_diagnostics::SystemHealthInfo>(
               shopts, system_health_info_topic_name);
 
+      const std::string safety_area_info_topic_name =
+          "/" + robot_name + nh_.resolveName("in/safety_area_info");
+      robot_topics.sh_safety_area_info =
+          mrs_lib::SubscribeHandler<mrs_msgs::SafetyAreaManagerDiagnostics>(
+              shopts, safety_area_info_topic_name);
+
       // move is necessary because copy construction of the subscribe handlers
       // is deleted due to mutexes
       robot_handlers_.handlers.emplace_back(std::move(robot_topics));
@@ -343,13 +343,11 @@ void FleetManager::onInit() {
     // load the plugin parameters
     std::string address;
     std::string name_space;
-    std::string action_type;
 
     param_loader.loadParam(planner_name + "/address", address);
     param_loader.loadParam(planner_name + "/name_space", name_space);
-    param_loader.loadParam(planner_name + "/action_type", action_type);
 
-    PlannerParams new_planner(address, name_space, action_type);
+    PlannerParams new_planner(address, name_space);
     planners_.insert(
         std::pair<std::string, PlannerParams>(planner_name, new_planner));
 
@@ -383,8 +381,7 @@ void FleetManager::onInit() {
         ROS_INFO("[FleetManager]: initializing the planner '%s'",
                  it->second.address.c_str());
         planner_list_[i]->initialize(nh_, _planner_names_[i],
-                                     it->second.name_space,
-                                     it->second.action_type, common_handlers_);
+                                     it->second.name_space, common_handlers_);
 
       } catch (std::runtime_error &ex) {
         ROS_ERROR("[FleetManager]: exception caught during planner "
@@ -432,8 +429,9 @@ void FleetManager::onInit() {
 
   timer_main_ = nh_.createTimer(ros::Rate(main_timer_rate),
                                 &FleetManager::timerMain, this);
-  timer_update_ = nh_.createTimer(ros::Rate(main_timer_rate),
-                                  &FleetManager::timerUpdate, this);
+  timer_update_common_handlers_ =
+      nh_.createTimer(ros::Rate(main_timer_rate),
+                      &FleetManager::timerUpdateCommonHandlers, this);
 
   timer_feedback_ = nh_.createTimer(ros::Rate(feedback_timer_rate),
                                     &FleetManager::timerFeedback, this);
@@ -592,7 +590,8 @@ void FleetManager::timerFeedback(
   actionPublishFeedback();
 }
 
-void FleetManager::timerUpdate([[maybe_unused]] const ros::TimerEvent &event) {
+void FleetManager::timerUpdateCommonHandlers(
+    [[maybe_unused]] const ros::TimerEvent &event) {
   std::scoped_lock lck(robot_handlers_.mtx);
 
   // Updating the common handler with the latest messages
@@ -631,6 +630,12 @@ void FleetManager::timerUpdate([[maybe_unused]] const ros::TimerEvent &event) {
     if (rh.sh_system_health_info.newMsg()) {
       const auto msg = rh.sh_system_health_info.getMsg();
       common_robot_handlers_.robots_map[robot_name].system_health_info =
+          std::move(msg);
+    }
+
+    if (rh.sh_safety_area_info.newMsg()) {
+      const auto msg = rh.sh_safety_area_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].safety_area_info=
           std::move(msg);
     }
   }

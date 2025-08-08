@@ -13,7 +13,7 @@ namespace waypoint_planner {
 class WaypointPlanner : public iroc_fleet_manager::Planner {
 public:
   bool initialize(const ros::NodeHandle &parent_nh, const std::string &name,
-                  const std::string &name_space, const std::string &action_type,
+                  const std::string &name_space,
                   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t>
                       common_handlers) override;
 
@@ -23,7 +23,6 @@ public:
   createGoal(const std::string &goal) const override;
 
   std::string _name_;
-  std::string _action_type_;
 
 private:
   bool is_initialized_ = false;
@@ -33,24 +32,21 @@ private:
 
 bool WaypointPlanner::initialize(
     const ros::NodeHandle &parent_nh, const std::string &name,
-    const std::string &name_space, const std::string &action_type,
+    const std::string &name_space,
     std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
 
   // nh_ will behave just like normal NodeHandle
   ros::NodeHandle nh_(parent_nh, name_space);
 
   _name_ = name;
-  _action_type_ = action_type;
   common_handlers_ = common_handlers;
 
   ros::Time::waitForValid();
 
   // | ----------------------- finish init ---------------------- |
 
-  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action "
-           "type '%s'",
-           _name_.c_str(), name.c_str(), name_space.c_str(),
-           action_type.c_str());
+  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ",
+           _name_.c_str(), name.c_str(), name_space.c_str());
 
   is_initialized_ = true;
   return true;
@@ -81,84 +77,34 @@ WaypointPlanner::createGoal(const std::string &goal) const {
   std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   result_t result;
 
-  json json_msg;
-  try {
-    json_msg = json::parse(goal);
-  } catch (const json::exception &e) {
-    ROS_ERROR_STREAM_THROTTLE(
-        1.0, "[WaypointPlanner]: Bad json input: " << e.what());
-    result.success = false;
-    result.message = "BadRequest_400: Bad JSON input";
-    return std::make_tuple(result, mission_robots);
-  }
+  json json_msg, robots;
 
-  json robots;
-  const auto succ = parse_vars(json_msg, {{"robots", &robots}});
+  // Parsing JSON and creating robots JSON for post processing
+  result = parseJsonAndExtractRobots(goal, json_msg, robots);
 
-  if (!succ) {
-    result.success = false;
-    result.message = "Missing robots key";
-    return std::make_tuple(result, mission_robots);
-  }
-
-  if (!robots.is_array()) {
-    ROS_WARN_STREAM_THROTTLE(
-        1.0, "[WaypointPlanner]: Bad mission input: Expected an array.");
-    result.success = false;
-    result.message = "Bad mission input, 'robots' key is not an array";
+  if (!result.success) {
     return std::make_tuple(result, mission_robots);
   }
 
   mission_robots.reserve(robots.size());
-
-  for (const auto &robot : robots) {
-
+  for (auto &robot : robots) {
+    std::string name;
     int frame_id;
     int height_id;
     int terminal_action;
-    std::string name;
+    result = parseRobotBase(robot, name, frame_id, height_id, terminal_action);
+
+    if (!result.success) {
+      return std::make_tuple(result, mission_robots);
+    }
+
+    // Parse points
     json points;
-    const auto succ =
-        parse_vars(robot, {{"name", &name},
-                           {"frame_id", &frame_id},
-                           {"height_id", &height_id},
-                           {"points", &points},
-                           {"terminal_action", &terminal_action}});
+    result = extractJsonArray(robot, "points", points);
 
-    if (!succ) {
-      ROS_WARN("Failure parsing the expected format for the waypoint mission.");
-      result.success = false;
-      result.message =
-          "Failure parsing the expected keys for the waypoint mission.";
+    if (!result.success) {
       return std::make_tuple(result, mission_robots);
     }
-
-    if (!points.is_array()) {
-      ROS_ERROR_STREAM_THROTTLE(
-          1.0, "[WaypointPlanner]: Bad points input: Expected an array.");
-      result.success = false;
-      result.message = "Bad mission input, 'points' key is not an array";
-      return std::make_tuple(result, mission_robots);
-    }
-
-    // TODO: How will validate the available robots?
-    {
-      // std::stringstream ss;
-      // std::scoped_lock lck(robot_handlers_.mtx);
-      // auto *rh_ptr = findRobotHandler(name, robot_handlers_);
-      //
-      // if (!rh_ptr) {
-      //   ROS_ERROR_STREAM_THROTTLE(1.0, "[IROCBridge]: Robot \""
-      //                                      << name
-      //                                      << "\" not found. Ignoring.");
-      //   res.status = httplib::StatusCode::BadRequest_400;
-      //   ss << "robot \"" << name << "\" not found, ignoring";
-      //   json json_response_msg = {{"message", ss.str()}};
-      //   res.set_content(json_response_msg.dump(), "application/json");
-      //   return;
-      // }
-    }
-
     std::vector<iroc_mission_handler::Waypoint> waypoints;
     waypoints.reserve(points.size());
 
@@ -207,7 +153,6 @@ WaypointPlanner::createGoal(const std::string &goal) const {
       // Saving the waypoint
       waypoints.push_back(waypoint);
     } // points iteration
-
     iroc_mission_handler::MissionGoal robot_goal;
     robot_goal.name = name;
     robot_goal.frame_id = frame_id;

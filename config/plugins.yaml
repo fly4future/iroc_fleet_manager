@@ -3,4 +3,6 @@
 WaypointPlanner:
   address: "iroc_fleet_manager/WaypointPlanner" 
   name_space: "waypoint_planner" 
-  action_type: "WaypointFleetManagerAction"
+CoveragePlanner:
+  address: "iroc_fleet_manager/CoveragePlanner" 
+  name_space: "coverage_planner" 

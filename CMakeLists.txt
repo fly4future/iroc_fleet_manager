@@ -134,7 +134,7 @@ target_include_directories(CoveragePlannerLib
 # CoveragePlanner
 ## Declare a C++ library
 add_library(CoveragePlanner
-  src/iroc_coverage_planner.cpp
+  src/coverage_planner.cpp
 )
 
 add_dependencies(CoveragePlanner

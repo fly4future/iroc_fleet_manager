@@ -2,6 +2,7 @@
 # each plugin's properties are defined in 'plugins.yaml'
 planners : [
   "WaypointPlanner",
+  "CoveragePlanner",
 ]
 
 # the first loaded plugin

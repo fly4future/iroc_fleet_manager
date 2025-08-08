@@ -10,6 +10,7 @@
 #include <mrs_robot_diagnostics/SystemHealthInfo.h>
 #include <mrs_robot_diagnostics/UavInfo.h>
 #include <mrs_robot_diagnostics/enums/robot_type.h>
+#include <mrs_msgs/SafetyAreaManagerDiagnostics.h>
 #include <string>
 #include <unordered_map>
 
@@ -26,6 +27,7 @@ struct CommonRobotHandler_t {
       collision_avoidance_info;
   mrs_robot_diagnostics::UavInfo::ConstPtr uav_info;
   mrs_robot_diagnostics::SystemHealthInfo::ConstPtr system_health_info;
+  mrs_msgs::SafetyAreaManagerDiagnostics::ConstPtr safety_area_info;
 };
 
 struct CommonRobotHandlers_t {
