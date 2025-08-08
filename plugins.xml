@@ -8,3 +8,8 @@
     <description>CoveragePlanner</description>
   </class>
 </library>
+<library path="lib/libAutonomyTestPlanner">
+  <class name="iroc_fleet_manager/AutonomyTestPlanner" type="iroc_fleet_manager::autonomy_test_planner::AutonomyTestPlanner" base_class_type="iroc_fleet_manager::Planner">
+    <description>CoveragePlanner</description>
+  </class>
+</library>

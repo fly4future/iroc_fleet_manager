@@ -6,10 +6,6 @@ namespace iroc_fleet_manager {
 
 namespace waypoint_planner {
 
-// using ActionServer_T =
-// actionlib::SimpleActionServer<WaypointFleetManagerAction>;
-/* class WaypointPlanner //{ */
-
 class WaypointPlanner : public iroc_fleet_manager::Planner {
 public:
   bool initialize(const ros::NodeHandle &parent_nh, const std::string &name,

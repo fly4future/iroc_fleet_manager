@@ -6,3 +6,6 @@ WaypointPlanner:
 CoveragePlanner:
   address: "iroc_fleet_manager/CoveragePlanner" 
   name_space: "coverage_planner" 
+AutonomyTestPlanner:
+  address: "iroc_fleet_manager/AutonomyTestPlanner" 
+  name_space: "autonomy_test_planner" 

@@ -151,7 +151,7 @@ target_link_libraries(CoveragePlanner
 # AutonomyTestPlanner
 ## Declare a C++ library
 add_library(AutonomyTestPlanner
-  src/iroc_autonomy_test.cpp
+  src/autonomy_test_planner.cpp
 )
 
 add_dependencies(AutonomyTestPlanner

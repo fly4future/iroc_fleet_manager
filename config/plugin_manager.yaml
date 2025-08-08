@@ -3,6 +3,7 @@
 planners : [
   "WaypointPlanner",
   "CoveragePlanner",
+  "AutonomyTestPlanner",
 ]
 
 # the first loaded plugin
