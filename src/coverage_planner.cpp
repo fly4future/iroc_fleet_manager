@@ -157,6 +157,13 @@ CoveragePlanner::createGoal(const std::string &goal) const {
     robot_msg.height_id = height_id;
     robot_msg.height = height;
     robot_msg.terminal_action = terminal_action;
+    auto global_pose = common_handlers_->handlers->robots_map[name]
+                           .state_estimation_info->global_pose.position;
+    auto local_pose = common_handlers_->handlers->robots_map[name]
+                          .state_estimation_info->local_pose.position;
+
+    robot_msg.global_position = global_pose;
+    robot_msg.local_position = local_pose;
     robots_msg.push_back(robot_msg);
   }
 
@@ -202,14 +209,6 @@ CoveragePlanner::createGoal(const std::string &goal) const {
     iroc_mission_handler::MissionGoal robot;
     robot.name = mission.robots[it].name;
     robot.points = paths[it];
-
-    // DEBUG: to remove
-    for (size_t i = 0; i < paths[it].size(); i++) {
-      auto x = paths[it].at(i).reference_point.position.x;
-      auto y = paths[it].at(i).reference_point.position.y;
-      auto z = paths[it].at(i).reference_point.position.z;
-      ROS_INFO("%f,%f", x,y);
-    }
     robot.terminal_action = mission.robots[it].terminal_action;
     robot.height_id = mission.robots[it].height_id;
     robot.frame_id = mission.robots[it].frame_id;
