@@ -8,7 +8,7 @@ T convert_from_json(const json& j) {
     return T(j);
 }
 
-// Specializations for vector types
+// Specializations for custom vector types
 template<>
 std::vector<Point2D> convert_from_json<std::vector<Point2D>>(const json& j) {
     std::vector<Point2D> result;
@@ -30,6 +30,15 @@ std::vector<Point3D> convert_from_json<std::vector<Point3D>>(const json& j) {
 template<>
 std::vector<Reference> convert_from_json<std::vector<Reference>>(const json& j) {
     std::vector<Reference> result;
+    for (const auto& item : j) {
+        result.emplace_back(item);
+    }
+    return result;
+}
+
+template<>
+std::vector<Waypoint> convert_from_json<std::vector<Waypoint>>(const json& j) {
+    std::vector<Waypoint> result;
     for (const auto& item : j) {
         result.emplace_back(item);
     }

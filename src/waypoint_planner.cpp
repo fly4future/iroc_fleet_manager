@@ -66,36 +66,45 @@ void WaypointPlanner::deactivate(void) {
 
 std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
 WaypointPlanner::createGoal(const std::string &goal) const {
+  // Goal to be filled
+  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   ROS_INFO("Received goal :%s ",
            goal.c_str()); // to remove
 
-  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   result_t result;
 
   json json_msg, robots;
 
   // Parsing JSON and creating robots JSON for post processing
-  result = parseJsonAndExtractRobots(goal, json_msg, robots);
+  result = parseJson(goal, json_msg);
 
   if (!result.success) {
     return std::make_tuple(result, mission_robots);
   }
 
+  bool success = parseVars(json_msg, {{"robots", &robots}});
+
+
   mission_robots.reserve(robots.size());
   for (auto &robot : robots) {
     std::string name;
+    std::vector<Waypoint> points;
     int frame_id;
+    int height;
     int height_id;
     int terminal_action;
-    result = parseRobotBase(robot, name, frame_id, height_id, terminal_action);
+
+    bool success = parseVars(robot, {
+                                        {"name", &name},
+                                        {"points", &points},
+                                        {"frame_id", &frame_id},
+                                        {"height_id", &height_id},
+                                        {"terminal_action", &terminal_action},
+                                    });
 
     if (!result.success) {
       return std::make_tuple(result, mission_robots);
     }
-
-    // Parse points
-    json points;
-    result = extractJsonArray(robot, "points", points);
 
     if (!result.success) {
       return std::make_tuple(result, mission_robots);
@@ -106,28 +115,19 @@ WaypointPlanner::createGoal(const std::string &goal) const {
     for (const auto &point : points) {
 
       iroc_mission_handler::Waypoint waypoint;
-      mrs_msgs::Reference ref;
-      const auto succ = parse_vars(point, {{"x", &ref.position.x},
-                                           {"y", &ref.position.y},
-                                           {"z", &ref.position.z},
-                                           {"heading", &ref.heading}});
-      if (!succ) {
-        ROS_WARN("Failed to parsed expected format of reference msg");
-        result.success = false;
-        result.message = "Failed to parsed expected format of reference msg";
-        return std::make_tuple(result, mission_robots);
-      }
+      waypoint.reference_point.position.x = point.x;
+      waypoint.reference_point.position.y = point.y;
+      waypoint.reference_point.position.z = point.z;
+      waypoint.reference_point.heading = point.heading;
 
-      waypoint.reference_point = ref;
-
-      if (point.contains("subtasks")) {
+      if (!point.subtasks.empty()) {
         std::vector<iroc_mission_handler::Subtask> subtasks;
         // Process subtask
-        for (const auto &subtask : point) {
+        for (const auto &subtask : point.subtasks) {
           iroc_mission_handler::Subtask subtask_obj;
           int type; // this will be changed to string in the future
           std::string parameters;
-          const auto succ = parse_vars(
+          const auto succ = parseVars(
               subtask, {{"type", &type}, {"parameters", &parameters}});
 
           if (!succ) {

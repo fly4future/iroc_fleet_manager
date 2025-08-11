@@ -29,15 +29,25 @@ struct Reference {
       : x(j.at("x")), y(j.at("y")), z(j.at("z")), heading(j.at("heading")) {}
 };
 
+struct Waypoint {
+  double x, y, z, heading;
+  json subtasks;
+
+  Waypoint() : x(0), y(0), z(0), heading(0), subtasks() {}
+  Waypoint(const json &j)
+      : x(j.at("x")), y(j.at("y")), z(j.at("z")), heading(j.at("heading")),
+        subtasks(j.value("subtasks", json::array())) {}
+};
+
 using parseable_t =
     std::variant<json *, bool *, int *, double *, std::string *,
                  std::vector<int> *, std::vector<double> *,
                  std::vector<std::string> *, Point2D *, Point3D *, Reference *,
-                 std::vector<Point2D> *, std::vector<Point3D> *,
-                 std::vector<Reference> *>;
+                 Waypoint *, std::vector<Point2D> *, std::vector<Point3D> *,
+                 std::vector<Reference> *, std::vector<Waypoint> *>;
 
 bool parseVars(const json &js,
-                std::vector<std::pair<std::string_view, parseable_t>> &&vars);
+               std::vector<std::pair<std::string_view, parseable_t>> &&vars);
 
 // Helper functions
 template <typename Msg_T> Msg_T toRosMsg(const Point2D &point) {
@@ -56,7 +66,7 @@ template <typename Msg_T> Msg_T toRosMsg(const Point3D &point) {
   return msg_point;
 }
 
-// Reference/4D Point conversion
+// Reference conversion
 template <typename Msg_T> Msg_T toRosMsg(const Reference &point) {
   Msg_T msg_point;
   msg_point.x = point.x;

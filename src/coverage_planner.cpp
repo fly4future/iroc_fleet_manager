@@ -109,46 +109,53 @@ void CoveragePlanner::deactivate(void) {
 
 std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
 CoveragePlanner::createGoal(const std::string &goal) const {
+  // Goal to be filled
+  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   ROS_INFO("[CoveragePlanner] Received goal :%s ",
            goal.c_str()); // to remove
 
-  mrs_msgs::Point2D latlon_origin_msg;
+  // Custom messages used in the coverage planner
   std::vector<iroc_fleet_manager::CoverageMissionRobot> robots_msg;
   std::vector<mrs_msgs::Point2D> search_area_msg;
-  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
+  mrs_msgs::Point2D latlon_origin_msg;
 
   result_t result;
-  json json_msg, robots;
+  json json_msg;
 
   // Parsing JSON and creating robots JSON for post processing
-  result = parseJsonAndExtractRobots(goal, json_msg, robots);
+  result = parseJson(goal, json_msg);
 
   if (!result.success) {
     return std::make_tuple(result, mission_robots);
   }
+
+  std::vector<Point2D> search_area;
+  json robots;
+  int frame_id;
+  int height;
+  int height_id;
+  int terminal_action;
+
+  bool success = parseVars(json_msg, {
+                                         {"search_area", &search_area},
+                                         {"robots", &robots},
+                                         {"frame_id", &frame_id},
+                                         {"height", &height},
+                                         {"height_id", &height_id},
+                                         {"terminal_action", &terminal_action},
+                                     });
+
+  search_area_msg = toRosMsgVector<mrs_msgs::Point2D>(search_area);
 
   // Extract robots
   robots_msg.reserve(robots.size());
   for (const auto &robot : robots) {
     iroc_fleet_manager::CoverageMissionRobot robot_msg;
     std::string name;
-    int frame_id;
-    int height_id;
-    int terminal_action;
-    result = parseRobotBase(robot, name, frame_id, height_id, terminal_action);
+
+    auto succ = parseVars(robot, {{"name", &name}});
 
     if (!result.success) {
-      return std::make_tuple(result, mission_robots);
-    }
-
-    // Extract height
-    double height;
-
-    auto succ = parse_vars(robot, {{"height", &height}});
-
-    if (!succ) {
-      result.success = false;
-      result.message = "Missing height parameter";
       return std::make_tuple(result, mission_robots);
     }
 
@@ -167,28 +174,10 @@ CoveragePlanner::createGoal(const std::string &goal) const {
     robots_msg.push_back(robot_msg);
   }
 
-  // Extract search area
-  json search_area;
-  result = extractJsonArray(json_msg, "search_area", search_area);
-  search_area_msg.reserve(search_area.size());
-  for (const auto &point : search_area) {
-    mrs_msgs::Point2D point_2d;
-    const auto succ = parse_vars(point, {
-                                            {"x", &point_2d.x},
-                                            {"y", &point_2d.y},
-                                        });
-    if (!succ) {
-      ROS_WARN("Failed to parsed expected format of point2d msg");
-      result.success = false;
-      result.message = "Failed to parsed expected format of point2d msg";
-      return std::make_tuple(result, mission_robots);
-    }
-    search_area_msg.push_back(point_2d);
-  } // search area points iteration
-
   // Extracting the latlon origin
   // For simplicity taking the first origin, but we could also validate if all
   // of the origins are consistent
+
   latlon_origin_msg.x =
       common_handlers_->handlers->robots_map[robots_msg.at(0).name]
           .safety_area_info->safety_area.origin_x;
@@ -198,11 +187,10 @@ CoveragePlanner::createGoal(const std::string &goal) const {
 
   iroc_fleet_manager::CoverageMission mission;
   mission.robots = robots_msg;
-  mission.search_area = search_area_msg;
+  mission.search_area = search_area_msg ;
   mission.latlon_origin = latlon_origin_msg;
 
   auto paths = getCoveragePaths(mission);
-  ROS_INFO("[CoveragePlanner:]: Coverage paths size: %zu", paths.size());
 
   // Filling the mission_robots vector with the generated paths
   for (int it = 0; it < mission.robots.size(); it++) {

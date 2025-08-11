@@ -77,27 +77,25 @@ AutonomyTestPlanner::createGoal(const std::string &goal) const {
   json json_msg, robots;
 
   // Parsing JSON and creating robots JSON for post processing
-  result = parseJsonAndExtractRobots(goal, json_msg, robots);
+  result = parseJson(goal, json_msg);
 
   if (!result.success) {
     return std::make_tuple(result, mission_robots);
   }
 
+  bool success = parseVars(json_msg, {{"robots", &robots}});
+
   mission_robots.reserve(robots.size());
   for (auto &robot : robots) {
     std::string name;
-    int frame_id;
-    int height_id;
-    int terminal_action;
-    result = parseRobotBase(robot, name, frame_id, height_id, terminal_action);
+    int segment_length;
 
     if (!result.success) {
       return std::make_tuple(result, mission_robots);
     }
 
-    // Parse points
-    int segment_length;
-    const auto succ = parse_vars(robot, {{"segment_length", &segment_length}});
+    const auto succ = parseVars(robot, {{"name", &name},
+                                        {"segment_length", &segment_length}});
 
     if (!succ) {
       result.success = false;
@@ -107,9 +105,9 @@ AutonomyTestPlanner::createGoal(const std::string &goal) const {
 
     iroc_mission_handler::MissionGoal robot_goal;
     robot_goal.name = name;
-    robot_goal.frame_id = frame_id;
-    robot_goal.height_id = height_id;
-    robot_goal.terminal_action = terminal_action;
+    robot_goal.frame_id = iroc_mission_handler::MissionGoal::FRAME_ID_FCU;
+    robot_goal.height_id = iroc_mission_handler::MissionGoal::HEIGHT_ID_FCU;
+    robot_goal.terminal_action = 0;
     robot_goal.points = getAutonomyPoints(segment_length);
     // Save the individual robot goal
     mission_robots.push_back(robot_goal);
