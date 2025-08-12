@@ -23,8 +23,7 @@ struct CommonRobotHandler_t {
   mrs_robot_diagnostics::GeneralRobotInfo::ConstPtr general_robot_info;
   mrs_robot_diagnostics::StateEstimationInfo::ConstPtr state_estimation_info;
   mrs_robot_diagnostics::ControlInfo::ConstPtr control_info;
-  mrs_robot_diagnostics::CollisionAvoidanceInfo::ConstPtr
-      collision_avoidance_info;
+  mrs_robot_diagnostics::CollisionAvoidanceInfo::ConstPtr collision_avoidance_info;
   mrs_robot_diagnostics::UavInfo::ConstPtr uav_info;
   mrs_robot_diagnostics::SystemHealthInfo::ConstPtr system_health_info;
   mrs_msgs::SafetyAreaManagerDiagnostics::ConstPtr safety_area_info;

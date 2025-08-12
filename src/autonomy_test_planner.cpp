@@ -6,31 +6,25 @@ namespace iroc_fleet_manager {
 namespace autonomy_test_planner {
 
 class AutonomyTestPlanner : public iroc_fleet_manager::Planner {
-public:
-  bool initialize(const ros::NodeHandle &parent_nh, const std::string &name,
-                  const std::string &name_space,
-                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t>
-                      common_handlers) override;
+ public:
+  bool initialize(const ros::NodeHandle& parent_nh, const std::string& name, const std::string& name_space,
+                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) override;
 
   bool activate(void) override;
   void deactivate(void) override;
-  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
-  createGoal(const std::string &goal) const override;
-  std::vector<iroc_mission_handler::Waypoint>
-  getAutonomyPoints(double segment_length) const;
+  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string& goal) const override;
+  std::vector<iroc_mission_handler::Waypoint> getAutonomyPoints(double segment_length) const;
 
   std::string _name_;
 
-private:
+ private:
   bool is_initialized_ = false;
   bool is_active_ = false;
   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 };
 
-bool AutonomyTestPlanner::initialize(
-    const ros::NodeHandle &parent_nh, const std::string &name,
-    const std::string &name_space,
-    std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
+bool AutonomyTestPlanner::initialize(const ros::NodeHandle& parent_nh, const std::string& name, const std::string& name_space,
+                                     std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
 
   // nh_ will behave just like normal NodeHandle
   ros::NodeHandle nh_(parent_nh, name_space);
@@ -42,8 +36,7 @@ bool AutonomyTestPlanner::initialize(
 
   // | ----------------------- finish init ---------------------- |
 
-  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ",
-           _name_.c_str(), name.c_str(), name_space.c_str());
+  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ", _name_.c_str(), name.c_str(), name_space.c_str());
 
   is_initialized_ = true;
   return true;
@@ -66,8 +59,7 @@ void AutonomyTestPlanner::deactivate(void) {
   ROS_INFO("[%s]: deactivated", _name_.c_str());
 }
 
-std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
-AutonomyTestPlanner::createGoal(const std::string &goal) const {
+std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> AutonomyTestPlanner::createGoal(const std::string& goal) const {
   ROS_INFO("Received goal :%s ",
            goal.c_str()); // to remove
 
@@ -86,7 +78,7 @@ AutonomyTestPlanner::createGoal(const std::string &goal) const {
   bool success = parseVars(json_msg, {{"robots", &robots}});
 
   mission_robots.reserve(robots.size());
-  for (auto &robot : robots) {
+  for (auto& robot : robots) {
     std::string name;
     int segment_length;
 
@@ -94,8 +86,7 @@ AutonomyTestPlanner::createGoal(const std::string &goal) const {
       return std::make_tuple(result, mission_robots);
     }
 
-    const auto succ = parseVars(robot, {{"name", &name},
-                                        {"segment_length", &segment_length}});
+    const auto succ = parseVars(robot, {{"name", &name}, {"segment_length", &segment_length}});
 
     if (!succ) {
       result.success = false;
@@ -125,8 +116,7 @@ AutonomyTestPlanner::createGoal(const std::string &goal) const {
  * of the UAV.
  *
  */
-std::vector<iroc_mission_handler::Waypoint>
-AutonomyTestPlanner::getAutonomyPoints(double segment_length) const {
+std::vector<iroc_mission_handler::Waypoint> AutonomyTestPlanner::getAutonomyPoints(double segment_length) const {
 
   std::vector<mrs_msgs::Reference> points;
   mrs_msgs::Reference point;
@@ -199,7 +189,7 @@ AutonomyTestPlanner::getAutonomyPoints(double segment_length) const {
   // Convert mrs_msgs::Reference to iroc_mission_handler::Waypoint
   std::vector<iroc_mission_handler::Waypoint> autonomy_points;
   autonomy_points.reserve(points.size());
-  for (const auto &p : points) {
+  for (const auto& p : points) {
     iroc_mission_handler::Waypoint wp;
     wp.reference_point.position.x = p.position.x;
     wp.reference_point.position.y = p.position.y;
@@ -216,6 +206,4 @@ AutonomyTestPlanner::getAutonomyPoints(double segment_length) const {
 } // namespace iroc_fleet_manager
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(
-    iroc_fleet_manager::autonomy_test_planner::AutonomyTestPlanner,
-    iroc_fleet_manager::Planner);
+PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::autonomy_test_planner::AutonomyTestPlanner, iroc_fleet_manager::Planner);

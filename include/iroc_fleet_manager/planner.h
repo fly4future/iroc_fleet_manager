@@ -16,7 +16,7 @@ struct result_t {
 using json = nlohmann::json;
 
 class Planner {
-public:
+ public:
   /**
    * @brief Initializes the planner. It is called once for every planner. The
    * runtime is not limited.
@@ -29,10 +29,8 @@ public:
    *
    * @return true if success
    */
-  virtual bool initialize(const ros::NodeHandle &nh, const std::string &name,
-                          const std::string &name_space,
-                          std::shared_ptr<iroc_fleet_manager::CommonHandlers_t>
-                              common_handlers) = 0;
+  virtual bool initialize(const ros::NodeHandle& nh, const std::string& name, const std::string& name_space,
+                          std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) = 0;
 
   /**
    * @brief It is called before the planner will be required and used. Should
@@ -53,21 +51,20 @@ public:
    * @param incoming goal for the planner, string with JSON format type
    * @return the goals of the robots in the fleet.
    */
-  virtual std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
-  createGoal(const std::string &goal) const = 0;
+  virtual std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string& goal) const = 0;
 
   virtual ~Planner() = default;
 
-protected:
-  result_t parseJson(const std::string &goal, json &json_msg) const;
+ protected:
+  result_t parseJson(const std::string& goal, json& json_msg) const;
 };
 
-result_t Planner::parseJson(const std::string &goal, json &json_msg) const {
+result_t Planner::parseJson(const std::string& goal, json& json_msg) const {
 
   result_t result;
   try {
     json_msg = json::parse(goal);
-  } catch (const json::exception &e) {
+  } catch (const json::exception& e) {
     ROS_ERROR_STREAM_THROTTLE(1.0, "[Planner]: Bad json input: " << e.what());
     result.success = false;
     result.message = "BadRequest_400: Bad JSON input";
