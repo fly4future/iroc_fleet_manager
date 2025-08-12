@@ -17,6 +17,7 @@
 #include <CoveragePlannerLib/utils.hpp>
 #include <iroc_fleet_manager/CoverageMission.h>
 #include <iroc_fleet_manager/CoverageMissionRobot.h>
+#include <iroc_fleet_manager/conversions.h>
 #include <mrs_msgs/Point2D.h>
 
 namespace iroc_fleet_manager {
@@ -129,7 +130,7 @@ CoveragePlanner::createGoal(const std::string &goal) const {
     return std::make_tuple(result, mission_robots);
   }
 
-  std::vector<Point2D> search_area;
+  std::vector<custom_types::Point2D> search_area;
   json robots;
   int frame_id;
   int height;
@@ -145,7 +146,7 @@ CoveragePlanner::createGoal(const std::string &goal) const {
                                          {"terminal_action", &terminal_action},
                                      });
 
-  search_area_msg = toRosMsgVector<mrs_msgs::Point2D>(search_area);
+  search_area_msg = toRosMsg<mrs_msgs::Point2D>(search_area);
 
   // Extract robots
   robots_msg.reserve(robots.size());

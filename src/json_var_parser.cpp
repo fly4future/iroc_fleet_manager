@@ -3,46 +3,24 @@
 
 namespace iroc_fleet_manager {
 
-template<typename T>
-T convert_from_json(const json& j) {
+template <typename T> struct is_vector : std::false_type {};
+
+template <typename U> struct is_vector<std::vector<U>> : std::true_type {};
+
+template <typename T> constexpr bool is_vector_v = is_vector<T>::value;
+
+// Updated convertFromJson function
+template <typename T> T convertFromJson(const json &j) {
+  if constexpr (is_vector_v<T>) {
+    T result;
+    result.reserve(j.size());
+    for (const auto &item : j) {
+      result.emplace_back(typename T::value_type(item));
+    }
+    return result;
+  } else {
     return T(j);
-}
-
-// Specializations for custom vector types
-template<>
-std::vector<Point2D> convert_from_json<std::vector<Point2D>>(const json& j) {
-    std::vector<Point2D> result;
-    for (const auto& item : j) {
-        result.emplace_back(item);
-    }
-    return result;
-}
-
-template<>
-std::vector<Point3D> convert_from_json<std::vector<Point3D>>(const json& j) {
-    std::vector<Point3D> result;
-    for (const auto& item : j) {
-        result.emplace_back(item);
-    }
-    return result;
-}
-
-template<>
-std::vector<Reference> convert_from_json<std::vector<Reference>>(const json& j) {
-    std::vector<Reference> result;
-    for (const auto& item : j) {
-        result.emplace_back(item);
-    }
-    return result;
-}
-
-template<>
-std::vector<Waypoint> convert_from_json<std::vector<Waypoint>>(const json& j) {
-    std::vector<Waypoint> result;
-    for (const auto& item : j) {
-        result.emplace_back(item);
-    }
-    return result;
+  }
 }
 
 bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
@@ -60,7 +38,7 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
       [var_name, &js](auto &&var_out) {
         using T = std::remove_pointer_t<std::decay_t<decltype(var_out)>>;
         try {
-          *var_out = convert_from_json<T>(js.at(var_name));
+          *var_out = convertFromJson<T>(js.at(var_name));
         } catch (json::exception &e) {
           ROS_ERROR_STREAM_THROTTLE(
               1.0, "[Var-parser]: Cannot parse member \""
@@ -77,7 +55,7 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
 }
 
 bool parseVars(const json &js,
-                std::vector<std::pair<std::string_view, parseable_t>> &&vars) {
+               std::vector<std::pair<std::string_view, parseable_t>> &&vars) {
   for (auto &var : vars)
     if (!parseVar(js, var))
       return false;

@@ -1283,11 +1283,6 @@ FleetManager::processGoal(const iroc_fleet_manager::FleetManagerGoal &goal) {
                            std::vector<iroc_mission_handler::MissionGoal>());
   }
 
-  // Debug
-  for (const auto &robot : mission_robots) {
-    ROS_INFO("[FleetManager] Got : %s ", robot.name.c_str());
-  }
-
   result.success = true;
   result.message = "Goal created successfully";
 

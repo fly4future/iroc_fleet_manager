@@ -1,3 +1,4 @@
+#include <iroc_fleet_manager/conversions.h>
 #include <iroc_fleet_manager/planner.h>
 #include <string>
 
@@ -84,11 +85,10 @@ WaypointPlanner::createGoal(const std::string &goal) const {
 
   bool success = parseVars(json_msg, {{"robots", &robots}});
 
-
   mission_robots.reserve(robots.size());
   for (auto &robot : robots) {
     std::string name;
-    std::vector<Waypoint> points;
+    std::vector<custom_types::Waypoint> points;
     int frame_id;
     int height;
     int height_id;
@@ -106,48 +106,8 @@ WaypointPlanner::createGoal(const std::string &goal) const {
       return std::make_tuple(result, mission_robots);
     }
 
-    if (!result.success) {
-      return std::make_tuple(result, mission_robots);
-    }
-    std::vector<iroc_mission_handler::Waypoint> waypoints;
-    waypoints.reserve(points.size());
+    auto waypoints = toRosMsg<iroc_mission_handler::Waypoint>(points);
 
-    for (const auto &point : points) {
-
-      iroc_mission_handler::Waypoint waypoint;
-      waypoint.reference_point.position.x = point.x;
-      waypoint.reference_point.position.y = point.y;
-      waypoint.reference_point.position.z = point.z;
-      waypoint.reference_point.heading = point.heading;
-
-      if (!point.subtasks.empty()) {
-        std::vector<iroc_mission_handler::Subtask> subtasks;
-        // Process subtask
-        for (const auto &subtask : point.subtasks) {
-          iroc_mission_handler::Subtask subtask_obj;
-          int type; // this will be changed to string in the future
-          std::string parameters;
-          const auto succ = parseVars(
-              subtask, {{"type", &type}, {"parameters", &parameters}});
-
-          if (!succ) {
-            ROS_WARN("Failed to parsed expected format of subtasks: 'type' and "
-                     "'parameters'");
-            result.success = false;
-            result.message = "Failed to parsed expected format of subtasks: "
-                             "'type' and 'parameters'";
-            return std::make_tuple(result, mission_robots);
-          }
-          subtask_obj.type = type;
-          subtask_obj.parameters = parameters;
-          subtasks.push_back(subtask_obj);
-        }
-
-        waypoint.subtasks = subtasks;
-      }
-      // Saving the waypoint
-      waypoints.push_back(waypoint);
-    } // points iteration
     iroc_mission_handler::MissionGoal robot_goal;
     robot_goal.name = name;
     robot_goal.frame_id = frame_id;
