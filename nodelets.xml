@@ -3,21 +3,3 @@
     <description>FleetManager nodelet</description>
   </class>
 </library>
-
-<!-- <library path="lib/libWaypointPlanner"> -->
-<!--   <class name="iroc_fleet_manager/WaypointPlanner" type="iroc_fleet_manager::WaypointPlanner" base_class_type="nodelet::Nodelet"> -->
-<!--     <description>RosMissionFleetManager nodelet</description> -->
-<!--   </class> -->
-<!-- </library> -->
-<!---->
-<!-- <library path="lib/libAutonomyTestPlanner"> -->
-<!--   <class name="iroc_fleet_manager/AutonomyTestPlanner" type="iroc_fleet_manager::AutonomyTestPlanner" base_class_type="nodelet::Nodelet"> -->
-<!--     <description> IROC AutonomyTestManager nodelet </description> -->
-<!--   </class> -->
-<!-- </library> -->
-<!---->
-<!-- <library path="lib/libCoveragePlanner"> -->
-<!--   <class name="iroc_fleet_manager/CoveragePlanner" type="iroc_fleet_manager::CoveragePlanner" base_class_type="nodelet::Nodelet"> -->
-<!--     <description> IROC CoverageManager nodelet </description> -->
-<!--   </class> -->
-<!-- </library> -->

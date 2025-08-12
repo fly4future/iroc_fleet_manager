@@ -338,38 +338,6 @@ void FleetManager::onInit() {
 
   ROS_INFO("[FleetManager]: planners were initialized");
 
-  // // | ---------- check the existance of initial planner --------- |
-  // {
-  //   bool check = false;
-  //
-  //   for (int i = 0; i < int(_planner_names_.size()); i++) {
-  //
-  //     std::string planner_name = _planner_names_[i];
-  //
-  //     if (planner_name == _initial_planner_name_) {
-  //       check = true;
-  //       _initial_planner_idx_ = i;
-  //       break;
-  //     }
-  //   }
-  //   if (!check) {
-  //     ROS_ERROR("[FleetManager]: the initial planner (%s) is not within "
-  //               "the loaded planners",
-  //               _initial_planner_name_.c_str());
-  //     ros::shutdown();
-  //   }
-  // }
-
-  // // | ---------- activate the first planner on the list --------- |
-  //
-  // ROS_INFO("[FleetManager]: activating planner with idx %d on the list "
-  //          "(named: %s)",
-  //          _initial_planner_idx_,
-  //          _planner_names_[_initial_planner_idx_].c_str());
-  //
-  // planner_list_[_initial_planner_idx_]->activate();
-  // active_planner_idx_ = _initial_planner_idx_;
-
   // | ------------------------- timers ------------------------- |
 
   timer_main_ = nh_.createTimer(ros::Rate(main_timer_rate), &FleetManager::timerMain, this);
