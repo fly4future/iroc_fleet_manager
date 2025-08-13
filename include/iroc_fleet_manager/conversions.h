@@ -50,7 +50,7 @@ template <typename Msg_T>
 Msg_T toRosMsg(const custom_types::Waypoint& waypoint) {
   Msg_T ros_waypoint;
 
-  ros_waypoint.reference_point = toRosMsg<mrs_msgs::Reference>(waypoint.reference);
+  ros_waypoint.reference = toRosMsg<mrs_msgs::Reference>(waypoint.reference);
 
   ros_waypoint.subtasks.reserve(waypoint.getSubtasks().size());
   for (const auto& subtask : waypoint.getSubtasks()) {

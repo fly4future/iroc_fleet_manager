@@ -375,7 +375,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
         point.heading = 0.0;
 
         iroc_mission_handler::Waypoint waypoint;
-        waypoint.reference_point = point;
+        waypoint.reference = point;
         coverage_path.push_back(waypoint);
       }
       coverage_paths.push_back(coverage_path);

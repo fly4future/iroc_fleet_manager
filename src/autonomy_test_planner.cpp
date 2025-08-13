@@ -191,10 +191,10 @@ std::vector<iroc_mission_handler::Waypoint> AutonomyTestPlanner::getAutonomyPoin
   autonomy_points.reserve(points.size());
   for (const auto& p : points) {
     iroc_mission_handler::Waypoint wp;
-    wp.reference_point.position.x = p.position.x;
-    wp.reference_point.position.y = p.position.y;
-    wp.reference_point.position.z = p.position.z;
-    wp.reference_point.heading = p.heading;
+    wp.reference.position.x = p.position.x;
+    wp.reference.position.y = p.position.y;
+    wp.reference.position.z = p.position.z;
+    wp.reference.heading = p.heading;
 
     autonomy_points.push_back(wp);
   }
