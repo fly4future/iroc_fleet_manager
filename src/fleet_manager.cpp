@@ -800,6 +800,7 @@ void FleetManager::actionCallbackGoal() {
     action_server_result.robot_results = getRobotResults();
     ROS_WARN("[FleetManager]: Goal creation process failed");
     action_server_ptr_->setAborted(action_server_result);
+    return;
   }
 
   // Start each robot action/service clients with mission_handler

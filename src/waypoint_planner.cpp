@@ -2,34 +2,36 @@
 #include <iroc_fleet_manager/planner.h>
 #include <string>
 
-namespace iroc_fleet_manager {
+namespace iroc_fleet_manager
+{
 
-namespace waypoint_planner {
+namespace waypoint_planner
+{
 
 class WaypointPlanner : public iroc_fleet_manager::Planner {
- public:
-  bool initialize(const ros::NodeHandle& parent_nh, const std::string& name, const std::string& name_space,
+public:
+  bool initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
                   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) override;
 
   bool activate(void) override;
   void deactivate(void) override;
-  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string& goal) const override;
+  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string &goal) const override;
 
   std::string _name_;
 
- private:
+private:
   bool is_initialized_ = false;
-  bool is_active_ = false;
+  bool is_active_      = false;
   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 };
 
-bool WaypointPlanner::initialize(const ros::NodeHandle& parent_nh, const std::string& name, const std::string& name_space,
+bool WaypointPlanner::initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
                                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
 
   // nh_ will behave just like normal NodeHandle
   ros::NodeHandle nh_(parent_nh, name_space);
 
-  _name_ = name;
+  _name_           = name;
   common_handlers_ = common_handlers;
 
   ros::Time::waitForValid();
@@ -59,7 +61,7 @@ void WaypointPlanner::deactivate(void) {
   ROS_INFO("[%s]: deactivated", _name_.c_str());
 }
 
-std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPlanner::createGoal(const std::string& goal) const {
+std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPlanner::createGoal(const std::string &goal) const {
   // Goal to be filled
   std::vector<iroc_mission_handler::MissionGoal> mission_robots;
   ROS_INFO("Received goal :%s ",
@@ -79,7 +81,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
   bool success = parseVars(json_msg, {{"robots", &robots}});
 
   mission_robots.reserve(robots.size());
-  for (auto& robot : robots) {
+  for (auto &robot : robots) {
     std::string name;
     std::vector<custom_types::Waypoint> points;
     int frame_id;
@@ -99,14 +101,25 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
       return std::make_tuple(result, mission_robots);
     }
 
+    bool isRobotInFleet = common_handlers_->handlers->robots_map.count(name);
+
+    if (!isRobotInFleet) {
+      ROS_WARN("[WaypointPlanner] Robot %s not within the fleet", name.c_str());
+      std::stringstream ss;
+      ss << name << " not found in the fleet!";
+      result.message = ss.str();
+      result.success = false;
+      return std::make_tuple(result, mission_robots);
+    }
+
     auto waypoints = toRosMsg<iroc_mission_handler::Waypoint>(points);
 
     iroc_mission_handler::MissionGoal robot_goal;
-    robot_goal.name = name;
-    robot_goal.frame_id = frame_id;
-    robot_goal.height_id = height_id;
+    robot_goal.name            = name;
+    robot_goal.frame_id        = frame_id;
+    robot_goal.height_id       = height_id;
     robot_goal.terminal_action = terminal_action;
-    robot_goal.points = waypoints;
+    robot_goal.points          = waypoints;
     // Save the individual robot goal
     mission_robots.push_back(robot_goal);
   } // robots iteration

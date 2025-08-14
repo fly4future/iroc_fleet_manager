@@ -90,7 +90,18 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> AutonomyTes
 
     if (!succ) {
       result.success = false;
-      result.message = "Missing segment_length parameter";
+      result.message = "Failed to parse parameters";
+      return std::make_tuple(result, mission_robots);
+    }
+
+    bool isRobotInFleet = common_handlers_->handlers->robots_map.count(name); 
+
+    if (!isRobotInFleet) {
+      ROS_WARN("[AutonomyTestPlanner] Robot %s not within the fleet", name.c_str());
+      std::stringstream ss;
+      ss << name << " not found in the fleet!";
+      result.message = ss.str(); 
+      result.success = false;
       return std::make_tuple(result, mission_robots);
     }
 
