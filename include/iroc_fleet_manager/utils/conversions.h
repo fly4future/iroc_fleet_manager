@@ -1,6 +1,6 @@
 #pragma once
 
-#include "iroc_fleet_manager/types.h"
+#include "iroc_fleet_manager/utils/types.h"
 #include "iroc_mission_handler/Subtask.h"
 #include "iroc_mission_handler/Waypoint.h"
 #include <mrs_msgs/Reference.h>

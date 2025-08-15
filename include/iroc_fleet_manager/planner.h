@@ -2,11 +2,13 @@
 #define IROC_FLEET_MANAGER_PLANNER
 
 #include <iroc_fleet_manager/common_handlers.h>
-#include <iroc_fleet_manager/json_var_parser.h>
+#include <iroc_fleet_manager/utils/json_var_parser.h>
 #include <iroc_mission_handler/MissionAction.h>
 #include <ros/ros.h>
 
 namespace iroc_fleet_manager {
+
+namespace planners {
 
 struct result_t {
   bool success;
@@ -75,6 +77,8 @@ result_t Planner::parseJson(const std::string& goal, json& json_msg) const {
   return result;
 }
 
+} // namespace planners 
 } // namespace iroc_fleet_manager
+
 
 #endif

@@ -25,7 +25,6 @@
     <node pkg="nodelet" type="nodelet" name="iroc_fleet_manager" args="$(arg nodelet) iroc_fleet_manager/FleetManager $(arg nodelet_manager)" launch-prefix="$(arg launch_prefix_debug)" output="screen">
 
       <param name="config" value="$(find iroc_fleet_manager)/config/config.yaml" />
-      <rosparam file="$(find iroc_fleet_manager)/config/plugin_manager.yaml" />
       <rosparam file="$(find iroc_fleet_manager)/config/plugins.yaml" />
 
       <param if="$(eval arg('network_config') == '')" name="network_config" value="" />

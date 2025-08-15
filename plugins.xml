@@ -1,15 +1,15 @@
 <library path="lib/libWaypointPlanner">
-  <class name="iroc_fleet_manager/WaypointPlanner" type="iroc_fleet_manager::waypoint_planner::WaypointPlanner" base_class_type="iroc_fleet_manager::Planner">
+  <class name="iroc_fleet_manager/WaypointPlanner" type="iroc_fleet_manager::planners::waypoint_planner::WaypointPlanner" base_class_type="iroc_fleet_manager::planners::Planner">
     <description>WaypointPlanner</description>
   </class>
 </library>
 <library path="lib/libCoveragePlanner">
-  <class name="iroc_fleet_manager/CoveragePlanner" type="iroc_fleet_manager::coverage_planner::CoveragePlanner" base_class_type="iroc_fleet_manager::Planner">
+  <class name="iroc_fleet_manager/CoveragePlanner" type="iroc_fleet_manager::planners::coverage_planner::CoveragePlanner" base_class_type="iroc_fleet_manager::planners::Planner">
     <description>CoveragePlanner</description>
   </class>
 </library>
 <library path="lib/libAutonomyTestPlanner">
-  <class name="iroc_fleet_manager/AutonomyTestPlanner" type="iroc_fleet_manager::autonomy_test_planner::AutonomyTestPlanner" base_class_type="iroc_fleet_manager::Planner">
+  <class name="iroc_fleet_manager/AutonomyTestPlanner" type="iroc_fleet_manager::planners::autonomy_test_planner::AutonomyTestPlanner" base_class_type="iroc_fleet_manager::planners::Planner">
     <description>CoveragePlanner</description>
   </class>
 </library>

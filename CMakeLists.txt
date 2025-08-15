@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_definitions(-O0)
 
-set(COVERAGE_PLANNER_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/CoveragePlannerLib")
+set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
 
 set(CATKIN_DEPENDENCIES
   cmake_modules
@@ -23,11 +23,11 @@ set(CATKIN_DEPENDENCIES
 )
 
 set(LIBRARIES
-  FleetManager
+  IROCFleetManager
   WaypointPlanner
   CoveragePlanner
   AutonomyTestPlanner
-  CoveragePlannerLib
+  EnergyAwareMCPP
 )
 
 find_package(catkin REQUIRED COMPONENTS
@@ -36,10 +36,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 #actions
 add_action_files(DIRECTORY action FILES
-  FleetManager.action
-  WaypointFleetManager.action
-  AutonomyTest.action
-  CoverageMission.action
+  IROCFleetManager.action
 )
 # messages
 add_message_files(DIRECTORY msg FILES
@@ -71,24 +68,24 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
-  ${COVERAGE_PLANNER_SRC_DIR}/include
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/include
 )
 
-# FleetManager
+# IROCFleetManager
 
 ## Declare a C++ library
-add_library(FleetManager
+add_library(IROCFleetManager
   src/fleet_manager.cpp
   src/json_var_parser.cpp
   )
 
-add_dependencies(FleetManager
+add_dependencies(IROCFleetManager
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
   )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(FleetManager
+target_link_libraries(IROCFleetManager
   # IROCFleetManager
   ${catkin_LIBRARIES}
   )
@@ -111,24 +108,24 @@ target_link_libraries(WaypointPlanner
 )
 
 ## External library for coverage planner
-add_library(CoveragePlannerLib
-  ${COVERAGE_PLANNER_SRC_DIR}/src/coverage_planner.cpp
-  ${COVERAGE_PLANNER_SRC_DIR}/src/MapPolygon.cpp
-  ${COVERAGE_PLANNER_SRC_DIR}/src/EnergyCalculator.cpp
-  ${COVERAGE_PLANNER_SRC_DIR}/src/ShortestPathCalculator.cpp
-  ${COVERAGE_PLANNER_SRC_DIR}/src/algorithms.cpp
-  ${COVERAGE_PLANNER_SRC_DIR}/src/utils.cpp
-  ${COVERAGE_PLANNER_SRC_DIR}/src/mstsp_solver/MstspSolver.cpp
-  ${COVERAGE_PLANNER_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
+add_library(EnergyAwareMCPP
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/coverage_planner.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/MapPolygon.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/EnergyCalculator.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/ShortestPathCalculator.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/algorithms.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/utils.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/MstspSolver.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
 )
 
 # find_package(yaml-cpp REQUIRED)
 
-target_include_directories(CoveragePlannerLib
+target_include_directories(EnergyAwareMCPP
   PUBLIC
   ${catkin_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
-  ${COVERAGE_PLANNER_SRC_DIR}/include/CoveragePlannerLib
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
 )
 
 # CoveragePlanner
@@ -144,7 +141,7 @@ add_dependencies(CoveragePlanner
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(CoveragePlanner
-  CoveragePlannerLib
+  EnergyAwareMCPP
   ${catkin_LIBRARIES}
 )
 

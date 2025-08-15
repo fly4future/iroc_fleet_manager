@@ -5,28 +5,31 @@
 #include <mrs_lib/param_loader.h>
 #include <string>
 
-// Coverage planner library includes
-#include <CoveragePlannerLib/EnergyCalculator.h>
-#include <CoveragePlannerLib/MapPolygon.hpp>
-#include <CoveragePlannerLib/ShortestPathCalculator.hpp>
-#include <CoveragePlannerLib/SimpleLogger.h>
-#include <CoveragePlannerLib/algorithms.hpp>
-#include <CoveragePlannerLib/coverage_planner.hpp>
-#include <CoveragePlannerLib/mstsp_solver/MstspSolver.h>
-#include <CoveragePlannerLib/mstsp_solver/SolverConfig.h>
-#include <CoveragePlannerLib/utils.hpp>
+// Energy aware coverage planner library includes
+#include <EnergyAwareMCPP/EnergyCalculator.h>
+#include <EnergyAwareMCPP/MapPolygon.hpp>
+#include <EnergyAwareMCPP/ShortestPathCalculator.hpp>
+#include <EnergyAwareMCPP/SimpleLogger.h>
+#include <EnergyAwareMCPP/algorithms.hpp>
+#include <EnergyAwareMCPP/coverage_planner.hpp>
+#include <EnergyAwareMCPP/mstsp_solver/MstspSolver.h>
+#include <EnergyAwareMCPP/mstsp_solver/SolverConfig.h>
+#include <EnergyAwareMCPP/utils.hpp>
+
 #include <iroc_fleet_manager/CoverageMission.h>
 #include <iroc_fleet_manager/CoverageMissionRobot.h>
-#include <iroc_fleet_manager/conversions.h>
+#include <iroc_fleet_manager/utils/conversions.h>
 #include <mrs_msgs/Point2D.h>
 
 namespace iroc_fleet_manager
 {
 
+namespace planners {
+
 namespace coverage_planner
 {
 
-class CoveragePlanner : public iroc_fleet_manager::Planner {
+class CoveragePlanner : public iroc_fleet_manager::planners::Planner {
 public:
   bool initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
                   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) override;
@@ -35,7 +38,7 @@ public:
   void deactivate(void) override;
   std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string &goal) const override;
 
-  std::string _name_;
+  std::string name_;
 
 private:
   // Additional type for coverage planner
@@ -58,26 +61,26 @@ bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
   // nh_ will behave just like normal NodeHandle
   ros::NodeHandle nh_(parent_nh, name_space);
 
-  _name_           = name;
+  name_           = name;
   common_handlers_ = common_handlers;
   ros::Time::waitForValid();
 
   /* load parameters */
   mrs_lib::ParamLoader param_loader(nh_, "CoveragePlanner");
 
-  param_loader.addYamlFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_config.yaml");
+  param_loader.addYamlFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
 
   planner_config_ = parse_algorithm_config(param_loader);
 
   if (!param_loader.loadedSuccessfully()) {
-    ROS_ERROR("[%s]: could not load all parameters!", _name_.c_str());
+    ROS_ERROR("[%s]: could not load all parameters!", name_.c_str());
     is_initialized_ = false;
     return true;
   }
 
   // | ----------------------- finish init ---------------------- |
 
-  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ", _name_.c_str(), name.c_str(), name_space.c_str());
+  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ", name_.c_str(), name.c_str(), name_space.c_str());
 
   is_initialized_ = true;
   return true;
@@ -85,8 +88,7 @@ bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
 
 bool CoveragePlanner::activate(void) {
 
-  int some_number = 0;
-  ROS_INFO("[%s]: activated with some_number=%d", _name_.c_str(), some_number);
+  ROS_INFO("[%s]: activated", name_.c_str());
 
   is_active_ = true;
 
@@ -97,7 +99,7 @@ void CoveragePlanner::deactivate(void) {
 
   is_active_ = false;
 
-  ROS_INFO("[%s]: deactivated", _name_.c_str());
+  ROS_INFO("[%s]: deactivated", name_.c_str());
 }
 
 std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePlanner::createGoal(const std::string &goal) const {
@@ -128,7 +130,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   int height_id;
   int terminal_action;
 
-  bool success = parseVars(json_msg, {
+  bool success = utils::parseVars(json_msg, {
                                          {"search_area", &search_area},
                                          {"robots", &robots},
                                          {"height", &height},
@@ -201,8 +203,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   return std::make_tuple(result, mission_robots);
 }
 
+  
 algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const {
-  const std::string yaml_prefix = "coverage_planner/";
+  const std::string yaml_prefix = "fleet_manager/planners/coverage_planner/";
   algorithm_config_t algorithm_config;
 
   // Load basic drone parameters
@@ -393,9 +396,12 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
   return coverage_paths;
 }
+
+}
+
 } // namespace coverage_planner
 
 } // namespace iroc_fleet_manager
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::coverage_planner::CoveragePlanner, iroc_fleet_manager::Planner);
+PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::planners::coverage_planner::CoveragePlanner, iroc_fleet_manager::planners::Planner);
