@@ -4,6 +4,7 @@
   <arg name="GS_NS" default="$(optenv GS_NS gs)" />
 
   <!-- config files -->
+  <arg name="custom_config" default="" />
   <arg name="network_config" default="$(optenv NETWORK_CONFIG)" />
 
   <!-- will it run using GNU debugger? -->
@@ -22,14 +23,17 @@
   <group ns="$(arg GS_NS)">
 
     <!-- IROCFleetManager nodelet -->
-    <node pkg="nodelet" type="nodelet" name="iroc_fleet_manager" args="$(arg nodelet) iroc_fleet_manager/FleetManager $(arg nodelet_manager)" launch-prefix="$(arg launch_prefix_debug)" output="screen">
+    <node pkg="nodelet" type="nodelet" name="iroc_fleet_manager" args="$(arg nodelet) iroc_fleet_manager/IROCFleetManager $(arg nodelet_manager)" launch-prefix="$(arg launch_prefix_debug)" output="screen">
 
       <param name="config" value="$(find iroc_fleet_manager)/config/config.yaml" />
-      <rosparam file="$(find iroc_fleet_manager)/config/plugins.yaml" />
 
       <param if="$(eval arg('network_config') == '')" name="network_config" value="" />
       <param if="$(eval not arg('network_config') == '' and arg('network_config')[0] == '/')" name="network_config" value="$(arg network_config)" />
       <param if="$(eval not arg('network_config') == '' and not arg('network_config')[0] == '/')" name="network_config" value="$(env PWD)/$(arg network_config)" />
+
+      <param if="$(eval arg('custom_config') == '')" name="custom_config" value="" />
+      <param if="$(eval not arg('custom_config') == '' and arg('custom_config')[0] == '/')" name="custom_config" value="$(arg custom_config)" />
+      <param if="$(eval not arg('custom_config') == '' and not arg('custom_config')[0] == '/')" name="custom_config" value="$(env PWD)/$(arg custom_config)" />
 
       <!-- Subscribers -->
       <remap from="~in/general_robot_info" to="/state_monitor/general_robot_info" />

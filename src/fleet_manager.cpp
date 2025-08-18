@@ -216,22 +216,30 @@ void IROCFleetManager::onInit() {
 
   mrs_lib::ParamLoader param_loader(nh_, "IROCFleetManager");
 
+  std::string custom_config_path;
+  param_loader.loadParam("custom_config", custom_config_path);
+
+  // Custom config loaded first to have the priority, if not given it loads from the default config file
+  if (custom_config_path != "") {
+    param_loader.addYamlFile(custom_config_path);
+  }
+
   std::string network_config_path;
-
-  param_loader.addYamlFileFromParam("config");
-
   param_loader.loadParam("network_config", network_config_path);
 
   if (network_config_path != "") {
     param_loader.addYamlFile(network_config_path);
   }
 
+  // Default config file
+  param_loader.addYamlFileFromParam("config");
+
   const auto robot_names = param_loader.loadParam2<std::vector<std::string>>("network/robot_names");
 
-  param_loader.setPrefix("fleet_manager/");
-  const auto main_timer_rate = param_loader.loadParam2<double>("main_timer_rate");
-  const auto feedback_timer_rate = param_loader.loadParam2<double>("feedback_timer_rate");
-  const auto no_message_timeout = param_loader.loadParam2<ros::Duration>("no_message_timeout");
+  // param_loader.setPrefix("fleet_manager/");
+  const auto main_timer_rate = param_loader.loadParam2<double>("fleet_manager/main_timer_rate");
+  const auto feedback_timer_rate = param_loader.loadParam2<double>("fleet_manager/feedback_timer_rate");
+  const auto no_message_timeout = param_loader.loadParam2<ros::Duration>("fleet_manager/no_message_timeout");
 
   if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[IROCFleetManager]: Could not load all parameters!");
@@ -292,7 +300,7 @@ void IROCFleetManager::onInit() {
   // --------------------------------------------------------------
 
   param_loader.setPrefix("fleet_manager/planners/");
-  param_loader.loadParam("planners", _planner_names_);
+  param_loader.loadParam("planner_names", _planner_names_);
   planner_loader_ = std::make_unique<pluginlib::ClassLoader<iroc_fleet_manager::planners::Planner>>("iroc_fleet_manager", "iroc_fleet_manager::planners::Planner");
 
   // for each plugin in the list
