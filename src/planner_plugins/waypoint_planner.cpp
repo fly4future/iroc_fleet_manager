@@ -1,31 +1,13 @@
-#include <iroc_fleet_manager/utils/conversions.h>
-#include <iroc_fleet_manager/planner.h>
-#include <string>
+#include <iroc_fleet_manager/iroc_plugins/waypoint_planner.h>
 
 namespace iroc_fleet_manager
 {
 
-namespace planners {
+namespace planners
+{
 
 namespace waypoint_planner
 {
-
-class WaypointPlanner : public iroc_fleet_manager::planners::Planner {
-public:
-  bool initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
-                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) override;
-
-  bool activate(void) override;
-  void deactivate(void) override;
-  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string &goal) const override;
-
-  std::string _name_;
-
-private:
-  bool is_initialized_ = false;
-  bool is_active_      = false;
-  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
-};
 
 bool WaypointPlanner::initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
                                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
@@ -98,12 +80,12 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
     int terminal_action;
 
     bool success = utils::parseVars(robot, {
-                                        {"name", &name},
-                                        {"points", &points},
-                                        {"frame_id", &frame_id},
-                                        {"height_id", &height_id},
-                                        {"terminal_action", &terminal_action},
-                                    });
+                                               {"name", &name},
+                                               {"points", &points},
+                                               {"frame_id", &frame_id},
+                                               {"height_id", &height_id},
+                                               {"terminal_action", &terminal_action},
+                                           });
 
     if (!success) {
       return std::make_tuple(result, mission_robots);
@@ -138,9 +120,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
   return std::make_tuple(result, mission_robots);
 }
 
-}
-
 } // namespace waypoint_planner
+
+} // namespace planners
 
 } // namespace iroc_fleet_manager
 

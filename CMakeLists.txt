@@ -24,9 +24,9 @@ set(CATKIN_DEPENDENCIES
 
 set(LIBRARIES
   IROCFleetManager
-  WaypointPlanner
-  CoveragePlanner
-  AutonomyTestPlanner
+  IROCFleetManager_WaypointPlanner
+  IROCFleetManager_CoveragePlanner
+  IROCFleetManager_AutonomyTestPlanner
   EnergyAwareMCPP
 )
 
@@ -76,7 +76,7 @@ include_directories(
 ## Declare a C++ library
 add_library(IROCFleetManager
   src/fleet_manager.cpp
-  src/json_var_parser.cpp
+  src/utils/json_var_parser.cpp
   )
 
 add_dependencies(IROCFleetManager
@@ -90,20 +90,20 @@ target_link_libraries(IROCFleetManager
   ${catkin_LIBRARIES}
   )
 
-# WaypointPlanner
+# IROCFleetManager_WaypointPlanner
 
 ## Declare a C++ library
-add_library(WaypointPlanner
-  src/waypoint_planner.cpp
+add_library(IROCFleetManager_WaypointPlanner
+  src/planner_plugins/waypoint_planner.cpp
 )
 
-add_dependencies(WaypointPlanner
+add_dependencies(IROCFleetManager_WaypointPlanner
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(WaypointPlanner
+target_link_libraries(IROCFleetManager_WaypointPlanner
   ${catkin_LIBRARIES}
 )
 
@@ -128,36 +128,36 @@ target_include_directories(EnergyAwareMCPP
   ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
 )
 
-# CoveragePlanner
+# IROCFleetManager_CoveragePlanner
 ## Declare a C++ library
-add_library(CoveragePlanner
-  src/coverage_planner.cpp
+add_library(IROCFleetManager_CoveragePlanner
+  src/planner_plugins/coverage_planner.cpp
 )
 
-add_dependencies(CoveragePlanner
+add_dependencies(IROCFleetManager_CoveragePlanner
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(CoveragePlanner
+target_link_libraries(IROCFleetManager_CoveragePlanner
   EnergyAwareMCPP
   ${catkin_LIBRARIES}
 )
 
-# AutonomyTestPlanner
+# IROCFleetManager_AutonomyTestPlanner
 ## Declare a C++ library
-add_library(AutonomyTestPlanner
-  src/autonomy_test_planner.cpp
+add_library(IROCFleetManager_AutonomyTestPlanner
+  src/planner_plugins/autonomy_test_planner.cpp
 )
 
-add_dependencies(AutonomyTestPlanner
+add_dependencies(IROCFleetManager_AutonomyTestPlanner
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(AutonomyTestPlanner
+target_link_libraries(IROCFleetManager_AutonomyTestPlanner
   ${catkin_LIBRARIES}
 )
 

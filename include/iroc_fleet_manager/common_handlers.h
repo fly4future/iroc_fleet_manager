@@ -1,5 +1,4 @@
-#ifndef FLEET_MANAGER_COMMON_HANDLERS_H
-#define FLEET_MANAGER_COMMON_HANDLERS_H
+#pragma once
 
 #include <memory.h>
 #include <mrs_lib/mutex.h>
@@ -39,4 +38,3 @@ struct CommonHandlers_t {
 
 } // namespace iroc_fleet_manager
 
-#endif // FLEET_MANAGER_COMMON_HANDLERS_H

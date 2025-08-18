@@ -1,59 +1,13 @@
-#include <iroc_fleet_manager/WaypointFleetManagerAction.h>
-#include <iroc_fleet_manager/planner.h>
-#include <ros/package.h>
-
-#include <mrs_lib/param_loader.h>
-#include <string>
-
-// Energy aware coverage planner library includes
-#include <EnergyAwareMCPP/EnergyCalculator.h>
-#include <EnergyAwareMCPP/MapPolygon.hpp>
-#include <EnergyAwareMCPP/ShortestPathCalculator.hpp>
-#include <EnergyAwareMCPP/SimpleLogger.h>
-#include <EnergyAwareMCPP/algorithms.hpp>
-#include <EnergyAwareMCPP/coverage_planner.hpp>
-#include <EnergyAwareMCPP/mstsp_solver/MstspSolver.h>
-#include <EnergyAwareMCPP/mstsp_solver/SolverConfig.h>
-#include <EnergyAwareMCPP/utils.hpp>
-
-#include <iroc_fleet_manager/CoverageMission.h>
-#include <iroc_fleet_manager/CoverageMissionRobot.h>
-#include <iroc_fleet_manager/utils/conversions.h>
-#include <mrs_msgs/Point2D.h>
+#include <iroc_fleet_manager/iroc_plugins/coverage_planner.h>
 
 namespace iroc_fleet_manager
 {
 
-namespace planners {
+namespace planners
+{
 
 namespace coverage_planner
 {
-
-class CoveragePlanner : public iroc_fleet_manager::planners::Planner {
-public:
-  bool initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
-                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) override;
-
-  bool activate(void) override;
-  void deactivate(void) override;
-  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string &goal) const override;
-
-  std::string name_;
-
-private:
-  // Additional type for coverage planner
-  typedef std::vector<std::vector<iroc_mission_handler::Waypoint>> coverage_paths_t;
-
-  bool is_initialized_ = false;
-  bool is_active_      = false;
-
-  mutable algorithm_config_t planner_config_;
-  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
-
-  algorithm_config_t parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const;
-
-  coverage_paths_t getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission) const;
-};
 
 bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
                                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
@@ -61,7 +15,7 @@ bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
   // nh_ will behave just like normal NodeHandle
   ros::NodeHandle nh_(parent_nh, name_space);
 
-  name_           = name;
+  name_            = name;
   common_handlers_ = common_handlers;
   ros::Time::waitForValid();
 
@@ -131,12 +85,12 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   int terminal_action;
 
   bool success = utils::parseVars(json_msg, {
-                                         {"search_area", &search_area},
-                                         {"robots", &robots},
-                                         {"height", &height},
-                                         {"height_id", &height_id},
-                                         {"terminal_action", &terminal_action},
-                                     });
+                                                {"search_area", &search_area},
+                                                {"robots", &robots},
+                                                {"height", &height},
+                                                {"height_id", &height_id},
+                                                {"terminal_action", &terminal_action},
+                                            });
 
   search_area_msg = toRosMsg<mrs_msgs::Point2D>(search_area);
 
@@ -146,15 +100,15 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     iroc_fleet_manager::CoverageMissionRobot robot_msg;
     std::string name;
 
-    name      = robot.get<std::string>();
+    name = robot.get<std::string>();
 
-    bool isRobotInFleet = common_handlers_->handlers->robots_map.count(name); 
+    bool isRobotInFleet = common_handlers_->handlers->robots_map.count(name);
 
     if (!isRobotInFleet) {
       ROS_WARN("[CoveragePlanner] Robot %s not within the fleet", name.c_str());
       std::stringstream ss;
       ss << name << " not found in the fleet!";
-      result.message = ss.str(); 
+      result.message = ss.str();
       result.success = false;
       return std::make_tuple(result, mission_robots);
     }
@@ -203,7 +157,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   return std::make_tuple(result, mission_robots);
 }
 
-  
+
 algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const {
   const std::string yaml_prefix = "fleet_manager/planners/coverage_planner/";
   algorithm_config_t algorithm_config;
@@ -397,9 +351,9 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   return coverage_paths;
 }
 
-}
-
 } // namespace coverage_planner
+
+} // namespace planners
 
 } // namespace iroc_fleet_manager
 

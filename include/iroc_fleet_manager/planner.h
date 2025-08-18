@@ -1,5 +1,4 @@
-#ifndef IROC_FLEET_MANAGER_PLANNER
-#define IROC_FLEET_MANAGER_PLANNER
+#pragma once
 
 #include <iroc_fleet_manager/common_handlers.h>
 #include <iroc_fleet_manager/utils/json_var_parser.h>
@@ -80,5 +79,3 @@ result_t Planner::parseJson(const std::string& goal, json& json_msg) const {
 } // namespace planners 
 } // namespace iroc_fleet_manager
 
-
-#endif
