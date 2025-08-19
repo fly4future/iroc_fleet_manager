@@ -43,6 +43,10 @@ Msg_T toRosMsg(const custom_types::Subtask& subtask) {
   Msg_T ros_subtask;
   ros_subtask.type = subtask.type;
   ros_subtask.parameters = subtask.parameters;
+  ros_subtask.continue_without_waiting = subtask.continue_without_waiting;  
+  ros_subtask.stop_on_failure = subtask.stop_on_failure;                   
+  ros_subtask.max_retries = subtask.max_retries;                           
+  ros_subtask.retry_delay = subtask.retry_delay;                           
   return ros_subtask;
 }
 
@@ -56,7 +60,9 @@ Msg_T toRosMsg(const custom_types::Waypoint& waypoint) {
   for (const auto& subtask : waypoint.getSubtasks()) {
     ros_waypoint.subtasks.emplace_back(toRosMsg<iroc_mission_handler::Subtask>(subtask));
   }
-  // ros_waypoint.parallel_execution = false;
+
+  ros_waypoint.parallel_execution = waypoint.parallel_execution;
+
   return ros_waypoint;
 }
 

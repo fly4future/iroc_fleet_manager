@@ -40,20 +40,36 @@ struct Reference {
 struct Subtask {
   std::string type;
   std::string parameters;
+  bool continue_without_waiting = false;
+  bool stop_on_failure = false;
+  int  max_retries = 0;
+  int  retry_delay = 0; 
+ 
 
-  Subtask() : type(), parameters() {
-  }
-  Subtask(const json& j) : type(j.at("type")), parameters(j.at("parameters").dump()) {
-  }
+  Subtask() = default;
+
+  // Json constructor 
+  Subtask(const json &j)
+      : type(j.at("type")), 
+        parameters(j.at("parameters").dump()), 
+        continue_without_waiting(j.value("continue_without_waiting", false)),
+        stop_on_failure(j.value("stop_on_failure", false)),
+        max_retries(j.value("max_retries", 0)),
+        retry_delay(j.value("retry_delay", 0))
+      {}
 };
 
 struct Waypoint {
   Reference reference;
   json subtasks;
+  bool parallel_execution;
   Waypoint() : reference(), subtasks(json::array()) {
   }
-  Waypoint(const json& j) : reference(j), subtasks(j.value("subtasks", json::array())) {
-  }
+  // Constructor initialization
+  Waypoint(const json& j) : reference(j), 
+                            subtasks(j.value("subtasks", json::array())),
+                            parallel_execution(j.value("parallel_execution", false))
+                          {}
 
   // Helper method to get typed subtasks
   std::vector<Subtask> getSubtasks() const {
