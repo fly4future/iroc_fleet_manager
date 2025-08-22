@@ -13,7 +13,11 @@
 // Fleet manager
 #include "iroc_fleet_manager/planner.h"
 #include <iroc_fleet_manager/ChangeRobotMissionStateSrv.h>
+#include <iroc_fleet_manager/GetWorldOriginSrv.h>
+#include <iroc_fleet_manager/GetSafetyBorderSrv.h>
+#include <iroc_fleet_manager/GetObstaclesSrv.h>
 #include <iroc_fleet_manager/IROCFleetManagerAction.h>
+#include <iroc_fleet_manager/utils/types.h>
 
 // Robot diagnostics
 #include <mrs_msgs/SafetyAreaManagerDiagnostics.h>
@@ -95,6 +99,10 @@ class IROCFleetManager : public nodelet::Nodelet {
   ros::ServiceServer ss_change_fleet_mission_state_;
   ros::ServiceServer ss_change_robot_mission_state_;
 
+  ros::ServiceServer ss_get_safety_border_;
+  ros::ServiceServer ss_get_world_origin_;
+  ros::ServiceServer ss_get_obstacles_;
+
   std::atomic_bool active_mission_ = false;
   std::atomic_bool active_mission_change_ = false;
 
@@ -174,9 +182,12 @@ class IROCFleetManager : public nodelet::Nodelet {
   void timerUpdateCommonHandlers(const ros::TimerEvent& event);
   void timerFeedback(const ros::TimerEvent& event);
 
-  bool changeFleetMissionStateCallback(mrs_msgs::String::Request& req, mrs_msgs::String::Response& res);
-  bool changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request& req,
-                                       iroc_fleet_manager::ChangeRobotMissionStateSrv::Response& res);
+  bool changeFleetMissionStateCallback(mrs_msgs::String::Request &req, mrs_msgs::String::Response &res);
+  bool changeRobotMissionStateCallback(iroc_fleet_manager::ChangeRobotMissionStateSrv::Request &req,
+                                       iroc_fleet_manager::ChangeRobotMissionStateSrv::Response &res);
+  bool getWorldOriginCallback(iroc_fleet_manager::GetWorldOriginSrv::Request &req, iroc_fleet_manager::GetWorldOriginSrv::Response &res);
+  bool getSafetyBorderCallback(iroc_fleet_manager::GetSafetyBorderSrv::Request &req, iroc_fleet_manager::GetSafetyBorderSrv::Response &res);
+  bool getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv::Request &req, iroc_fleet_manager::GetObstaclesSrv::Response &res);
 
   // helper methods
   std::map<std::string, result_t>
@@ -372,6 +383,24 @@ void IROCFleetManager::onInit() {
   ROS_INFO("[IROCFleetManager]: Created ServiceServer on service "
            "\'svc_server/change_robot_mission_state\' -> \'%s\'",
            ss_change_robot_mission_state_.getService().c_str());
+
+  ss_get_world_origin_ =
+      nh_.advertiseService(nh_.resolveName("svc/get_world_origin"), &IROCFleetManager::getWorldOriginCallback, this);
+  ROS_INFO("[IROCFleetManager]: Created ServiceServer on service "
+           "\'svc_server/get_world_origin\' -> \'%s\'",
+           ss_get_world_origin_.getService().c_str());
+
+  ss_get_safety_border_ =
+      nh_.advertiseService(nh_.resolveName("svc/get_safety_border"), &IROCFleetManager::getSafetyBorderCallback, this);
+  ROS_INFO("[IROCFleetManager]: Created ServiceServer on service "
+           "\'svc_server/get_safety_border\' -> \'%s\'",
+           ss_get_safety_border_.getService().c_str());
+
+  ss_get_obstacles_ =
+      nh_.advertiseService(nh_.resolveName("svc/get_obstacles"), &IROCFleetManager::getObstaclesCallback, this);
+  ROS_INFO("[IROCFleetManager]: Created ServiceServer on service "
+           "\'svc_server/get_obstacles\' -> \'%s\'",
+           ss_get_obstacles_.getService().c_str());
 
   // // | ------------------ action server methods ----------------- |
   action_server_ptr_ = std::make_unique<ActionServer_T>(nh_, ros::this_node::getName(), false);
@@ -698,6 +727,156 @@ bool IROCFleetManager::changeRobotMissionStateCallback(iroc_fleet_manager::Chang
 }
 
 //}
+
+bool IROCFleetManager::getWorldOriginCallback(iroc_fleet_manager::GetWorldOriginSrv::Request &req, iroc_fleet_manager::GetWorldOriginSrv::Response &res) {
+
+  std::scoped_lock lck(robot_handlers_.mtx);
+  ROS_INFO_STREAM("[IROCBridge]: Processing a getWorldOriginCallback");
+  std::set<std::string> origin_hashes;
+
+  double origin_x;
+  double origin_y;
+  bool first_robot = true;
+  for (const auto &rh : robot_handlers_.handlers) {
+    const auto msg  = rh.sh_safety_area_info.peekMsg();
+    std::ostringstream hash_stream;
+
+    bool is_latlon = (msg->safety_area.units== "LATLON");
+    if (is_latlon) {
+      hash_stream << std::fixed << std::setprecision(7); 
+    } else {
+      hash_stream << std::fixed << std::setprecision(4); 
+    }
+
+    hash_stream << msg->safety_area.origin_x << "|" << msg->safety_area.origin_y << "|";
+    origin_hashes.insert(hash_stream.str());
+
+    if (first_robot) {
+      origin_x    = msg->safety_area.origin_x;
+      origin_y    = msg->safety_area.origin_y;
+      first_robot = false;
+    }
+  }
+
+  bool has_discrepancies = origin_hashes.size() > 1;
+
+  if (has_discrepancies) {
+    ROS_WARN("Not the same origins for drones in fleet");
+    res.message = "Discrepancy in the origins between the fleet, please set the origin!";
+    res.success = false;
+    return true;
+  } else {
+    res.message  = "All robots in the fleet with same origin";
+    res.success  = true;
+    res.origin_x = origin_x; 
+    res.origin_y = origin_y; 
+    return true;
+  }
+}
+
+bool IROCFleetManager::getSafetyBorderCallback(iroc_fleet_manager::GetSafetyBorderSrv::Request &req, iroc_fleet_manager::GetSafetyBorderSrv::Response &res) {
+  std::scoped_lock lck(robot_handlers_.mtx);
+  ROS_INFO_STREAM("[IROCBridge]: Processing a getSafetyBorderCallback.");
+  std::set<std::string> config_hashes;
+  mrs_msgs::SafetyBorder reference_border;
+  bool first_robot = true;
+
+  for (const auto &rh : robot_handlers_.handlers) {
+
+    const auto msg  = rh.sh_safety_area_info.peekMsg();
+    std::ostringstream hash_stream;
+
+    bool is_latlon = (msg->safety_area.border.horizontal_frame == "latlon_origin");
+    if (is_latlon) {
+      hash_stream << std::fixed << std::setprecision(7); 
+    } else {
+      hash_stream << std::fixed << std::setprecision(4); 
+    }
+
+    hash_stream << msg->safety_area.border.max_z << "|" << msg->safety_area.border.min_z << "|" << msg->safety_area.border.horizontal_frame << "|"
+                << msg->safety_area.border.vertical_frame << "|" << msg->safety_area.border.enabled << "|";
+
+    for (const auto &point : msg->safety_area.border.points) {
+      hash_stream << point.x << "," << point.y << ";";
+    }
+
+    config_hashes.insert(hash_stream.str());
+
+    if (first_robot) {
+      reference_border = msg->safety_area.border;
+      first_robot = false;
+    }
+  }
+
+  bool has_discrepancies = config_hashes.size() > 1;
+
+  if (has_discrepancies) {
+    ROS_WARN("Discrepancies!!");
+    res.success = false;
+    res.message = "Discrepancy in the borders between the fleet, please set the safety borders!";
+    return true;
+  } else {
+    res.success = true;
+    res.message = "All robots in the fleet with the same safety border";
+    res.border  = reference_border; 
+    return true;
+  }
+}
+
+bool IROCFleetManager::getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv::Request &req, iroc_fleet_manager::GetObstaclesSrv::Response &res) {
+
+  std::scoped_lock lck(robot_handlers_.mtx);
+  ROS_INFO_STREAM("[IROCBridge]: Processing a getObstaclesCallback.");
+
+  std::set<std::string> config_hashes;
+  mrs_msgs::Obstacles reference_obstacles;
+  bool first_robot = true;
+
+  for (const auto &rh : robot_handlers_.handlers) {
+    const auto msg = rh.sh_safety_area_info.peekMsg();
+    std::ostringstream hash_stream;
+
+    bool is_latlon = (msg->safety_area.border.horizontal_frame == "latlon_origin");
+    if (is_latlon) {
+      hash_stream << std::fixed << std::setprecision(7); 
+    } else {
+      hash_stream << std::fixed << std::setprecision(4); 
+    }
+
+    for (const auto &point : msg->safety_area.obstacles.data)
+      hash_stream << point.x << "," << point.y << ";";
+
+    for (const auto &row : msg->safety_area.obstacles.rows)
+      hash_stream << row << "|";
+
+    for (const auto &max_z : msg->safety_area.obstacles.max_z)
+      hash_stream << max_z << "|";
+
+    for (const auto &min_z : msg->safety_area.obstacles.min_z)
+      hash_stream << min_z << "|";
+
+    config_hashes.insert(hash_stream.str());
+
+    if (first_robot) {
+      reference_obstacles = msg->safety_area.obstacles;
+      first_robot         = false;
+    }
+  }
+
+  bool has_discrepancies = config_hashes.size() > 1;
+
+  if (has_discrepancies) {
+    ROS_WARN("Discrepancy with the robot obstacles!!");
+    res.success = false;
+    res.message = "Discrepancy in the borders between the fleet, please set the safety borders!";
+    return true;
+  } else {
+    res.success   = true;
+    res.message   = "All robots in the fleet with the same safety border";
+    res.obstacles = reference_obstacles;
+    return true;
+  }
+}
 
 // | ---------------------- action server callbacks --------------------- |
 

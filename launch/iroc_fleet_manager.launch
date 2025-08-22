@@ -50,6 +50,9 @@
       <!-- Service servers -->
       <remap from="~svc/change_fleet_mission_state" to="~change_fleet_mission_state" />
       <remap from="~svc/change_robot_mission_state" to="~change_robot_mission_state" />
+      <remap from="~svc/get_world_origin"           to="~get_world_origin" />
+      <remap from="~svc/get_safety_border"          to="~get_safety_border" />
+      <remap from="~svc/get_obstacles"              to="~get_obstacles" />
       <!-- Action client -->
       <remap from="~ac/waypoint_mission" to="/mission_handler" />
 

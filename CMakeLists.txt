@@ -48,6 +48,9 @@ add_message_files(DIRECTORY msg FILES
 # messages
 add_service_files(DIRECTORY srv FILES
   ChangeRobotMissionStateSrv.srv
+  GetWorldOriginSrv.srv
+  GetSafetyBorderSrv.srv
+  GetObstaclesSrv.srv
 )
 
 generate_messages(
