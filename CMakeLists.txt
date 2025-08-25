@@ -51,6 +51,7 @@ add_service_files(DIRECTORY srv FILES
   GetWorldOriginSrv.srv
   GetSafetyBorderSrv.srv
   GetObstaclesSrv.srv
+  GetMissionPointsSrv.srv
 )
 
 generate_messages(

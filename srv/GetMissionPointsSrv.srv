@@ -1,0 +1,4 @@
+---
+bool success
+string message
+iroc_mission_handler/MissionGoal[] mission_robots 

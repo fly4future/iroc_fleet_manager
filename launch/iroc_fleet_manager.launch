@@ -53,6 +53,7 @@
       <remap from="~svc/get_world_origin"           to="~get_world_origin" />
       <remap from="~svc/get_safety_border"          to="~get_safety_border" />
       <remap from="~svc/get_obstacles"              to="~get_obstacles" />
+      <remap from="~svc/get_mission_points"         to="~get_mission_points" />
       <!-- Action client -->
       <remap from="~ac/waypoint_mission" to="/mission_handler" />
 
