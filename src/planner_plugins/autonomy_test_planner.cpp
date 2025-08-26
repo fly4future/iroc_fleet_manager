@@ -54,13 +54,17 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> AutonomyTes
   result = parseJson(goal, json_msg);
 
   if (!result.success) {
+    result.success = false;
+    result.message = "Faile to parse JSON msg";
     return std::make_tuple(result, mission_robots);
   }
 
   bool success = utils::parseVars(json_msg, {{"robots", &robots}});
 
-  if (!result.success) {
-    return std::make_tuple(result, mission_robots);
+  if (!success) {
+      result.success = false;
+      result.message = "Failure while parsing robot data, bad JSON request";
+      return std::make_tuple(result, mission_robots);
   }
 
   mission_robots.reserve(robots.size());

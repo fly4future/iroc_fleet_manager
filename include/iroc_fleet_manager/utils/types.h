@@ -61,15 +61,19 @@ struct Subtask {
 
 struct Waypoint {
   Reference reference;
-  json subtasks;
+  std::vector<Subtask> subtasks;
   bool parallel_execution;
   Waypoint() : reference(), subtasks(json::array()) {
   }
   // Constructor initialization
-  Waypoint(const json& j) : reference(j), 
-                            subtasks(j.value("subtasks", json::array())),
-                            parallel_execution(j.value("parallel_execution", false))
-                          {}
+  Waypoint(const json &j) : reference(j), parallel_execution(j.value("parallel_execution", false)) {
+    if (j.contains("subtasks") && j["subtasks"].is_array()) {
+      subtasks.reserve(j["subtasks"].size());
+      for (const auto &subtask_json : j["subtasks"]) {
+        subtasks.emplace_back(subtask_json);
+      }
+    }
+  }
 
   // Helper method to get typed subtasks
   std::vector<Subtask> getSubtasks() const {

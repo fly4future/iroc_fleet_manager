@@ -74,6 +74,8 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   result = parseJson(goal, json_msg);
 
   if (!result.success) {
+    result.success = false;
+    result.message = "Faile to parse JSON msg";
     return std::make_tuple(result, mission_robots);
   }
 
@@ -91,7 +93,12 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
                                                 {"height_id", &height_id},
                                                 {"terminal_action", &terminal_action},
                                             });
-
+  if (!success) {
+      result.success = false;
+      result.message = "Failure while parsing robot data, bad JSON request";
+      return std::make_tuple(result, mission_robots);
+  }
+  
   search_area_msg = toRosMsg<mrs_msgs::Point2D>(search_area);
 
   // Extract robots

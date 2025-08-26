@@ -44,22 +44,24 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
   }
 
   auto &var_out = var.second;
+  bool success = true;
   std::visit(
-      [var_name, &js](auto &&var_out) {
+      [var_name, &js, &success](auto &&var_out) {
         using T = std::remove_pointer_t<std::decay_t<decltype(var_out)>>;
         try {
           *var_out = convertFromJson<T>(js.at(var_name));
         }
         catch (json::exception &e) {
-          ROS_ERROR_STREAM_THROTTLE(1.0,
-                                    "[Var-parser]: Cannot parse member \"" << var_name << "\" (value: " << js.at(var_name) << ") as custom type: " << e.what());
+          ROS_WARN_STREAM("[Var-parser]: Cannot parse member \"" << var_name << "\" (value: " << js.at(var_name) << ") as custom type: " << e.what());
+          success = false;
         }
         catch (std::exception &e) {
-          ROS_ERROR_STREAM_THROTTLE(1.0, "[Var-parser]: Cannot parse member \"" << var_name << "\" - " << e.what());
+          ROS_WARN_STREAM("[Var-parser]: Cannot parse member \"" << var_name << "\" - " << e.what());
+          success = false;
         }
       },
       var_out);
-  return true;
+  return success;
 }
 
 bool parseVars(const json &js, std::vector<std::pair<std::string_view, parseable_t>> &&vars) {
