@@ -40,6 +40,7 @@ add_action_files(DIRECTORY action FILES
 )
 # messages
 add_message_files(DIRECTORY msg FILES
+  IROCFleetMissionGoal.msg
   AutonomyTestRobot.msg
   CoverageMission.msg
   CoverageMissionRobot.msg

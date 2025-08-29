@@ -18,6 +18,7 @@
 #include <iroc_fleet_manager/GetObstaclesSrv.h>
 #include <iroc_fleet_manager/GetMissionPointsSrv.h>
 #include <iroc_fleet_manager/IROCFleetManagerAction.h>
+#include <iroc_fleet_manager/IROCFleetMissionGoal.h>
 #include <iroc_fleet_manager/utils/types.h>
 
 // Robot diagnostics
@@ -106,7 +107,7 @@ class IROCFleetManager : public nodelet::Nodelet {
   ros::ServiceServer ss_get_obstacles_;
 
   // Mission getters
-  ros::ServiceServer ss_get_mission_points_;
+  ros::ServiceServer ss_get_mission_data_;
 
   std::atomic_bool active_mission_ = false;
   std::atomic_bool active_mission_change_ = false;
@@ -171,7 +172,7 @@ class IROCFleetManager : public nodelet::Nodelet {
   } fleet_mission_handlers_;
 
   std::vector<std::string> lost_robot_names_;
-  std::vector<iroc_mission_handler::MissionGoal> current_mission_goals_;
+  IROCFleetMissionGoal current_mission_goal_;
   std::mutex mission_goals_mtx_;
 
   // action client callbacks
@@ -195,7 +196,7 @@ class IROCFleetManager : public nodelet::Nodelet {
   bool getWorldOriginCallback(iroc_fleet_manager::GetWorldOriginSrv::Request &req, iroc_fleet_manager::GetWorldOriginSrv::Response &res);
   bool getSafetyBorderCallback(iroc_fleet_manager::GetSafetyBorderSrv::Request &req, iroc_fleet_manager::GetSafetyBorderSrv::Response &res);
   bool getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv::Request &req, iroc_fleet_manager::GetObstaclesSrv::Response &res);
-  bool getMissionPoints(iroc_fleet_manager::GetMissionPointsSrv::Request &req, iroc_fleet_manager::GetMissionPointsSrv::Response &res);
+  bool getMissionData(iroc_fleet_manager::GetMissionPointsSrv::Request &req, iroc_fleet_manager::GetMissionPointsSrv::Response &res);
 
   // helper methods
   std::map<std::string, result_t>
@@ -410,11 +411,11 @@ void IROCFleetManager::onInit() {
            "\'svc_server/get_obstacles\' -> \'%s\'",
            ss_get_obstacles_.getService().c_str());
 
-  ss_get_mission_points_ =
-      nh_.advertiseService(nh_.resolveName("svc/get_mission_points"), &IROCFleetManager::getMissionPoints, this);
+  ss_get_mission_data_ =
+      nh_.advertiseService(nh_.resolveName("svc/get_mission_data"), &IROCFleetManager::getMissionData, this);
   ROS_INFO("[IROCFleetManager]: Created ServiceServer on service "
-           "\'svc_server/get_mission_points\' -> \'%s\'",
-           ss_get_mission_points_.getService().c_str());
+           "\'svc_server/get_mission_data\' -> \'%s\'",
+           ss_get_mission_data_.getService().c_str());
 
   // // | ------------------ action server methods ----------------- |
   action_server_ptr_ = std::make_unique<ActionServer_T>(nh_, ros::this_node::getName(), false);
@@ -892,7 +893,7 @@ bool IROCFleetManager::getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv:
   }
 }
 
-bool IROCFleetManager::getMissionPoints(iroc_fleet_manager::GetMissionPointsSrv::Request &req, iroc_fleet_manager::GetMissionPointsSrv::Response &res) {
+bool IROCFleetManager::getMissionData(iroc_fleet_manager::GetMissionPointsSrv::Request &req, iroc_fleet_manager::GetMissionPointsSrv::Response &res) {
 
   std::scoped_lock lck(mission_goals_mtx_);
 
@@ -904,7 +905,8 @@ bool IROCFleetManager::getMissionPoints(iroc_fleet_manager::GetMissionPointsSrv:
 
   res.success        = true;
   res.message        = "Successfully got the mission goals";
-  res.mission_robots = current_mission_goals_;
+  res.mission_goal   = current_mission_goal_;
+
   return true;
 }
 
@@ -1312,7 +1314,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> IROCFleetMa
 
   result.success = true;
   result.message = "Goal created successfully";
-  current_mission_goals_ = mission_robots;
+  current_mission_goal_.type        = goal.type;
+  current_mission_goal_.uuid        = goal.uuid;
+  current_mission_goal_.robot_goals = mission_robots;
 
   return std::make_tuple(result, mission_robots);
 }

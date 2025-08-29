@@ -2,6 +2,7 @@
 # @data JSON format string with the mission request  
 string type
 string details
+string uuid
 ---
 # Define the result
 bool success

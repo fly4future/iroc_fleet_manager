@@ -1,4 +1,4 @@
 ---
 bool success
 string message
-iroc_mission_handler/MissionGoal[] mission_robots 
+iroc_fleet_manager/IROCFleetMissionGoal mission_goal
