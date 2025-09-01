@@ -873,7 +873,9 @@ bool IROCFleetManager::getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv:
     config_hashes.insert(hash_stream.str());
 
     if (first_robot) {
-      reference_obstacles = msg->safety_area.obstacles;
+      reference_obstacles                  = msg->safety_area.obstacles;
+      reference_obstacles.horizontal_frame = msg->safety_area.border.horizontal_frame; // Obstacles follow same frame as the border
+      reference_obstacles.vertical_frame   = msg->safety_area.border.vertical_frame;
       first_robot         = false;
     }
   }
@@ -881,9 +883,14 @@ bool IROCFleetManager::getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv:
   bool has_discrepancies = config_hashes.size() > 1;
 
   if (has_discrepancies) {
+
+    for (const auto& hash: config_hashes) {
+      ROS_WARN("Hash:");
+      ROS_WARN_STREAM(hash);
+    }
     ROS_WARN("Discrepancy with the robot obstacles!!");
     res.success = false;
-    res.message = "Discrepancy in the borders between the fleet, please set the safety borders!";
+    res.message = "Discrepancy in the obstacles between the fleet, please set the obstacles!";
     return true;
   } else {
     res.success   = true;
