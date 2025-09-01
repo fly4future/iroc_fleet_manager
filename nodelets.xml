@@ -1,17 +1,5 @@
 <library path="lib/libIROCFleetManager">
   <class name="iroc_fleet_manager/IROCFleetManager" type="iroc_fleet_manager::IROCFleetManager" base_class_type="nodelet::Nodelet">
-    <description>RosMissionFleetManager nodelet</description>
-  </class>
-</library>
-
-<library path="lib/libIROCAutonomyTestManager">
-  <class name="iroc_fleet_manager/IROCAutonomyTestManager" type="iroc_fleet_manager::IROCAutonomyTestManager" base_class_type="nodelet::Nodelet">
-    <description> IROC AutonomyTestManager nodelet </description>
-  </class>
-</library>
-
-<library path="lib/libIROC_CoverageManager">
-  <class name="iroc_fleet_manager/IROC_CoverageManager" type="iroc_fleet_manager::IROC_CoverageManager" base_class_type="nodelet::Nodelet">
-    <description> IROC CoverageManager nodelet </description>
+    <description>IROCFleetManager nodelet</description>
   </class>
 </library>
