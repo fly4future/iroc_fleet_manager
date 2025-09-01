@@ -22,7 +22,8 @@
   <depend>mrs_msgs</depend>
   <depend>mrs_robot_diagnostics</depend>
   <depend>mrs_lib</depend>
-  <depend>mrs_mission_manager</depend>
+  <depend>iroc_mission_handler</depend>
+  <depend>geometry_msgs</depend>
 
   <export>
     <nodelet plugin="${prefix}/nodelets.xml" />
