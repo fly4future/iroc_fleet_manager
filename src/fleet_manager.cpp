@@ -752,7 +752,15 @@ bool IROCFleetManager::getWorldOriginCallback(iroc_fleet_manager::GetWorldOrigin
   double origin_x;
   double origin_y;
   bool first_robot = true;
+
   for (const auto &rh : robot_handlers_.handlers) {
+
+    if (!rh.sh_safety_area_info.hasMsg()) {
+      res.message = "No safety area info received, check if the Safety Area Manager is running!";
+      res.success = false;
+      return true;
+    }
+
     const auto msg  = rh.sh_safety_area_info.peekMsg();
     std::ostringstream hash_stream;
 
@@ -797,6 +805,12 @@ bool IROCFleetManager::getSafetyBorderCallback(iroc_fleet_manager::GetSafetyBord
   bool first_robot = true;
 
   for (const auto &rh : robot_handlers_.handlers) {
+
+    if (!rh.sh_safety_area_info.hasMsg()) {
+      res.message = "No safety area info received, check if the Safety Area Manager is running!";
+      res.success = false;
+      return true;
+    }
 
     const auto msg  = rh.sh_safety_area_info.peekMsg();
     std::ostringstream hash_stream;
@@ -848,6 +862,13 @@ bool IROCFleetManager::getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv:
   bool first_robot = true;
 
   for (const auto &rh : robot_handlers_.handlers) {
+
+    if (!rh.sh_safety_area_info.hasMsg()) {
+      res.message = "No safety area info received, check if the Safety Area Manager is running!";
+      res.success = false;
+      return true;
+    }
+
     const auto msg = rh.sh_safety_area_info.peekMsg();
     std::ostringstream hash_stream;
 
