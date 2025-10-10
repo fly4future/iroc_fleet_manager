@@ -17,7 +17,7 @@ struct Point2D
 
   Point2D() : x(0), y(0) {
   }
-  Point2D(const json &j) : x(j.at("x")), y(j.at("y")) {
+  Point2D(const json &j) : x(j.value("x",0.0)), y(j.value("y",0.0)) {
   }
 };
 
@@ -27,7 +27,7 @@ struct Point3D
 
   Point3D() : x(0), y(0), z(0) {
   }
-  Point3D(const json &j) : x(j.at("x")), y(j.at("y")), z(j.at("z")) {
+  Point3D(const json &j) : x(j.value("x", 0.0)), y(j.value("y", 0.0)), z(j.value("z", 0.0)) {
   }
 };
 
@@ -37,7 +37,7 @@ struct Reference
 
   Reference() : x(0), y(0), z(0), heading(0) {
   }
-  Reference(const json &j) : x(j.at("x")), y(j.at("y")), z(j.at("z")), heading(j.at("heading")) {
+  Reference(const json &j) : x(j.value("x", 0.0)), y(j.value("y", 0.0)), z(j.value("z",0.0)), heading(j.value("heading", 0.0)) {
   }
 };
 
