@@ -1,0 +1,4 @@
+---
+bool success
+string message
+iroc_fleet_manager/IROCFleetMissionGoal mission_goal
