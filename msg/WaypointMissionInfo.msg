@@ -1,7 +1,7 @@
 string message
 string state
 float64 progress
-iroc_mission_handler/MissionFeedback[] robot_feedbacks
+# iroc_mission_handler/MissionFeedback[] robot_feedbacks
 
 string STATE_TRAJECTORIES_LOADED = trajectories_loaded
 string STATE_EXECUTING = mission_executing 

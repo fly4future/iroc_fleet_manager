@@ -1,25 +1,48 @@
-cmake_minimum_required(VERSION 3.15.0)
+cmake_minimum_required(VERSION 3.28)
 project(iroc_fleet_manager)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_definitions(-O0)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
+# 1 == use rclcpp::Timer implementation
+# 0 == use MRS's thread timer implementation
+set(USE_ROS_TIMER 0)
 
-set(CATKIN_DEPENDENCIES
-  cmake_modules
-  roscpp
-  nodelet
-  sensor_msgs
-  mrs_msgs
-  mrs_robot_diagnostics
-  mrs_lib
-  iroc_mission_handler
-  actionlib
-  actionlib_msgs
+if(${USE_ROS_TIMER})
+  MESSAGE(WARNING "[iroc_fleet_manager]: Compiling with ROS Timers. This can cause high CPU load in runtime.")
+endif()
+
+# Set the compile options to show code warnings
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra)
+endif()
+
+if(ENABLE_COVERAGE)
+  message(WARNING "building for coverage, the performance might be limited")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage -fprofile-arcs")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs")
+  add_definitions("-O1")
+  add_definitions("-g")
+endif()
+
+## --------------------------------------------------------------
+## |                    Find Dependencies                       |
+## --------------------------------------------------------------
+
+set(DEPENDENCIES
+  rclcpp
+  rclcpp_action
+  rclcpp_components
+  std_msgs
   geometry_msgs
-  genmsg
+  builtin_interfaces
+  action_msgs
+  mrs_msgs
+  mrs_lib
+  pluginlib
+  rosidl_default_generators
 )
 
 set(LIBRARIES
@@ -30,90 +53,123 @@ set(LIBRARIES
   EnergyAwareMCPP
 )
 
-find_package(catkin REQUIRED COMPONENTS
-  ${CATKIN_DEPENDENCIES}
+foreach(DEP IN LISTS DEPENDENCIES)
+  find_package(${DEP} REQUIRED)
+endforeach()
+
+## --------------------------------------------------------------
+## |                      Generate Interfaces                   |
+## --------------------------------------------------------------
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/IROCFleetMissionGoal.msg"
+  "msg/AutonomyTestRobot.msg"
+  "msg/CoverageMission.msg"
+  "msg/CoverageMissionRobot.msg"
+  "msg/WaypointMissionInfo.msg"
+  "srv/ChangeRobotMissionStateSrv.srv"
+  "srv/GetWorldOriginSrv.srv"
+  "srv/GetSafetyBorderSrv.srv"
+  "srv/GetObstaclesSrv.srv"
+  "srv/GetMissionPointsSrv.srv"
+  "action/IROCFleetManager.action"
+  DEPENDENCIES 
+    builtin_interfaces 
+    std_msgs 
+    geometry_msgs 
+    mrs_msgs 
+    # iroc_mission_handler
 )
 
-#actions
-add_action_files(DIRECTORY action FILES
-  IROCFleetManager.action
-)
-# messages
-add_message_files(DIRECTORY msg FILES
-  IROCFleetMissionGoal.msg
-  AutonomyTestRobot.msg
-  CoverageMission.msg
-  CoverageMissionRobot.msg
-  WaypointMissionInfo.msg
-)
-# messages
-add_service_files(DIRECTORY srv FILES
-  ChangeRobotMissionStateSrv.srv
-  GetWorldOriginSrv.srv
-  GetSafetyBorderSrv.srv
-  GetObstaclesSrv.srv
-  GetMissionPointsSrv.srv
+## --------------------------------------------------------------
+## |                      Interface Library                     |
+## --------------------------------------------------------------
+
+add_library(IrocFleetManager_IrocFleetManager INTERFACE)
+add_library(iroc_fleet_manager::iroc_fleet_manager ALIAS IrocFleetManager_IrocFleetManager) 
+
+set_target_properties(IrocFleetManager_IrocFleetManager
+  PROPERTIES
+    EXPORT_NAME iroc_fleet_manager 
+    OUTPUT_NAME iroc_fleet_manager 
 )
 
-generate_messages(
-  DEPENDENCIES
-  actionlib_msgs
-  iroc_mission_handler
-  mrs_msgs
-  std_msgs
-  iroc_mission_handler
+target_sources(IrocFleetManager_IrocFleetManager
+  INTERFACE FILE_SET HEADERS BASE_DIRS "include"
+  FILES
+    "include/iroc_fleet_manager/planner.h"
+    "include/iroc_fleet_manager/common_handlers.h"
+    "include/iroc_fleet_manager/utils/json_var_parser.h"
+    "include/iroc_fleet_manager/utils/types.h"
+    "include/iroc_fleet_manager/utils/conversions.h"
 )
 
-catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES ${LIBRARIES}
-  CATKIN_DEPENDS ${CATKIN_DEPENDENCIES}
+target_link_libraries(IrocFleetManager_IrocFleetManager
+  INTERFACE
+    rclcpp::rclcpp
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
 )
 
-include_directories(
-  include
-  ${catkin_INCLUDE_DIRS}
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/include
-)
+## --------------------------------------------------------------
+## |                           Compile                          |
+## --------------------------------------------------------------
 
-# IROCFleetManager
+## | ------------ IROCFleetManager ------------ |
 
-## Declare a C++ library
-add_library(IROCFleetManager
+add_library(IROCFleetManager SHARED
   src/fleet_manager.cpp
   src/utils/json_var_parser.cpp
-  )
+)
 
-add_dependencies(IROCFleetManager
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-  )
-
-## Specify libraries to link a library or executable target against
 target_link_libraries(IROCFleetManager
-  # IROCFleetManager
-  ${catkin_LIBRARIES}
-  )
+  PRIVATE
+    iroc_fleet_manager::iroc_fleet_manager
+    rclcpp::rclcpp
+    rclcpp_action::rclcpp_action
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
+)
 
-# IROCFleetManager_WaypointPlanner
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(IROCFleetManager PRIVATE ${cpp_typesupport_target})
 
-## Declare a C++ library
-add_library(IROCFleetManager_WaypointPlanner
+rclcpp_components_register_nodes(IROCFleetManager "iroc_fleet_manager::IROCFleetManager")
+target_compile_definitions(IROCFleetManager PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+
+## | ----------- IROCFleetManager_WaypointPlanner ------------ |
+
+add_library(IROCFleetManager_WaypointPlanner SHARED
   src/planner_plugins/waypoint_planner.cpp
 )
 
-add_dependencies(IROCFleetManager_WaypointPlanner
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-
-## Specify libraries to link a library or executable target against
 target_link_libraries(IROCFleetManager_WaypointPlanner
-  ${catkin_LIBRARIES}
+  PRIVATE
+    iroc_fleet_manager::iroc_fleet_manager
+    rclcpp::rclcpp
+    rclcpp_action::rclcpp_action           
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
 )
 
-## External library for coverage planner
-add_library(EnergyAwareMCPP
+# Link to generated interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(IROCFleetManager_WaypointPlanner PRIVATE ${cpp_typesupport_target})
+
+rclcpp_components_register_nodes(IROCFleetManager_WaypointPlanner "iroc_fleet_manager::WaypointPlanner")
+target_compile_definitions(IROCFleetManager_WaypointPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+
+## | ----------- EnergyAwareMCPP ------------ |
+
+set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
+
+add_library(EnergyAwareMCPP SHARED
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/coverage_planner.cpp
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/MapPolygon.cpp
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/EnergyCalculator.cpp
@@ -124,66 +180,122 @@ add_library(EnergyAwareMCPP
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
 )
 
-# find_package(yaml-cpp REQUIRED)
+# Need C++17 
+set_target_properties(EnergyAwareMCPP PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+)
 
 target_include_directories(EnergyAwareMCPP
   PUBLIC
-  ${catkin_INCLUDE_DIRS}
-  ${YAML_CPP_INCLUDE_DIRS}
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
+    $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
+    $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
 )
 
-# IROCFleetManager_CoveragePlanner
-## Declare a C++ library
-add_library(IROCFleetManager_CoveragePlanner
+ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)
+
+## | ----------- IROCFleetManager_CoveragePlanner ------------ |
+
+add_library(IROCFleetManager_CoveragePlanner SHARED
   src/planner_plugins/coverage_planner.cpp
 )
 
-add_dependencies(IROCFleetManager_CoveragePlanner
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-
-## Specify libraries to link a library or executable target against
 target_link_libraries(IROCFleetManager_CoveragePlanner
-  EnergyAwareMCPP
-  ${catkin_LIBRARIES}
+  PRIVATE
+    iroc_fleet_manager::iroc_fleet_manager
+    rclcpp::rclcpp
+    rclcpp_action::rclcpp_action
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
+    EnergyAwareMCPP
 )
 
-# IROCFleetManager_AutonomyTestPlanner
-## Declare a C++ library
-add_library(IROCFleetManager_AutonomyTestPlanner
+# Link to generated interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(IROCFleetManager_CoveragePlanner PRIVATE ${cpp_typesupport_target})
+
+rclcpp_components_register_nodes(IROCFleetManager_CoveragePlanner "iroc_fleet_manager::CoveragePlanner")
+target_compile_definitions(IROCFleetManager_CoveragePlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+
+## | -------- IROCFleetManager_AutonomyTestPlanner ----------- |
+add_library(IROCFleetManager_AutonomyTestPlanner SHARED
   src/planner_plugins/autonomy_test_planner.cpp
 )
 
-add_dependencies(IROCFleetManager_AutonomyTestPlanner
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
+target_link_libraries(IROCFleetManager_AutonomyTestPlanner
+  PRIVATE
+    iroc_fleet_manager::iroc_fleet_manager
+    rclcpp::rclcpp
+    rclcpp_action::rclcpp_action
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
 )
 
-## Specify libraries to link a library or executable target against
-target_link_libraries(IROCFleetManager_AutonomyTestPlanner
-  ${catkin_LIBRARIES}
-)
+# Link to generated interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(IROCFleetManager_AutonomyTestPlanner PRIVATE ${cpp_typesupport_target})
+
+rclcpp_components_register_nodes(IROCFleetManager_AutonomyTestPlanner "iroc_fleet_manager::AutonomyTestPlanner")
+target_compile_definitions(IROCFleetManager_AutonomyTestPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+
+## --------------------------------------------------------------
+## |                       Export plugins                       |
+## --------------------------------------------------------------
+
+pluginlib_export_plugin_description_file(iroc_fleet_manager plugins.xml)
 
 ## --------------------------------------------------------------
 ## |                           Install                          |
 ## --------------------------------------------------------------
 
-install(DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+install(
+  TARGETS
+    IrocFleetManager_IrocFleetManager
+    ${LIBRARIES}
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+  FILE_SET HEADERS DESTINATION "include/${PROJECT_NAME}"
 )
 
-install(TARGETS ${LIBRARIES}
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch config
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+install(
+  DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
 )
 
-install(FILES nodelets.xml
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+install(
+  DIRECTORY ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
+  DESTINATION include/${PROJECT_NAME}
 )
+
+## --------------------------------------------------------------
+## |                           Export                           |
+## --------------------------------------------------------------
+
+ament_export_targets(
+  export_${PROJECT_NAME} HAS_LIBRARY_TARGET
+)
+
+ament_export_include_directories(
+  "include/${PROJECT_NAME}"
+)
+
+ament_export_libraries(
+  ${LIBRARIES}
+)
+
+ament_export_dependencies(
+  ${DEPENDENCIES}
+)
+
+ament_package()
