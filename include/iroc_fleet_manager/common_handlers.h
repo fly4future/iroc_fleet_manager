@@ -2,14 +2,14 @@
 
 #include <memory.h>
 #include <mrs_lib/mutex.h>
-#include <mrs_robot_diagnostics/CollisionAvoidanceInfo.h>
-#include <mrs_robot_diagnostics/ControlInfo.h>
-#include <mrs_robot_diagnostics/GeneralRobotInfo.h>
-#include <mrs_robot_diagnostics/StateEstimationInfo.h>
-#include <mrs_robot_diagnostics/SystemHealthInfo.h>
-#include <mrs_robot_diagnostics/UavInfo.h>
+#include <mrs_msgs/msg/collision_avoidance_info.hpp>
+#include <mrs_msgs/msg/control_info.hpp>
+#include <mrs_msgs/msg/general_robot_info.hpp>
+#include <mrs_msgs/msg/state_estimation_info.hpp>
+#include <mrs_msgs/msg/system_health_info.hpp>
+#include <mrs_msgs/msg/uav_info.hpp>
 #include <mrs_robot_diagnostics/enums/robot_type.h>
-#include <mrs_msgs/SafetyAreaManagerDiagnostics.h>
+#include <mrs_msgs/msg/safety_area_manager_diagnostics.hpp>
 #include <string>
 #include <unordered_map>
 

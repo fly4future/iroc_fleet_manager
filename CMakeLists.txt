@@ -41,16 +41,17 @@ set(DEPENDENCIES
   action_msgs
   mrs_msgs
   mrs_lib
+  mrs_robot_diagnostics
   pluginlib
   rosidl_default_generators
 )
 
 set(LIBRARIES
   IROCFleetManager
-  IROCFleetManager_WaypointPlanner
-  IROCFleetManager_CoveragePlanner
-  IROCFleetManager_AutonomyTestPlanner
-  EnergyAwareMCPP
+  # IROCFleetManager_WaypointPlanner
+  # IROCFleetManager_CoveragePlanner
+  # IROCFleetManager_AutonomyTestPlanner
+  # EnergyAwareMCPP
 )
 
 foreach(DEP IN LISTS DEPENDENCIES)
@@ -62,7 +63,7 @@ endforeach()
 ## --------------------------------------------------------------
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/IROCFleetMissionGoal.msg"
+  "msg/MissionGoal.msg"
   "msg/AutonomyTestRobot.msg"
   "msg/CoverageMission.msg"
   "msg/CoverageMissionRobot.msg"
@@ -72,7 +73,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetSafetyBorderSrv.srv"
   "srv/GetObstaclesSrv.srv"
   "srv/GetMissionPointsSrv.srv"
-  "action/IROCFleetManager.action"
+  "action/ExecuteMission.action"
   DEPENDENCIES 
     builtin_interfaces 
     std_msgs 
@@ -107,6 +108,7 @@ target_sources(IrocFleetManager_IrocFleetManager
 target_link_libraries(IrocFleetManager_IrocFleetManager
   INTERFACE
     rclcpp::rclcpp
+    rclcpp_action::rclcpp_action
     rclcpp_components::component
     pluginlib::pluginlib
     mrs_lib::mrs_lib
@@ -121,7 +123,7 @@ target_link_libraries(IrocFleetManager_IrocFleetManager
 
 add_library(IROCFleetManager SHARED
   src/fleet_manager.cpp
-  src/utils/json_var_parser.cpp
+  # src/utils/json_var_parser.cpp
 )
 
 target_link_libraries(IROCFleetManager
@@ -132,6 +134,7 @@ target_link_libraries(IROCFleetManager
     rclcpp_components::component
     pluginlib::pluginlib
     mrs_lib::mrs_lib
+    mrs_robot_diagnostics::mrs_robot_diagnostics
     ${mrs_msgs_TARGETS}
 )
 
@@ -143,104 +146,104 @@ target_compile_definitions(IROCFleetManager PRIVATE USE_ROS_TIMER=${USE_ROS_TIME
 
 ## | ----------- IROCFleetManager_WaypointPlanner ------------ |
 
-add_library(IROCFleetManager_WaypointPlanner SHARED
-  src/planner_plugins/waypoint_planner.cpp
-)
-
-target_link_libraries(IROCFleetManager_WaypointPlanner
-  PRIVATE
-    iroc_fleet_manager::iroc_fleet_manager
-    rclcpp::rclcpp
-    rclcpp_action::rclcpp_action           
-    rclcpp_components::component
-    pluginlib::pluginlib
-    mrs_lib::mrs_lib
-    ${mrs_msgs_TARGETS}
-)
-
-# Link to generated interfaces
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(IROCFleetManager_WaypointPlanner PRIVATE ${cpp_typesupport_target})
-
-rclcpp_components_register_nodes(IROCFleetManager_WaypointPlanner "iroc_fleet_manager::WaypointPlanner")
-target_compile_definitions(IROCFleetManager_WaypointPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+# add_library(IROCFleetManager_WaypointPlanner SHARED
+#   src/planner_plugins/waypoint_planner.cpp
+# )
+#
+# target_link_libraries(IROCFleetManager_WaypointPlanner
+#   PRIVATE
+#     iroc_fleet_manager::iroc_fleet_manager
+#     rclcpp::rclcpp
+#     rclcpp_action::rclcpp_action           
+#     rclcpp_components::component
+#     pluginlib::pluginlib
+#     mrs_lib::mrs_lib
+#     ${mrs_msgs_TARGETS}
+# )
+#
+# # Link to generated interfaces
+# rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+# target_link_libraries(IROCFleetManager_WaypointPlanner PRIVATE ${cpp_typesupport_target})
+#
+# rclcpp_components_register_nodes(IROCFleetManager_WaypointPlanner "iroc_fleet_manager::WaypointPlanner")
+# target_compile_definitions(IROCFleetManager_WaypointPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
 
 ## | ----------- EnergyAwareMCPP ------------ |
 
-set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
-
-add_library(EnergyAwareMCPP SHARED
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/coverage_planner.cpp
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/MapPolygon.cpp
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/EnergyCalculator.cpp
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/ShortestPathCalculator.cpp
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/algorithms.cpp
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/utils.cpp
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/MstspSolver.cpp
-  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
-)
-
-# Need C++17 
-set_target_properties(EnergyAwareMCPP PROPERTIES
-  CXX_STANDARD 17
-  CXX_STANDARD_REQUIRED ON
-)
-
-target_include_directories(EnergyAwareMCPP
-  PUBLIC
-    $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
-    $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
-)
-
-ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)
-
-## | ----------- IROCFleetManager_CoveragePlanner ------------ |
-
-add_library(IROCFleetManager_CoveragePlanner SHARED
-  src/planner_plugins/coverage_planner.cpp
-)
-
-target_link_libraries(IROCFleetManager_CoveragePlanner
-  PRIVATE
-    iroc_fleet_manager::iroc_fleet_manager
-    rclcpp::rclcpp
-    rclcpp_action::rclcpp_action
-    rclcpp_components::component
-    pluginlib::pluginlib
-    mrs_lib::mrs_lib
-    ${mrs_msgs_TARGETS}
-    EnergyAwareMCPP
-)
-
-# Link to generated interfaces
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(IROCFleetManager_CoveragePlanner PRIVATE ${cpp_typesupport_target})
-
-rclcpp_components_register_nodes(IROCFleetManager_CoveragePlanner "iroc_fleet_manager::CoveragePlanner")
-target_compile_definitions(IROCFleetManager_CoveragePlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
-
-## | -------- IROCFleetManager_AutonomyTestPlanner ----------- |
-add_library(IROCFleetManager_AutonomyTestPlanner SHARED
-  src/planner_plugins/autonomy_test_planner.cpp
-)
-
-target_link_libraries(IROCFleetManager_AutonomyTestPlanner
-  PRIVATE
-    iroc_fleet_manager::iroc_fleet_manager
-    rclcpp::rclcpp
-    rclcpp_action::rclcpp_action
-    rclcpp_components::component
-    pluginlib::pluginlib
-    mrs_lib::mrs_lib
-    ${mrs_msgs_TARGETS}
-)
-
-# Link to generated interfaces
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(IROCFleetManager_AutonomyTestPlanner PRIVATE ${cpp_typesupport_target})
-
-rclcpp_components_register_nodes(IROCFleetManager_AutonomyTestPlanner "iroc_fleet_manager::AutonomyTestPlanner")
-target_compile_definitions(IROCFleetManager_AutonomyTestPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+# set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
+#
+# add_library(EnergyAwareMCPP SHARED
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/coverage_planner.cpp
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/MapPolygon.cpp
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/EnergyCalculator.cpp
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/ShortestPathCalculator.cpp
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/algorithms.cpp
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/utils.cpp
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/MstspSolver.cpp
+#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
+# )
+#
+# # Need C++17 
+# set_target_properties(EnergyAwareMCPP PROPERTIES
+#   CXX_STANDARD 17
+#   CXX_STANDARD_REQUIRED ON
+# )
+#
+# target_include_directories(EnergyAwareMCPP
+#   PUBLIC
+#     $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
+#     $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
+# )
+#
+# ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)
+#
+# ## | ----------- IROCFleetManager_CoveragePlanner ------------ |
+#
+# add_library(IROCFleetManager_CoveragePlanner SHARED
+#   src/planner_plugins/coverage_planner.cpp
+# )
+#
+# target_link_libraries(IROCFleetManager_CoveragePlanner
+#   PRIVATE
+#     iroc_fleet_manager::iroc_fleet_manager
+#     rclcpp::rclcpp
+#     rclcpp_action::rclcpp_action
+#     rclcpp_components::component
+#     pluginlib::pluginlib
+#     mrs_lib::mrs_lib
+#     ${mrs_msgs_TARGETS}
+#     EnergyAwareMCPP
+# )
+#
+# # Link to generated interfaces
+# rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+# target_link_libraries(IROCFleetManager_CoveragePlanner PRIVATE ${cpp_typesupport_target})
+#
+# rclcpp_components_register_nodes(IROCFleetManager_CoveragePlanner "iroc_fleet_manager::CoveragePlanner")
+# target_compile_definitions(IROCFleetManager_CoveragePlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+#
+# ## | -------- IROCFleetManager_AutonomyTestPlanner ----------- |
+# add_library(IROCFleetManager_AutonomyTestPlanner SHARED
+#   src/planner_plugins/autonomy_test_planner.cpp
+# )
+#
+# target_link_libraries(IROCFleetManager_AutonomyTestPlanner
+#   PRIVATE
+#     iroc_fleet_manager::iroc_fleet_manager
+#     rclcpp::rclcpp
+#     rclcpp_action::rclcpp_action
+#     rclcpp_components::component
+#     pluginlib::pluginlib
+#     mrs_lib::mrs_lib
+#     ${mrs_msgs_TARGETS}
+# )
+#
+# # Link to generated interfaces
+# rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+# target_link_libraries(IROCFleetManager_AutonomyTestPlanner PRIVATE ${cpp_typesupport_target})
+#
+# rclcpp_components_register_nodes(IROCFleetManager_AutonomyTestPlanner "iroc_fleet_manager::AutonomyTestPlanner")
+# target_compile_definitions(IROCFleetManager_AutonomyTestPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
 
 ## --------------------------------------------------------------
 ## |                       Export plugins                       |
@@ -273,10 +276,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-install(
-  DIRECTORY ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
-  DESTINATION include/${PROJECT_NAME}
-)
+# install(
+#   DIRECTORY ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
+#   DESTINATION include/${PROJECT_NAME}
+# )
 
 ## --------------------------------------------------------------
 ## |                           Export                           |

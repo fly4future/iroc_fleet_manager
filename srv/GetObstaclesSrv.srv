@@ -1,4 +1,4 @@
 ---
 bool success
 string message
-# mrs_msgs/Prism obstacles 
+mrs_msgs/Prism[] obstacles 
