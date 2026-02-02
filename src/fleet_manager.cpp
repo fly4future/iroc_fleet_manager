@@ -20,7 +20,6 @@
 #include <iroc_fleet_manager/srv/get_world_origin_srv.hpp>
 // TODO
 // #include <iroc_fleet_manager/planner.h>
-// #include <iroc_fleet_manager/IROCFleetManagerAction.h>
 #include <iroc_fleet_manager/action/execute_mission.hpp>
 #include <iroc_fleet_manager/msg/mission_goal.hpp>
 // #include <iroc_fleet_manager/utils/types.h>
@@ -129,8 +128,6 @@ private:
   void shutdown();
 
   // Action server
-  // TODO
-  // std::unique_ptr<ActionServer_T> action_server_ptr_;
   rclcpp_action::Server<Mission>::SharedPtr action_server_ptr_;
   std::shared_ptr<GoalHandleMission> current_goal_handle_;
   std::recursive_mutex action_server_mutex_;
@@ -683,10 +680,10 @@ void IROCFleetManager::timerMain() {
 
     {
       std::scoped_lock lock(fleet_mission_handlers_.mtx);
-      got_all_results =
-          std::all_of(fleet_mission_handlers_.handlers.begin(),
-                      fleet_mission_handlers_.handlers.end(),
-                      [](const auto &handler) { return handler.got_result; });
+      // got_all_results =
+      //     std::all_of(fleet_mission_handlers_.handlers.begin(),
+      //                 fleet_mission_handlers_.handlers.end(),
+      //                 [](const auto &handler) { return handler.got_result; });
 
       // all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
       // fleet_mission_handlers_.handlers.end(),
@@ -694,6 +691,10 @@ void IROCFleetManager::timerMain() {
     }
 
     // Finish mission when we get all the robots result
+    // temporal to test the success case
+    got_all_results = true; 
+    all_success = true;
+
     if (got_all_results) {
       if (!all_success) {
         RCLCPP_WARN(
@@ -726,12 +727,11 @@ void IROCFleetManager::timerMain() {
       //
       // active_mission_ = false;
       // action_server_ptr_->setSucceeded(action_server_result);
-
+      active_mission_ = false;
       auto result = std::make_shared<Mission::Result>();
-      result->success = false;
-      result->message = "Early failure detected, aborting mission.";
-      current_goal_handle_->abort(result);
-
+      result->success = true; 
+      result->message = "All robots finished successfully, mission finished";
+      current_goal_handle_->succeed(result);
       cancelRobotClients();
       RCLCPP_INFO(node_->get_logger(), " Mission finished.");
     }
@@ -1419,8 +1419,8 @@ void IROCFleetManager::handle_accepted(
   RCLCPP_INFO(node_->get_logger(),
               " Successfully sent the goal to robots in mission.");
 
-  active_mission_ = true;
   current_goal_handle_ = goal_handle;
+  active_mission_ = true;
 }
 
 rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(

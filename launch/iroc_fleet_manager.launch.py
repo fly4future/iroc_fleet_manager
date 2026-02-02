@@ -2,6 +2,7 @@
 
 import os
 import yaml
+import sys
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -100,6 +101,8 @@ def launch_setup(context, *args, **kwargs):
         package="rclcpp_components",
         executable="component_container_mt",
         output="screen",
+        # arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')],
+        # prefix=['debug_roslaunch ' + os.ttyname(sys.stdout.fileno())],
         composable_node_descriptions=[
             ComposableNode(
                 package="iroc_fleet_manager",
