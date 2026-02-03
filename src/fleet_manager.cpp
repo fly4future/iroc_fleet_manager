@@ -57,12 +57,14 @@ typedef mrs_lib::ROSTimer TimerType;
 typedef mrs_lib::ThreadTimer TimerType;
 #endif
 
-namespace iroc_fleet_manager {
+namespace iroc_fleet_manager
+{
 
 // Forward declaration of result struct
 // struct result_t;
 //
-struct result_t {
+struct result_t
+{
   bool success;
   std::string message;
 };
@@ -77,10 +79,9 @@ public:
   std::string name_space;
 };
 
-PlannerParams::PlannerParams(const std::string &address,
-                             const std::string &name_space) {
+PlannerParams::PlannerParams(const std::string &address, const std::string &name_space) {
 
-  this->address = address;
+  this->address    = address;
   this->name_space = name_space;
 }
 
@@ -88,7 +89,7 @@ PlannerParams::PlannerParams(const std::string &address,
 // TODO ROS2 action usage
 // typedef actionlib::SimpleActionClient<iroc_mission_handler::MissionAction>
 // MissionHandlerClient;
-using Mission = iroc_fleet_manager::action::ExecuteMission;
+using Mission           = iroc_fleet_manager::action::ExecuteMission;
 using GoalHandleMission = rclcpp_action::ServerGoalHandle<Mission>;
 // typedef iroc_mission_handler::MissionGoal MissionHandlerActionServerGoal;
 
@@ -134,29 +135,23 @@ private:
 
   // | ----------------------- ROS service servers ---------------------- |
 
-  mrs_lib::ServiceServerHandler<mrs_msgs::srv::String>
-      ss_change_fleet_mission_state_;
-  mrs_lib::ServiceServerHandler<
-      iroc_fleet_manager::srv::ChangeRobotMissionStateSrv>
-      ss_change_robot_mission_state_;
+  mrs_lib::ServiceServerHandler<mrs_msgs::srv::String> ss_change_fleet_mission_state_;
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv> ss_change_robot_mission_state_;
 
   // Environment getters
-  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetSafetyBorderSrv>
-      ss_get_safety_border_;
-  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetWorldOriginSrv>
-      ss_get_world_origin_;
-  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetObstaclesSrv>
-      ss_get_obstacles_;
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetSafetyBorderSrv> ss_get_safety_border_;
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetWorldOriginSrv> ss_get_world_origin_;
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetObstaclesSrv> ss_get_obstacles_;
 
   // Mission getters
-  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetMissionPointsSrv>
-      ss_get_mission_data_;
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetMissionPointsSrv> ss_get_mission_data_;
 
-  std::atomic_bool active_mission_ = false;
+  std::atomic_bool active_mission_        = false;
   std::atomic_bool active_mission_change_ = false;
 
   // | --------------- dynamic loading of planners -------------- |
-  struct planner_t {
+  struct planner_t
+  {
     std::string name;
     PlannerParams params;
     // TODO
@@ -164,27 +159,25 @@ private:
     std::mutex mutex_planner_list_;
   };
 
-  struct planners_handler_t {
+  struct planners_handler_t
+  {
     std::vector<planner_t> planners;
   } planner_handlers_;
 
-  struct robot_diagnostics_topics_t {
+  struct robot_diagnostics_topics_t
+  {
     std::string robot_name;
-    mrs_lib::SubscriberHandler<mrs_msgs::msg::GeneralRobotInfo>
-        sh_general_robot_info;
-    mrs_lib::SubscriberHandler<mrs_msgs::msg::StateEstimationInfo>
-        sh_state_estimation_info;
+    mrs_lib::SubscriberHandler<mrs_msgs::msg::GeneralRobotInfo> sh_general_robot_info;
+    mrs_lib::SubscriberHandler<mrs_msgs::msg::StateEstimationInfo> sh_state_estimation_info;
     mrs_lib::SubscriberHandler<mrs_msgs::msg::ControlInfo> sh_control_info;
-    mrs_lib::SubscriberHandler<mrs_msgs::msg::CollisionAvoidanceInfo>
-        sh_collision_avoidance_info;
+    mrs_lib::SubscriberHandler<mrs_msgs::msg::CollisionAvoidanceInfo> sh_collision_avoidance_info;
     mrs_lib::SubscriberHandler<mrs_msgs::msg::UavInfo> sh_uav_info;
-    mrs_lib::SubscriberHandler<mrs_msgs::msg::SystemHealthInfo>
-        sh_system_health_info;
-    mrs_lib::SubscriberHandler<mrs_msgs::msg::SafetyAreaManagerDiagnostics>
-        sh_safety_area_info;
+    mrs_lib::SubscriberHandler<mrs_msgs::msg::SystemHealthInfo> sh_system_health_info;
+    mrs_lib::SubscriberHandler<mrs_msgs::msg::SafetyAreaManagerDiagnostics> sh_safety_area_info;
   };
 
-  struct robot_topic_handlers_t {
+  struct robot_topic_handlers_t
+  {
     std::recursive_mutex mtx;
     std::vector<robot_diagnostics_topics_t> handlers;
   } robot_handlers_;
@@ -195,9 +188,8 @@ private:
   // TODO
   // std::unique_ptr<pluginlib::ClassLoader<iroc_fleet_manager::planners::Planner>>
   // planner_loader_; // pluginlib loader of dynamically loaded planners
-  std::vector<std::string> _planner_names_; // list of planner names
-  std::map<std::string, PlannerParams>
-      planners_; // map between planner names and planner params
+  std::vector<std::string> _planner_names_;       // list of planner names
+  std::map<std::string, PlannerParams> planners_; // map between planner names and planner params
   // std::vector<boost::shared_ptr<iroc_fleet_manager::planners::Planner>>
   // planner_list_;            // list of planners, routines are callable from
   // this
@@ -210,7 +202,8 @@ private:
 
   // Handlers for the interaction with the robot's action clients with
   // MissionHandler
-  struct robot_mission_handler_t {
+  struct robot_mission_handler_t
+  {
     std::string robot_name;
     // TODO
     // std::unique_ptr<MissionHandlerClient> action_client_ptr;
@@ -222,7 +215,8 @@ private:
     bool got_result = false;
   };
 
-  struct fleet_mission_handlers_t {
+  struct fleet_mission_handlers_t
+  {
     std::recursive_mutex mtx;
     std::vector<robot_mission_handler_t> handlers;
   } fleet_mission_handlers_;
@@ -246,52 +240,29 @@ private:
   void actionPublishFeedback(void);
 
   // Action server callbacks
-  rclcpp_action::GoalResponse
-  handle_goal(const rclcpp_action::GoalUUID &uuid,
-              std::shared_ptr<const Mission::Goal> goal);
+  rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const Mission::Goal> goal);
   void handle_accepted(const std::shared_ptr<GoalHandleMission> goal_handle);
-  rclcpp_action::CancelResponse
-  handle_cancel(const std::shared_ptr<GoalHandleMission> goal_handle);
+  rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleMission> goal_handle);
 
-  bool changeFleetMissionStateCallback(
-      const std::shared_ptr<mrs_msgs::srv::String::Request> &request,
-      const std::shared_ptr<mrs_msgs::srv::String::Response> &response);
-  bool changeRobotMissionStateCallback(
-      const std::shared_ptr<
-          iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request>
-          &request,
-      const std::shared_ptr<
-          iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response>
-          &response);
-  bool getWorldOriginCallback(
-      const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request>
-          &request,
-      const std::shared_ptr<
-          iroc_fleet_manager::srv::GetWorldOriginSrv::Response> &response);
-  bool getSafetyBorderCallback(
-      const std::shared_ptr<
-          iroc_fleet_manager::srv::GetSafetyBorderSrv::Request> &request,
-      const std::shared_ptr<
-          iroc_fleet_manager::srv::GetSafetyBorderSrv::Response> &response);
-  bool getObstaclesCallback(
-      const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request>
-          &request,
-      const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Response>
-          &response);
-  bool getMissionData(
-      const std::shared_ptr<
-          iroc_fleet_manager::srv::GetMissionPointsSrv::Request> &request,
-      const std::shared_ptr<
-          iroc_fleet_manager::srv::GetMissionPointsSrv::Response> &response);
+  bool changeFleetMissionStateCallback(const std::shared_ptr<mrs_msgs::srv::String::Request> &request,
+                                       const std::shared_ptr<mrs_msgs::srv::String::Response> &response);
+  bool changeRobotMissionStateCallback(const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request> &request,
+                                       const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response> &response);
+  bool getWorldOriginCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request> &request,
+                              const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Response> &response);
+  bool getSafetyBorderCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Request> &request,
+                               const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Response> &response);
+  bool getObstaclesCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request> &request,
+                            const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Response> &response);
+  bool getMissionData(const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request> &request,
+                      const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> &response);
 
   // helper methods
   // std::map<std::string, result_t>
   // // check this, we could generalize the interaction MissionHandler
   // sendRobotGoals(const std::vector<iroc_mission_handler::MissionGoal>&
   // robots);
-  robot_mission_handler_t *
-  findRobotHandler(const std::string &robot_name,
-                   fleet_mission_handlers_t &mission_handlers) const;
+  robot_mission_handler_t *findRobotHandler(const std::string &robot_name, fleet_mission_handlers_t &mission_handlers) const;
   // FeedbackType processAggregatedFeedbackInfo(const
   // std::vector<iroc_mission_handler::MissionFeedback>& robot_feedbacks) const;
   std::tuple<std::string, std::string> processFeedbackMsg() const;
@@ -300,9 +271,7 @@ private:
   // std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>>
   // processGoal(const iroc_fleet_manager::IROCFleetManagerGoal& goal);
   template <typename ServiceType>
-  result_t
-  callService(mrs_lib::ServiceClientHandler<ServiceType> &sc,
-              const std::shared_ptr<typename ServiceType::Request> &request);
+  result_t callService(mrs_lib::ServiceClientHandler<ServiceType> &sc, const std::shared_ptr<typename ServiceType::Request> &request);
 
   // TO REMOVE LATER
   // template <typename Svc_T>
@@ -318,22 +287,16 @@ private:
   // std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 };
 
-IROCFleetManager::IROCFleetManager(rclcpp::NodeOptions options)
-    : mrs_lib::Node("IROCFleetManager", options) {
+IROCFleetManager::IROCFleetManager(rclcpp::NodeOptions options) : mrs_lib::Node("IROCFleetManager", options) {
 
-  node_ = this_node_ptr();
+  node_  = this_node_ptr();
   clock_ = node_->get_clock();
 
-  cbkgrp_subs_ = node_->create_callback_group(
-      rclcpp::CallbackGroupType::MutuallyExclusive);
-  cbkgrp_ss_ = node_->create_callback_group(
-      rclcpp::CallbackGroupType::MutuallyExclusive);
-  cbkgrp_sc_ = node_->create_callback_group(
-      rclcpp::CallbackGroupType::MutuallyExclusive);
-  cbkgrp_timers_ = node_->create_callback_group(
-      rclcpp::CallbackGroupType::MutuallyExclusive);
-  cbkgrp_action_ = node_->create_callback_group(
-      rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_subs_   = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_ss_     = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_sc_     = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_timers_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_action_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   initialize();
 }
@@ -369,16 +332,12 @@ void IROCFleetManager::initialize() {
   // Default config file
   param_loader.addYamlFileFromParam("config");
 
-  const auto robot_names =
-      param_loader.loadParam2<std::vector<std::string>>("network/robot_names");
+  const auto robot_names = param_loader.loadParam2<std::vector<std::string>>("network/robot_names");
 
   // param_loader.setPrefix("fleet_manager/");
-  const auto main_timer_rate =
-      param_loader.loadParam2<double>("fleet_manager/main_timer_rate");
-  const auto feedback_timer_rate =
-      param_loader.loadParam2<double>("fleet_manager/feedback_timer_rate");
-  const auto no_message_timeout = param_loader.loadParam2<rclcpp::Duration>(
-      "fleet_manager/no_message_timeout");
+  const auto main_timer_rate     = param_loader.loadParam2<double>("fleet_manager/main_timer_rate");
+  const auto feedback_timer_rate = param_loader.loadParam2<double>("fleet_manager/feedback_timer_rate");
+  const auto no_message_timeout  = param_loader.loadParam2<rclcpp::Duration>("fleet_manager/no_message_timeout");
 
   if (!param_loader.loadedSuccessfully()) {
     RCLCPP_ERROR(node_->get_logger(), "Could not load all parameters!");
@@ -389,11 +348,11 @@ void IROCFleetManager::initialize() {
   // | ----------------------- subscribers ---------------------- |
 
   mrs_lib::SubscriberHandlerOptions shopts;
-  shopts.node = node_;
-  shopts.node_name = "IROCFleetManager";
+  shopts.node               = node_;
+  shopts.node_name          = "IROCFleetManager";
   shopts.no_message_timeout = no_message_timeout;
-  shopts.threadsafe = true;
-  shopts.autostart = true;
+  shopts.threadsafe         = true;
+  shopts.autostart          = true;
 
   // populate the robot handlers vector
   {
@@ -404,47 +363,27 @@ void IROCFleetManager::initialize() {
       robot_diagnostics_topics_t robot_topics;
       robot_topics.robot_name = robot_name;
 
-      const std::string general_robot_info_topic_name =
-          "/" + robot_name + "/general_robot_info_in";
+      const std::string general_robot_info_topic_name = "/" + robot_name + "/general_robot_info_in";
 
-      robot_topics.sh_general_robot_info =
-          mrs_lib::SubscriberHandler<mrs_msgs::msg::GeneralRobotInfo>(
-              shopts, general_robot_info_topic_name);
+      robot_topics.sh_general_robot_info = mrs_lib::SubscriberHandler<mrs_msgs::msg::GeneralRobotInfo>(shopts, general_robot_info_topic_name);
 
-      const std::string state_estimation_info_topic_name =
-          "/" + robot_name + "/state_estimation_info_in";
-      robot_topics.sh_state_estimation_info =
-          mrs_lib::SubscriberHandler<mrs_msgs::msg::StateEstimationInfo>(
-              shopts, state_estimation_info_topic_name);
+      const std::string state_estimation_info_topic_name = "/" + robot_name + "/state_estimation_info_in";
+      robot_topics.sh_state_estimation_info = mrs_lib::SubscriberHandler<mrs_msgs::msg::StateEstimationInfo>(shopts, state_estimation_info_topic_name);
 
-      const std::string control_info_topic_name =
-          "/" + robot_name + "/control_info_in";
-      robot_topics.sh_control_info =
-          mrs_lib::SubscriberHandler<mrs_msgs::msg::ControlInfo>(
-              shopts, control_info_topic_name);
+      const std::string control_info_topic_name = "/" + robot_name + "/control_info_in";
+      robot_topics.sh_control_info              = mrs_lib::SubscriberHandler<mrs_msgs::msg::ControlInfo>(shopts, control_info_topic_name);
 
-      const std::string collision_avoidance_info_topic_name =
-          "/" + robot_name + "/collision_avoidance_info_in";
-      robot_topics.sh_collision_avoidance_info =
-          mrs_lib::SubscriberHandler<mrs_msgs::msg::CollisionAvoidanceInfo>(
-              shopts, collision_avoidance_info_topic_name);
+      const std::string collision_avoidance_info_topic_name = "/" + robot_name + "/collision_avoidance_info_in";
+      robot_topics.sh_collision_avoidance_info = mrs_lib::SubscriberHandler<mrs_msgs::msg::CollisionAvoidanceInfo>(shopts, collision_avoidance_info_topic_name);
 
       const std::string uav_info_topic_name = "/" + robot_name + "/uav_info_in";
-      robot_topics.sh_uav_info =
-          mrs_lib::SubscriberHandler<mrs_msgs::msg::UavInfo>(
-              shopts, uav_info_topic_name);
+      robot_topics.sh_uav_info              = mrs_lib::SubscriberHandler<mrs_msgs::msg::UavInfo>(shopts, uav_info_topic_name);
 
-      const std::string system_health_info_topic_name =
-          "/" + robot_name + "/system_health_info_in";
-      robot_topics.sh_system_health_info =
-          mrs_lib::SubscriberHandler<mrs_msgs::msg::SystemHealthInfo>(
-              shopts, system_health_info_topic_name);
+      const std::string system_health_info_topic_name = "/" + robot_name + "/system_health_info_in";
+      robot_topics.sh_system_health_info              = mrs_lib::SubscriberHandler<mrs_msgs::msg::SystemHealthInfo>(shopts, system_health_info_topic_name);
 
-      const std::string safety_area_info_topic_name =
-          "/" + robot_name + "/safety_area_info_in";
-      robot_topics.sh_safety_area_info = mrs_lib::SubscriberHandler<
-          mrs_msgs::msg::SafetyAreaManagerDiagnostics>(
-          shopts, safety_area_info_topic_name);
+      const std::string safety_area_info_topic_name = "/" + robot_name + "/safety_area_info_in";
+      robot_topics.sh_safety_area_info = mrs_lib::SubscriberHandler<mrs_msgs::msg::SafetyAreaManagerDiagnostics>(shopts, safety_area_info_topic_name);
 
       // move is necessary because copy construction of the subscribe handlers
       // is deleted due to mutexes
@@ -475,8 +414,7 @@ void IROCFleetManager::initialize() {
     param_loader.loadParam(planner_name + "/name_space", name_space);
 
     PlannerParams new_planner(address, name_space);
-    planners_.insert(
-        std::pair<std::string, PlannerParams>(planner_name, new_planner));
+    planners_.insert(std::pair<std::string, PlannerParams>(planner_name, new_planner));
 
     // try {
     //   ROS_INFO("[IROCFleetManager]: loading the planner '%s'",
@@ -519,99 +457,67 @@ void IROCFleetManager::initialize() {
   // | ------------------------- timers ------------------------- |
   mrs_lib::TimerHandlerOptions timer_opts_start;
 
-  timer_opts_start.node = node_;
-  timer_opts_start.autostart = true;
+  timer_opts_start.node           = node_;
+  timer_opts_start.autostart      = true;
   timer_opts_start.callback_group = cbkgrp_timers_;
 
   {
-    timer_main_ = std::make_shared<TimerType>(
-        timer_opts_start, rclcpp::Rate(main_timer_rate, clock_),
-        [this]() { this->timerMain(); });
+    timer_main_ = std::make_shared<TimerType>(timer_opts_start, rclcpp::Rate(main_timer_rate, clock_), [this]() { this->timerMain(); });
   }
 
   {
-    timer_update_common_handlers_ = std::make_shared<TimerType>(
-        timer_opts_start, rclcpp::Rate(main_timer_rate, clock_),
-        [this]() { this->timerUpdateCommonHandlers(); });
+    timer_update_common_handlers_ =
+        std::make_shared<TimerType>(timer_opts_start, rclcpp::Rate(main_timer_rate, clock_), [this]() { this->timerUpdateCommonHandlers(); });
   }
 
   {
-    timer_feedback_ = std::make_shared<TimerType>(
-        timer_opts_start, rclcpp::Rate(feedback_timer_rate, clock_),
-        [this]() { this->timerFeedback(); });
+    timer_feedback_ = std::make_shared<TimerType>(timer_opts_start, rclcpp::Rate(feedback_timer_rate, clock_), [this]() { this->timerFeedback(); });
   }
 
   // | --------------------- service servers -------------------- |
 
-  ss_change_fleet_mission_state_ =
-      mrs_lib::ServiceServerHandler<mrs_msgs::srv::String>(
-          node_, "svc/change_fleet_mission_state",
-          [this](std::shared_ptr<mrs_msgs::srv::String::Request> request,
-                 std::shared_ptr<mrs_msgs::srv::String::Response> response) {
-            changeFleetMissionStateCallback(request, response);
-          },
-          rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
-
-  ss_change_robot_mission_state_ = mrs_lib::ServiceServerHandler<
-      iroc_fleet_manager::srv::ChangeRobotMissionStateSrv>(
-      node_, "svc/change_robot_mission_state",
-      [this](std::shared_ptr<
-                 iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request>
-                 request,
-             std::shared_ptr<
-                 iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response>
-                 response) {
-        changeRobotMissionStateCallback(request, response);
+  ss_change_fleet_mission_state_ = mrs_lib::ServiceServerHandler<mrs_msgs::srv::String>(
+      node_, "svc/change_fleet_mission_state",
+      [this](std::shared_ptr<mrs_msgs::srv::String::Request> request, std::shared_ptr<mrs_msgs::srv::String::Response> response) {
+        changeFleetMissionStateCallback(request, response);
       },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
 
-  ss_get_world_origin_ = mrs_lib::ServiceServerHandler<
-      iroc_fleet_manager::srv::GetWorldOriginSrv>(
+  ss_change_robot_mission_state_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv>(
+      node_, "svc/change_robot_mission_state",
+      [this](std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request> request,
+             std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response> response) { changeRobotMissionStateCallback(request, response); },
+      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+
+  ss_get_world_origin_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetWorldOriginSrv>(
       node_, "svc/get_world_origin",
-      [this](
-          std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request>
-              request,
-          std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Response>
-              response) { getWorldOriginCallback(request, response); },
+      [this](std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request> request,
+             std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Response> response) { getWorldOriginCallback(request, response); },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
 
-  ss_get_safety_border_ = mrs_lib::ServiceServerHandler<
-      iroc_fleet_manager::srv::GetSafetyBorderSrv>(
+  ss_get_safety_border_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetSafetyBorderSrv>(
       node_, "svc/get_safety_border",
-      [this](
-          std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Request>
-              request,
-          std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Response>
-              response) { getSafetyBorderCallback(request, response); },
+      [this](std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Request> request,
+             std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Response> response) { getSafetyBorderCallback(request, response); },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
 
-  ss_get_obstacles_ = mrs_lib::ServiceServerHandler<
-      iroc_fleet_manager::srv::GetObstaclesSrv>(
+  ss_get_obstacles_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetObstaclesSrv>(
       node_, "svc/get_obstacles",
-      [this](std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request>
-                 request,
-             std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Response>
-                 response) { getObstaclesCallback(request, response); },
+      [this](std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request> request,
+             std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Response> response) { getObstaclesCallback(request, response); },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
 
-  ss_get_mission_data_ = mrs_lib::ServiceServerHandler<
-      iroc_fleet_manager::srv::GetMissionPointsSrv>(
+  ss_get_mission_data_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetMissionPointsSrv>(
       node_, "svc/get_mission_data",
-      [this](
-          std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request>
-              request,
-          std::shared_ptr<
-              iroc_fleet_manager::srv::GetMissionPointsSrv::Response>
-              response) { getMissionData(request, response); },
+      [this](std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request> request,
+             std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> response) { getMissionData(request, response); },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
 
   // // | ------------------ action server methods ----------------- |
 
   action_server_ptr_ = rclcpp_action::create_server<Mission>(
-      node_, "iroc_fleet_manager",
-      [this](auto uuid, auto goal) { return handle_goal(uuid, goal); },
-      [this](auto goal_handle) { return handle_cancel(goal_handle); },
-      [this](auto goal_handle) { handle_accepted(goal_handle); },
+      node_, "iroc_fleet_manager", [this](auto uuid, auto goal) { return handle_goal(uuid, goal); },
+      [this](auto goal_handle) { return handle_cancel(goal_handle); }, [this](auto goal_handle) { handle_accepted(goal_handle); },
       rcl_action_server_get_default_options(), cbkgrp_action_);
 
   RCLCPP_INFO(node_->get_logger(), "initialized");
@@ -643,9 +549,9 @@ void IROCFleetManager::timerMain() {
   }
 
   std::scoped_lock lock(action_server_mutex_);
-  bool all_success = false;
+  bool all_success     = false;
   bool got_all_results = false;
-  bool any_failure = false;
+  bool any_failure     = false;
   {
     {
       std::scoped_lock lock(fleet_mission_handlers_.mtx);
@@ -659,9 +565,8 @@ void IROCFleetManager::timerMain() {
     }
 
     if (any_failure) {
-      RCLCPP_WARN(node_->get_logger(),
-                  " Early failure detected, not all robots finished "
-                  "successfully, aborting mission.");
+      RCLCPP_WARN(node_->get_logger(), " Early failure detected, not all robots finished "
+                                       "successfully, aborting mission.");
       // TODO
       // ResultType action_server_result;
       // action_server_result.success       = false;
@@ -669,7 +574,7 @@ void IROCFleetManager::timerMain() {
       // mission."; action_server_result.robot_results = getRobotResults();
       // active_mission_                    = false;
       // action_server_ptr_->setAborted(action_server_result);
-      auto result = std::make_shared<Mission::Result>();
+      auto result     = std::make_shared<Mission::Result>();
       result->success = false;
       result->message = "Early failure detected, aborting mission.";
       current_goal_handle_->abort(result);
@@ -683,7 +588,8 @@ void IROCFleetManager::timerMain() {
       // got_all_results =
       //     std::all_of(fleet_mission_handlers_.handlers.begin(),
       //                 fleet_mission_handlers_.handlers.end(),
-      //                 [](const auto &handler) { return handler.got_result; });
+      //                 [](const auto &handler) { return handler.got_result;
+      //                 });
 
       // all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
       // fleet_mission_handlers_.handlers.end(),
@@ -692,14 +598,12 @@ void IROCFleetManager::timerMain() {
 
     // Finish mission when we get all the robots result
     // temporal to test the success case
-    got_all_results = true; 
-    all_success = true;
+    got_all_results = true;
+    all_success     = true;
 
     if (got_all_results) {
       if (!all_success) {
-        RCLCPP_WARN(
-            node_->get_logger(),
-            " Not all robots finished successfully, finishing mission.");
+        RCLCPP_WARN(node_->get_logger(), " Not all robots finished successfully, finishing mission.");
         // TODO
         // ResultType action_server_result;
         // action_server_result.success       = false;
@@ -707,7 +611,7 @@ void IROCFleetManager::timerMain() {
         // successfully, finishing mission"; action_server_result.robot_results
         // = getRobotResults(); active_mission_                    = false;
         // action_server_ptr_->setAborted(action_server_result);
-        auto result = std::make_shared<Mission::Result>();
+        auto result     = std::make_shared<Mission::Result>();
         result->success = false;
         result->message = "Early failure detected, aborting mission.";
         current_goal_handle_->abort(result);
@@ -716,8 +620,7 @@ void IROCFleetManager::timerMain() {
         return;
       }
 
-      RCLCPP_INFO(node_->get_logger(),
-                  " All robots finished successfully, finishing mission.");
+      RCLCPP_INFO(node_->get_logger(), " All robots finished successfully, finishing mission.");
       // TODO
       // ResultType action_server_result;
       // action_server_result.success       = true;
@@ -728,8 +631,8 @@ void IROCFleetManager::timerMain() {
       // active_mission_ = false;
       // action_server_ptr_->setSucceeded(action_server_result);
       active_mission_ = false;
-      auto result = std::make_shared<Mission::Result>();
-      result->success = true; 
+      auto result     = std::make_shared<Mission::Result>();
+      result->success = true;
       result->message = "All robots finished successfully, mission finished";
       current_goal_handle_->succeed(result);
       cancelRobotClients();
@@ -828,43 +731,35 @@ void IROCFleetManager::timerUpdateCommonHandlers() {
  *
  * @tparam ActionType Type representing the action/mission type for the fleet
  */
-bool IROCFleetManager::changeFleetMissionStateCallback(
-    const std::shared_ptr<mrs_msgs::srv::String::Request> &request,
-    const std::shared_ptr<mrs_msgs::srv::String::Response> &response) {
+bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs_msgs::srv::String::Request> &request,
+                                                       const std::shared_ptr<mrs_msgs::srv::String::Response> &response) {
   std::stringstream ss;
-  bool success = true;
+  bool success           = true;
   active_mission_change_ = true;
 
   std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
 
-  RCLCPP_INFO(node_->get_logger(), " Received a %s request for the fleet",
-              request->value.c_str());
+  RCLCPP_INFO(node_->get_logger(), " Received a %s request for the fleet", request->value.c_str());
 
   if (current_goal_handle_->is_active()) {
     if (request->value == "start") {
       RCLCPP_INFO(node_->get_logger(), " Calling mission activation.");
       for (auto &rh : fleet_mission_handlers_.handlers) {
-        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-        const auto resp = callService<std_srvs::srv::Trigger>(
-            rh.sc_robot_activation, request);
+        auto request    = std::make_shared<std_srvs::srv::Trigger::Request>();
+        const auto resp = callService<std_srvs::srv::Trigger>(rh.sc_robot_activation, request);
         if (!resp.success) {
           success = false;
-          RCLCPP_WARN(node_->get_logger(),
-                      " Call for robot %s was not successful with message: %s",
-                      rh.robot_name.c_str(), resp.message.c_str());
+          RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", rh.robot_name.c_str(), resp.message.c_str());
         }
       }
     } else if (request->value == "pause") {
       RCLCPP_INFO(node_->get_logger(), " Calling mission pausing.");
       for (auto &rh : fleet_mission_handlers_.handlers) {
-        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-        const auto resp =
-            callService<std_srvs::srv::Trigger>(rh.sc_robot_pausing, request);
+        auto request    = std::make_shared<std_srvs::srv::Trigger::Request>();
+        const auto resp = callService<std_srvs::srv::Trigger>(rh.sc_robot_pausing, request);
         if (!resp.success) {
           success = false;
-          RCLCPP_WARN(node_->get_logger(),
-                      " Call for robot %s was not successful with message: %s",
-                      rh.robot_name.c_str(), resp.message.c_str());
+          RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", rh.robot_name.c_str(), resp.message.c_str());
         }
       }
     } else if (request->value == "stop") {
@@ -894,14 +789,13 @@ bool IROCFleetManager::changeFleetMissionStateCallback(
   }
 
   if (success) {
-    RCLCPP_INFO(node_->get_logger(), " Successfully processed the %s request.",
-                request->value.c_str());
+    RCLCPP_INFO(node_->get_logger(), " Successfully processed the %s request.", request->value.c_str());
   } else {
     RCLCPP_WARN(node_->get_logger(), " Failure: %s", ss.str().c_str());
   };
 
-  response->success = success;
-  response->message = ss.str();
+  response->success      = success;
+  response->message      = ss.str();
   active_mission_change_ = false;
   return true;
 }
@@ -912,29 +806,21 @@ bool IROCFleetManager::changeFleetMissionStateCallback(
  *
  * @tparam ActionType Type representing the action/mission type for the fleet
  */
-bool IROCFleetManager::changeRobotMissionStateCallback(
-    const std::shared_ptr<
-        iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request> &request,
-    const std::shared_ptr<
-        iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response>
-        &response) {
+bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request> &request,
+                                                       const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response> &response) {
 
   std::stringstream ss;
   active_mission_change_ = true;
 
   std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
 
-  RCLCPP_INFO(node_->get_logger(), " Received a %s request for %s",
-              request->type.c_str(), request->robot_name.c_str());
+  RCLCPP_INFO(node_->get_logger(), " Received a %s request for %s", request->type.c_str(), request->robot_name.c_str());
 
   auto *rh_ptr = findRobotHandler(request->robot_name, fleet_mission_handlers_);
 
   if (rh_ptr == nullptr) {
-    ss << "robot \"" << request->robot_name
-       << "\" not found as a part of the mission, skipping\n";
-    RCLCPP_WARN(node_->get_logger(),
-                " Robot %s not found as a part of the mission. Skipping.",
-                request->robot_name.c_str());
+    ss << "robot \"" << request->robot_name << "\" not found as a part of the mission, skipping\n";
+    RCLCPP_WARN(node_->get_logger(), " Robot %s not found as a part of the mission. Skipping.", request->robot_name.c_str());
     response->message = ss.str();
     response->success = false;
     return true;
@@ -943,45 +829,29 @@ bool IROCFleetManager::changeRobotMissionStateCallback(
   bool success = true;
   if (current_goal_handle_->is_active()) {
     if (request->type == "start") {
-      RCLCPP_INFO(node_->get_logger(),
-                  " Calling mission activation for robot: %s.",
-                  request->robot_name.c_str());
-      auto service_request =
-          std::make_shared<std_srvs::srv::Trigger::Request>();
-      const auto resp = callService<std_srvs::srv::Trigger>(
-          rh_ptr->sc_robot_activation, service_request);
+      RCLCPP_INFO(node_->get_logger(), " Calling mission activation for robot: %s.", request->robot_name.c_str());
+      auto service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
+      const auto resp      = callService<std_srvs::srv::Trigger>(rh_ptr->sc_robot_activation, service_request);
       if (!resp.success) {
         success = false;
-        RCLCPP_WARN(node_->get_logger(),
-                    " Call for robot %s was not successful with message: %s",
-                    request->robot_name.c_str(), resp.message.c_str());
-        ss << "Call for robot \"" << request->robot_name
-           << "\" was not successful with message: " << resp.message << "\n";
+        RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", request->robot_name.c_str(), resp.message.c_str());
+        ss << "Call for robot \"" << request->robot_name << "\" was not successful with message: " << resp.message << "\n";
       } else {
         ss << "Call successful.\n";
       }
     } else if (request->type == "pause") {
-      RCLCPP_INFO(node_->get_logger(),
-                  " Calling mission pausing for robot: %s.",
-                  request->robot_name.c_str());
-      auto service_request =
-          std::make_shared<std_srvs::srv::Trigger::Request>();
-      const auto resp = callService<std_srvs::srv::Trigger>(
-          rh_ptr->sc_robot_pausing, service_request);
+      RCLCPP_INFO(node_->get_logger(), " Calling mission pausing for robot: %s.", request->robot_name.c_str());
+      auto service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
+      const auto resp      = callService<std_srvs::srv::Trigger>(rh_ptr->sc_robot_pausing, service_request);
       if (!resp.success) {
         success = false;
-        RCLCPP_WARN(node_->get_logger(),
-                    " Call for robot %s was not successful with message: %s",
-                    request->robot_name.c_str(), resp.message.c_str());
-        ss << "Call for robot \"" << request->robot_name
-           << "\" was not successful with message: " << resp.message << "\n";
+        RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", request->robot_name.c_str(), resp.message.c_str());
+        ss << "Call for robot \"" << request->robot_name << "\" was not successful with message: " << resp.message << "\n";
       } else {
         ss << "Call successful.\n";
       }
     } else if (request->type == "stop") {
-      RCLCPP_INFO(node_->get_logger(),
-                  " Calling mission stopping for robot: %s.",
-                  request->robot_name.c_str());
+      RCLCPP_INFO(node_->get_logger(), " Calling mission stopping for robot: %s.", request->robot_name.c_str());
       // TODO when mission handler is updated to ROS2
       // const auto action_client_state = rh_ptr->action_client_ptr->getState();
       // if (action_client_state.isDone()) {
@@ -1006,28 +876,22 @@ bool IROCFleetManager::changeRobotMissionStateCallback(
   }
 
   if (success) {
-    RCLCPP_INFO(node_->get_logger(),
-                " Successfully processed the %s request for %s.",
-                request->type.c_str(), request->robot_name.c_str());
-    ss << "Successfully processed the " << request->type << " request for "
-       << request->robot_name << ".\n";
+    RCLCPP_INFO(node_->get_logger(), " Successfully processed the %s request for %s.", request->type.c_str(), request->robot_name.c_str());
+    ss << "Successfully processed the " << request->type << " request for " << request->robot_name << ".\n";
   } else {
     RCLCPP_WARN(node_->get_logger(), " Failure: %s", ss.str().c_str());
   };
 
-  response->success = success;
-  response->message = ss.str();
+  response->success      = success;
+  response->message      = ss.str();
   active_mission_change_ = false;
   return true;
 }
 
 //}
 
-bool IROCFleetManager::getWorldOriginCallback(
-    const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request>
-        &request,
-    const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Response>
-        &response) {
+bool IROCFleetManager::getWorldOriginCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request> &request,
+                                              const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Response> &response) {
 
   std::scoped_lock lck(robot_handlers_.mtx);
   RCLCPP_INFO(node_->get_logger(), " Processing a getWorldOriginCallback.");
@@ -1060,8 +924,8 @@ bool IROCFleetManager::getWorldOriginCallback(
     origin_hashes.insert(hash_stream.str());
 
     if (first_robot) {
-      origin_x = msg->world_origin.x;
-      origin_y = msg->world_origin.y;
+      origin_x    = msg->world_origin.x;
+      origin_y    = msg->world_origin.y;
       first_robot = false;
     }
   }
@@ -1070,13 +934,12 @@ bool IROCFleetManager::getWorldOriginCallback(
 
   if (has_discrepancies) {
     RCLCPP_WARN(node_->get_logger(), " Discrepancy with the robot origins!!");
-    response->message =
-        "Discrepancy in the origins between the fleet, please set the origin!";
+    response->message = "Discrepancy in the origins between the fleet, please set the origin!";
     response->success = false;
     return true;
   } else {
-    response->message = "All robots in the fleet with same origin";
-    response->success = true;
+    response->message  = "All robots in the fleet with same origin";
+    response->success  = true;
     response->origin_x = origin_x;
     response->origin_y = origin_y;
     return true;
@@ -1086,11 +949,8 @@ bool IROCFleetManager::getWorldOriginCallback(
 // bool
 // IROCFleetManager::getSafetyBorderCallback(iroc_fleet_manager::GetSafetyBorderSrv::Request
 // &req, iroc_fleet_manager::GetSafetyBorderSrv::Response &res) {
-bool IROCFleetManager::getSafetyBorderCallback(
-    const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Request>
-        &request,
-    const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Response>
-        &response) {
+bool IROCFleetManager::getSafetyBorderCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Request> &request,
+                                               const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Response> &response) {
   std::scoped_lock lck(robot_handlers_.mtx);
   RCLCPP_INFO(node_->get_logger(), " Processing a getSafetyBorderCallback.");
   std::set<std::string> config_hashes;
@@ -1116,10 +976,8 @@ bool IROCFleetManager::getSafetyBorderCallback(
       hash_stream << std::fixed << std::setprecision(4);
     }
 
-    hash_stream << msg->border.max_z << "|" << msg->border.min_z << "|"
-                << msg->border.horizontal_frame << "|"
-                << msg->border.vertical_frame << "|" << msg->safety_area_enabled
-                << "|";
+    hash_stream << msg->border.max_z << "|" << msg->border.min_z << "|" << msg->border.horizontal_frame << "|" << msg->border.vertical_frame << "|"
+                << msg->safety_area_enabled << "|";
 
     for (const auto &point : msg->border.points) {
       hash_stream << point.x << "," << point.y << ";";
@@ -1129,7 +987,7 @@ bool IROCFleetManager::getSafetyBorderCallback(
 
     if (first_robot) {
       reference_border = msg->border;
-      first_robot = false;
+      first_robot      = false;
     }
   }
 
@@ -1144,16 +1002,13 @@ bool IROCFleetManager::getSafetyBorderCallback(
   } else {
     response->success = true;
     response->message = "All robots in the fleet with the same safety border";
-    response->border = reference_border;
+    response->border  = reference_border;
     return true;
   }
 }
 
-bool IROCFleetManager::getObstaclesCallback(
-    const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request>
-        &request,
-    const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Response>
-        &response) {
+bool IROCFleetManager::getObstaclesCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request> &request,
+                                            const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Response> &response) {
 
   std::scoped_lock lck(robot_handlers_.mtx);
   RCLCPP_INFO(node_->get_logger(), " Processing a getObstaclesCallback.");
@@ -1218,18 +1073,15 @@ bool IROCFleetManager::getObstaclesCallback(
                         "please set the obstacles!";
     return true;
   } else {
-    response->success = true;
-    response->message = "All robots in the fleet with the same safety border";
+    response->success   = true;
+    response->message   = "All robots in the fleet with the same safety border";
     response->obstacles = reference_obstacles;
     return true;
   }
 }
 
-bool IROCFleetManager::getMissionData(
-    const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request>
-        &request,
-    const std::shared_ptr<
-        iroc_fleet_manager::srv::GetMissionPointsSrv::Response> &response) {
+bool IROCFleetManager::getMissionData(const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request> &request,
+                                      const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> &response) {
 
   std::scoped_lock lck(mission_goals_mtx_);
 
@@ -1239,8 +1091,8 @@ bool IROCFleetManager::getMissionData(
     return true;
   }
 
-  response->success = true;
-  response->message = "Successfully got the mission goals";
+  response->success      = true;
+  response->message      = "Successfully got the mission goals";
   response->mission_goal = current_mission_goal_;
 
   return true;
@@ -1248,11 +1100,8 @@ bool IROCFleetManager::getMissionData(
 
 // | ---------------------- action server callbacks --------------------- |
 
-void IROCFleetManager::missionActiveCallback(
-    const std::string &robot_name) const {
-  RCLCPP_INFO(node_->get_logger(),
-              " Action server on robot %s is processing the goal.",
-              robot_name.c_str());
+void IROCFleetManager::missionActiveCallback(const std::string &robot_name) const {
+  RCLCPP_INFO(node_->get_logger(), " Action server on robot %s is processing the goal.", robot_name.c_str());
 }
 
 /*!
@@ -1352,11 +1201,8 @@ fleet_mission_handlers_); rh_ptr->current_feedback = *feedback;
  *
  * @param goal The incoming goal from the action client
  */
-rclcpp_action::GoalResponse
-IROCFleetManager::handle_goal(const rclcpp_action::GoalUUID &uuid,
-                              std::shared_ptr<const Mission::Goal> goal) {
-  RCLCPP_INFO(node_->get_logger(), "Received goal request with ID %s",
-              rclcpp_action::to_string(uuid).c_str());
+rclcpp_action::GoalResponse IROCFleetManager::handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const Mission::Goal> goal) {
+  RCLCPP_INFO(node_->get_logger(), "Received goal request with ID %s", rclcpp_action::to_string(uuid).c_str());
 
   if (!is_initialized_) {
     RCLCPP_WARN(node_->get_logger(), "Not initialized yet, rejecting goal.");
@@ -1366,8 +1212,7 @@ IROCFleetManager::handle_goal(const rclcpp_action::GoalUUID &uuid,
   return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
-void IROCFleetManager::handle_accepted(
-    const std::shared_ptr<GoalHandleMission> goal_handle) {
+void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> goal_handle) {
 
   std::scoped_lock lock(action_server_mutex_);
 
@@ -1416,18 +1261,16 @@ void IROCFleetManager::handle_accepted(
   }
 
 */
-  RCLCPP_INFO(node_->get_logger(),
-              " Successfully sent the goal to robots in mission.");
+  RCLCPP_INFO(node_->get_logger(), " Successfully sent the goal to robots in mission.");
 
   current_goal_handle_ = goal_handle;
-  active_mission_ = true;
+  active_mission_      = true;
 }
 
-rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(
-    const std::shared_ptr<GoalHandleMission> goal_handle) {
+rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(const std::shared_ptr<GoalHandleMission> goal_handle) {
   RCLCPP_INFO(node_->get_logger(), "Received request to cancel goal");
 
-  auto result = std::make_shared<Mission::Result>();
+  auto result     = std::make_shared<Mission::Result>();
   result->success = false;
   result->message = "Mission cancelled by client request.";
   current_goal_handle_->abort(result);
@@ -1459,10 +1302,9 @@ void IROCFleetManager::actionPublishFeedback() {
       // TODO update once mission handler is updated to ROS2
       // auto action_server_feedback =
       // processAggregatedFeedbackInfo(robot_feedbacks);
-      auto feedback = std::make_shared<Mission::Feedback>();
-      feedback->info.state = iroc_fleet_manager::msg::WaypointMissionInfo::
-          STATE_TRAJECTORIES_LOADED;
-      feedback->info.message = "Feedback not implemented yet.";
+      auto feedback           = std::make_shared<Mission::Feedback>();
+      feedback->info.state    = iroc_fleet_manager::msg::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED;
+      feedback->info.message  = "Feedback not implemented yet.";
       feedback->info.progress = 0.0;
       current_goal_handle_->publish_feedback(feedback);
     }
@@ -1788,9 +1630,8 @@ iroc_fleet_manager::WaypointMissionInfo::STATE_INVALID);
  * Helper method to obtain a robot handler
  *
  */
-IROCFleetManager::robot_mission_handler_t *IROCFleetManager::findRobotHandler(
-    const std::string &robot_name,
-    fleet_mission_handlers_t &fleet_mission_handlers) const {
+IROCFleetManager::robot_mission_handler_t *IROCFleetManager::findRobotHandler(const std::string &robot_name,
+                                                                              fleet_mission_handlers_t &fleet_mission_handlers) const {
   for (auto &rh : fleet_mission_handlers.handlers) {
     if (rh.robot_name == robot_name)
       return &rh;
@@ -1811,9 +1652,8 @@ IROCFleetManager::robot_mission_handler_t *IROCFleetManager::findRobotHandler(
 void IROCFleetManager::cancelRobotClients() {
 
   RCLCPP_INFO(node_->get_logger(), " Canceling robot clients...");
-  RCLCPP_INFO(node_->get_logger(),
-              " Missing implementation, to be added once mission "
-              "handler is updated to ROS2.");
+  RCLCPP_INFO(node_->get_logger(), " Missing implementation, to be added once mission "
+                                   "handler is updated to ROS2.");
   // TODO update once mission handler is updated to ROS2
   /*
   {
@@ -1855,9 +1695,7 @@ has an active mission, cancelling..."); rh.action_client_ptr->cancelGoal();
 }
 
 template <typename ServiceType>
-result_t IROCFleetManager::callService(
-    mrs_lib::ServiceClientHandler<ServiceType> &sc,
-    const std::shared_ptr<typename ServiceType::Request> &request) {
+result_t IROCFleetManager::callService(mrs_lib::ServiceClientHandler<ServiceType> &sc, const std::shared_ptr<typename ServiceType::Request> &request) {
   // typename ServiceType::Response res;
 
   auto response = sc.callSync(request);
@@ -1865,16 +1703,12 @@ result_t IROCFleetManager::callService(
   if (response) {
     if (response.value()->success) {
       // TODO add getService() to mrs_lib ServiceClientHandler
-      RCLCPP_INFO_STREAM_THROTTLE(
-          node_->get_logger(), *clock_, 1000,
-          "Called service  << sc.getService() <<  with response \""
-              << response.value()->message << "\".");
+      RCLCPP_INFO_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000,
+                                  "Called service  << sc.getService() <<  with response \"" << response.value()->message << "\".");
       return {true, response.value()->message};
     } else {
-      RCLCPP_WARN_STREAM_THROTTLE(
-          node_->get_logger(), *clock_, 1000,
-          "Called service << sc.getService() <<  with response \""
-              << response.value()->message << "\".");
+      RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000,
+                                  "Called service << sc.getService() <<  with response \"" << response.value()->message << "\".");
       return {false, response.value()->message};
     }
   } else {
