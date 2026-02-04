@@ -2,8 +2,8 @@
 
 #include <iroc_fleet_manager/common_handlers.h>
 #include <iroc_fleet_manager/utils/json_var_parser.h>
-#include <iroc_mission_handler/MissionAction.h>
-#include <ros/ros.h>
+#include <iroc_mission_handler/action/mission.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace iroc_fleet_manager {
 
@@ -30,7 +30,7 @@ class Planner {
    *
    * @return true if success
    */
-  virtual bool initialize(const ros::NodeHandle& nh, const std::string& name, const std::string& name_space,
+  virtual bool initialize(const rclcpp::Node::SharedPtr node, const std::string& name, const std::string& name_space,
                           std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) = 0;
 
   /**
@@ -52,7 +52,7 @@ class Planner {
    * @param incoming goal for the planner, string with JSON format type
    * @return the goals of the robots in the fleet.
    */
-  virtual std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string& goal) const = 0;
+  virtual std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> createGoal(const std::string& goal) const = 0;
 
   virtual ~Planner() = default;
 
@@ -66,7 +66,7 @@ result_t Planner::parseJson(const std::string& goal, json& json_msg) const {
   try {
     json_msg = json::parse(goal);
   } catch (const json::exception& e) {
-    ROS_ERROR_STREAM_THROTTLE(1.0, "[Planner]: Bad json input: " << e.what());
+    RCLCPP_WARN_STREAM(rclcpp::get_logger("IROCFleetManager"), "Bad json input: " << e.what());
     result.success = false;
     result.message = "BadRequest_400: Bad JSON input";
     return result;

@@ -3,6 +3,8 @@
 #include <nlohmann/json.hpp>
 #include "iroc_fleet_manager/utils/types.h"
 #include <variant>
+#include <rclcpp/rclcpp.hpp>
+#include <iostream>
 
 namespace iroc_fleet_manager
 {

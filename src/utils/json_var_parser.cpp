@@ -1,5 +1,4 @@
 #include "iroc_fleet_manager/utils/json_var_parser.h"
-#include <ros/ros.h>
 
 namespace iroc_fleet_manager
 {
@@ -39,12 +38,12 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
   const auto &var_name = var.first;
 
   if (!js.contains(var_name)) {
-    ROS_ERROR_STREAM_THROTTLE(1.0, "[Var-parser]: JSON doesn't have the expected member \"" << var_name << "\".");
+    std::cout << "[Var-parser]: JSON doesn't have the expected member \"" << var_name << "\"." << std::endl;
     return false;
   }
 
   auto &var_out = var.second;
-  bool success = true;
+  bool success  = true;
   std::visit(
       [var_name, &js, &success](auto &&var_out) {
         using T = std::remove_pointer_t<std::decay_t<decltype(var_out)>>;
@@ -52,11 +51,11 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
           *var_out = convertFromJson<T>(js.at(var_name));
         }
         catch (json::exception &e) {
-          ROS_WARN_STREAM("[Var-parser]: Cannot parse member \"" << var_name << "\" (value: " << js.at(var_name) << ") as custom type: " << e.what());
+          std::cout << "[Var-parser]: Cannot parse member \"" << var_name << "\" (value: " << js.at(var_name) << ") as custom type: " << e.what() << std::endl;
           success = false;
         }
         catch (std::exception &e) {
-          ROS_WARN_STREAM("[Var-parser]: Cannot parse member \"" << var_name << "\" - " << e.what());
+        std::cout << "[Var-parser]: Cannot parse member \"" << var_name << "\" - " << e.what() << std::endl;
           success = false;
         }
       },

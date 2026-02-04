@@ -7,7 +7,7 @@ string uuid
 # Define the result
 bool success
 string message
-# iroc_mission_handler/MissionResult[] robot_results
+iroc_mission_handler/MissionResult[] robot_results
 ---
 # Define a feedback message
 iroc_fleet_manager/WaypointMissionInfo info

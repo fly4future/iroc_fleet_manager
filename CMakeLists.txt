@@ -42,6 +42,7 @@ set(DEPENDENCIES
   mrs_msgs
   mrs_lib
   mrs_robot_diagnostics
+  iroc_mission_handler
   pluginlib
   rosidl_default_generators
 )
@@ -79,7 +80,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     std_msgs 
     geometry_msgs 
     mrs_msgs 
-    # iroc_mission_handler
+    iroc_mission_handler
 )
 
 ## --------------------------------------------------------------
@@ -112,6 +113,8 @@ target_link_libraries(IrocFleetManager_IrocFleetManager
     rclcpp_components::component
     pluginlib::pluginlib
     mrs_lib::mrs_lib
+    iroc_mission_handler::iroc_mission_handler
+    ${iroc_mission_handler_TARGETS}
     ${mrs_msgs_TARGETS}
 )
 
