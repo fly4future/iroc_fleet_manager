@@ -7,11 +7,6 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
-// Simple action library
-// #include <actionlib/client/simple_action_client.h>
-// #include <actionlib/client/terminal_state.h>
-// #include <actionlib/server/simple_action_server.h>
-
 // Fleet manager
 #include <iroc_fleet_manager/srv/change_robot_mission_state_srv.hpp>
 #include <iroc_fleet_manager/srv/get_mission_points_srv.hpp>
@@ -24,7 +19,7 @@
 #include <iroc_fleet_manager/msg/mission_goal.hpp>
 
 #include <iroc_mission_handler/action/mission.hpp>
-// #include <iroc_fleet_manager/utils/types.h>
+#include <iroc_fleet_manager/utils/types.h>
 
 // Robot diagnostics
 #include <mrs_msgs/msg/collision_avoidance_info.hpp>
@@ -50,7 +45,6 @@
 #include <numeric>
 #include <tuple>
 
-// TODO update mission handler usage in ROS2
 #include <iroc_fleet_manager/common_handlers.h>
 //
 #if USE_ROS_TIMER == 1
@@ -85,23 +79,11 @@ PlannerParams::PlannerParams(const std::string &address, const std::string &name
   this->name_space = name_space;
 }
 
-// using namespace actionlib;
-// TODO ROS2 action usage
-// typedef actionlib::SimpleActionClient<iroc_mission_handler::MissionAction>
-// MissionHandlerClient;
 using Mission           = iroc_fleet_manager::action::ExecuteMission;
 using RobotMission      = iroc_mission_handler::action::Mission;
 using GoalHandleMission = rclcpp_action::ServerGoalHandle<Mission>;
 using MissionClient     = rclcpp_action::Client<iroc_mission_handler::action::Mission>;
 using MissionGoalHandle = rclcpp_action::ClientGoalHandle<iroc_mission_handler::action::Mission>;
-// typedef iroc_mission_handler::MissionGoal MissionHandlerActionServerGoal;
-
-// using ActionType = iroc_fleet_manager::IROCFleetManagerAction;
-// using ActionServer_T = actionlib::SimpleActionServer<ActionType>;
-// using GoalType = typename ActionType::_action_goal_type::_goal_type;
-// using FeedbackType = typename
-// ActionType::_action_feedback_type::_feedback_type; using ResultType =
-// typename ActionType::_action_result_type::_result_type;
 
 class IROCFleetManager : public mrs_lib::Node {
 public:
@@ -203,6 +185,7 @@ private:
   {
     std::string robot_name;
     std::shared_ptr<MissionClient> action_client_ptr;
+    MissionGoalHandle::SharedPtr current_goal_handle;
     mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger> sc_robot_activation;
     mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger> sc_robot_pausing;
     iroc_mission_handler::action::Mission::Feedback current_feedback;
@@ -222,7 +205,6 @@ private:
 
   // action client callbacks
   void missionActiveCallback(const std::string &robot_name) const;
-  // TODO
   void missionDoneCallback(const rclcpp_action::ClientGoalHandle<RobotMission>::WrappedResult &result);
   void missionFeedbackCallback(const RobotMission::Feedback::ConstSharedPtr feedback);
   void actionPublishFeedback(void);
@@ -248,8 +230,7 @@ private:
   // helper methods
   std::map<std::string, result_t> sendRobotGoals(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots);
   robot_mission_handler_t *findRobotHandler(const std::string &robot_name, fleet_mission_handlers_t &mission_handlers) const;
-  // FeedbackType processAggregatedFeedbackInfo(const
-  // std::vector<iroc_mission_handler::MissionFeedback>& robot_feedbacks) const;
+  Mission::Feedback processAggregatedFeedbackInfo(const std::vector<iroc_mission_handler::msg::MissionFeedback> &robot_feedbacks) const;
   std::tuple<std::string, std::string> processFeedbackMsg() const;
   void cancelRobotClients();
   std::vector<iroc_mission_handler::msg::MissionResult> getRobotResults();
@@ -379,7 +360,7 @@ void IROCFleetManager::initialize() {
 
   param_loader.setPrefix("fleet_manager/planners/");
   param_loader.loadParam("planner_names", _planner_names_);
-  // TODO update planner loader for ROS2
+
   planner_loader_ =
       std::make_unique<pluginlib::ClassLoader<iroc_fleet_manager::planners::Planner>>("iroc_fleet_manager", "iroc_fleet_manager::planners::Planner");
 
@@ -515,7 +496,6 @@ void IROCFleetManager::initialize() {
  * successfully.
  * 2. Aborts the mission for all robots if any robot reports a failure.
  *
- * @tparam ActionType Type representing the action/mission type for the fleet
  */
 void IROCFleetManager::timerMain() {
 
@@ -537,24 +517,13 @@ void IROCFleetManager::timerMain() {
     {
       std::scoped_lock lock(fleet_mission_handlers_.mtx);
       // Check if any missions aborted early
-      // TODO when mission handler is updated to ROS2
-      // any_failure = std::any_of(fleet_mission_handlers_.handlers.begin(),
-      // fleet_mission_handlers_.handlers.end(),
-      //                           [](const auto &handler) { return
-      //                           handler.got_result &&
-      //                           !handler.current_result.success; });
+      any_failure = std::any_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
+                                [](const auto &handler) { return handler.got_result && !handler.current_result.robot_result.success; });
     }
 
     if (any_failure) {
       RCLCPP_WARN(node_->get_logger(), " Early failure detected, not all robots finished "
                                        "successfully, aborting mission.");
-      // TODO
-      // ResultType action_server_result;
-      // action_server_result.success       = false;
-      // action_server_result.message       = "Early failure detected, aborting
-      // mission."; action_server_result.robot_results = getRobotResults();
-      // active_mission_                    = false;
-      // action_server_ptr_->setAborted(action_server_result);
       auto result           = std::make_shared<Mission::Result>();
       result->success       = false;
       result->message       = "Early failure detected, aborting mission.";
@@ -568,32 +537,17 @@ void IROCFleetManager::timerMain() {
 
     {
       std::scoped_lock lock(fleet_mission_handlers_.mtx);
-      // got_all_results =
-      //     std::all_of(fleet_mission_handlers_.handlers.begin(),
-      //                 fleet_mission_handlers_.handlers.end(),
-      //                 [](const auto &handler) { return handler.got_result;
-      //                 });
+      got_all_results =
+          std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(), [](const auto &handler) { return handler.got_result; });
 
-      // all_success = std::all_of(fleet_mission_handlers_.handlers.begin(),
-      // fleet_mission_handlers_.handlers.end(),
-      // [](const auto &handler) { return handler.current_result.success; });
+      all_success = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
+                                [](const auto &handler) { return handler.current_result.robot_result.success; });
     }
 
     // Finish mission when we get all the robots result
-    // temporal to test the success case
-    got_all_results = true;
-    all_success     = true;
-
     if (got_all_results) {
       if (!all_success) {
         RCLCPP_WARN(node_->get_logger(), " Not all robots finished successfully, finishing mission.");
-        // TODO
-        // ResultType action_server_result;
-        // action_server_result.success       = false;
-        // action_server_result.message       = "Not all robots finished
-        // successfully, finishing mission"; action_server_result.robot_results
-        // = getRobotResults(); active_mission_                    = false;
-        // action_server_ptr_->setAborted(action_server_result);
         auto result           = std::make_shared<Mission::Result>();
         result->success       = false;
         result->message       = "Early failure detected, aborting mission.";
@@ -606,16 +560,6 @@ void IROCFleetManager::timerMain() {
       }
 
       RCLCPP_INFO(node_->get_logger(), " All robots finished successfully, finishing mission.");
-      // TODO
-      // ResultType action_server_result;
-      // action_server_result.success       = true;
-      // action_server_result.message       = "All robots finished successfully,
-      // mission finished"; action_server_result.robot_results =
-      // getRobotResults();
-      //
-      // active_mission_ = false;
-      // action_server_ptr_->setSucceeded(action_server_result);
-      active_mission_       = false;
       auto result           = std::make_shared<Mission::Result>();
       result->success       = true;
       result->message       = "All robots finished successfully, mission finished";
@@ -632,7 +576,6 @@ void IROCFleetManager::timerMain() {
  * Continuously gathers the information from robots and wraps
  * their feedback into a general feedback message.
  *
- * @tparam ActionType Type representing the action/mission type for the fleet
  */
 void IROCFleetManager::timerFeedback() {
 
@@ -710,13 +653,11 @@ void IROCFleetManager::timerUpdateCommonHandlers() {
 }
 
 // | ----------------- service server callback ---------------- |
-
 /*!
 
  * Handles the incoming request to change the
  * state of the mission: Start, Pause or Stop.
  *
- * @tparam ActionType Type representing the action/mission type for the fleet
  */
 bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs_msgs::srv::String::Request> &request,
                                                        const std::shared_ptr<mrs_msgs::srv::String::Response> &response) {
@@ -730,7 +671,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs
 
   if (current_goal_handle_->is_active()) {
     if (request->value == "start") {
-      RCLCPP_INFO(node_->get_logger(), " Calling mission activation.");
+      RCLCPP_INFO(node_->get_logger(), "Activating the mission for all robots.");
       for (auto &rh : fleet_mission_handlers_.handlers) {
         auto request    = std::make_shared<std_srvs::srv::Trigger::Request>();
         const auto resp = callService<std_srvs::srv::Trigger>(rh.sc_robot_activation, request);
@@ -740,7 +681,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs
         }
       }
     } else if (request->value == "pause") {
-      RCLCPP_INFO(node_->get_logger(), " Calling mission pausing.");
+      RCLCPP_INFO(node_->get_logger(), "Pausing the mission for all robots.");
       for (auto &rh : fleet_mission_handlers_.handlers) {
         auto request    = std::make_shared<std_srvs::srv::Trigger::Request>();
         const auto resp = callService<std_srvs::srv::Trigger>(rh.sc_robot_pausing, request);
@@ -750,21 +691,8 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs
         }
       }
     } else if (request->value == "stop") {
-      RCLCPP_INFO(node_->get_logger(), " Calling mission stopping.");
-      for (auto &rh : fleet_mission_handlers_.handlers) {
-        // TODO when mission handler is updated to ROS2
-        // const auto action_client_state = rh.action_client_ptr->getState();
-        // if (action_client_state.isDone()) {
-        //   ss << "robot \"" << rh.robot_name << "\" mission done, skipping\n";
-        //   ROS_WARN_STREAM("[IROCFleetManager]: Robot \"" << rh.robot_name <<
-        //   "\" mission done. Skipping.");
-        // } else {
-        //   ROS_INFO_STREAM("[IROCFleetManager]: Cancelling \"" <<
-        //   rh.robot_name << "\" mission.");
-        //   rh.action_client_ptr->cancelGoal();
-        //   rh.action_client_ptr->waitForResult(ros::Duration(1.0));
-        // }
-      }
+      RCLCPP_INFO(node_->get_logger(), "Cancelling the mission for all robots.");
+      cancelRobotClients();
     } else {
       success = false;
       ss << "Unsupported type\n";
@@ -791,7 +719,6 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs
  * Handles the incoming request to change the
  * state of an individual robot mission: Start, Pause or Stop.
  *
- * @tparam ActionType Type representing the action/mission type for the fleet
  */
 bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request> &request,
                                                        const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response> &response) {
@@ -1101,82 +1028,59 @@ void IROCFleetManager::missionActiveCallback(const std::string &robot_name) cons
  * connection with that robot is lost, this is saved in a vector
  * lost_robot_names_ for the proper handling.
  *
- * @tparam ActionType Type representing the action/mission type for the fleet
  */
-/*
-void IROCFleetManager::missionDoneCallback(const
-actionlib::SimpleClientGoalState &state, const
-iroc_mission_handler::MissionResultConstPtr &result, const std::string
-&robot_name) {
+
+void IROCFleetManager::missionDoneCallback(const rclcpp_action::ClientGoalHandle<RobotMission>::WrappedResult &result) {
 
   if (!active_mission_) {
     return;
   }
+  const auto robot_name = result.result->robot_result.name;
 
-  if (result == NULL) {
-    active_mission_ = false;
-
-    lost_robot_names_.push_back(robot_name);
-    ROS_WARN_STREAM("[IROCFleetManager]: Robot " << robot_name
-                                                 << " mission_handler died/ or
-restarted while mission was " "active, and action server connection was lost!, "
-                                                    "reconnection is not
-currently handled, if mission " "handler was restarted need to upload a new
-mission!"); ResultType action_server_result; action_server_result.success =
-false; action_server_result.message       = "Probably mission_handler died, and
-action server connection was " "lost!, reconnection is not currently handled, if
-mission handler was " "restarted need to upload a new mission!";
-    action_server_result.robot_results = getRobotResults();
-
-    action_server_ptr_->setAborted(action_server_result);
-    cancelRobotClients();
-    ROS_INFO("[IROCFleetManager]: Mission aborted.");
-    return;
-  }
-
-  if (result->success) {
-    ROS_INFO_STREAM("[IROCFleetManager]: Action server on robot " << robot_name
-<< " finished with state: \"" << state.toString() << "\". Result message is: \""
-                                                                  <<
-result->message << "\""); } else { ROS_WARN_STREAM("[IROCFleetManager]: Action
-server on robot " << robot_name << " finished with state: \"" <<
-state.toString() << "\". Result message is: \""
-                                                                  <<
-result->message << "\"");
+  RCLCPP_INFO_STREAM(node_->get_logger(), "Action server on robot " << result.result->robot_result.name << " finished successfully.");
+  switch (result.code) {
+  case rclcpp_action::ResultCode::SUCCEEDED:
+    RCLCPP_INFO_STREAM(node_->get_logger(), "Action server on robot " << robot_name << " reported success.");
+    break;
+  case rclcpp_action::ResultCode::ABORTED:
+    RCLCPP_WARN_STREAM(node_->get_logger(), "Action server on robot " << robot_name << " was aborted");
+    break;
+  case rclcpp_action::ResultCode::CANCELED:
+    RCLCPP_WARN_STREAM(node_->get_logger(), "Action server on robot " << robot_name << " was canceled");
+    break;
+  default:
+    RCLCPP_ERROR_STREAM(node_->get_logger(), "Action server on robot " << robot_name << " returned unknown result code");
+    break;
   }
 
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
-    auto *rh_ptr           = findRobotHandler(robot_name,
-fleet_mission_handlers_); rh_ptr->current_result = *result; rh_ptr->got_result
-= true;
+    auto *rh_ptr           = findRobotHandler(robot_name, fleet_mission_handlers_);
+    rh_ptr->current_result = *result.result;
+    rh_ptr->got_result     = true;
   }
 }
-
-*/
 
 /*!
  * Handles and store the feedback from the action
  * client in the  struct fleet_mission_handlers_.
  *
- * @tparam ActionType Type representing the action/mission type for the fleet
  */
-/*
-void IROCFleetManager::missionFeedbackCallback(const
-iroc_mission_handler::MissionFeedbackConstPtr &feedback, const std::string
-&robot_name) {
+
+void IROCFleetManager::missionFeedbackCallback(const RobotMission::Feedback::ConstSharedPtr feedback) {
 
   if (!active_mission_) {
     return;
   }
 
+  auto robot_name = feedback->robot_feedback.name;
+
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
-    auto *rh_ptr             = findRobotHandler(robot_name,
-fleet_mission_handlers_); rh_ptr->current_feedback = *feedback;
+    auto *rh_ptr             = findRobotHandler(robot_name, fleet_mission_handlers_);
+    rh_ptr->current_feedback = *feedback;
   }
 }
-*/
 
 /*!
  * Handles and processes goals from action clients.
@@ -1204,18 +1108,13 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
   std::scoped_lock lock(action_server_mutex_);
 
   const auto goal = goal_handle->get_goal();
-  // TODO here process goal, once mission handler is updated to ROS2
+
   const auto [result, mission_robots] = processGoal(goal_handle);
 
-  if (!result.success) {
+  // result_t result;
+  // result.success = false;
 
-    // ResultType action_server_result;
-    // action_server_result.success       = false;
-    // action_server_result.message       = result.message;
-    // action_server_result.robot_results = getRobotResults();
-    // ROS_WARN("[IROCFleetManager]: Goal creation process failed");
-    // action_server_ptr_->setAborted(action_server_result);
-    // return;
+  if (!result.success) {
     auto result_ptr           = std::make_shared<Mission::Result>();
     result_ptr->success       = false;
     result_ptr->message       = result.message;
@@ -1224,6 +1123,8 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
     goal_handle->abort(result_ptr);
     return;
   }
+
+  /*
 
   // Start each robot action/service clients with mission_handler
   const auto results = sendRobotGoals(mission_robots);
@@ -1269,6 +1170,7 @@ rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(const std::shared_
   active_mission_ = false;
   RCLCPP_INFO(node_->get_logger(), "Mission stopped by cancel request.");
   return rclcpp_action::CancelResponse::ACCEPT;
+  */
 }
 
 /*!
@@ -1278,24 +1180,22 @@ rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(const std::shared_
 void IROCFleetManager::actionPublishFeedback() {
   std::scoped_lock lock(action_server_mutex_);
 
-  // TODO update once mission handler is updated to ROS2
   // Collect the feedback from active robots in the mission
-  // std::vector<iroc_mission_handler::MissionFeedback> robot_feedbacks;
+  std::vector<iroc_mission_handler::msg::MissionFeedback> robot_feedbacks;
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
 
     // Fill the robots feedback vector
-    // for (const auto &rh : fleet_mission_handlers_.handlers)
-    // robot_feedbacks.emplace_back(rh.current_feedback);
+    for (const auto &rh : fleet_mission_handlers_.handlers)
+      robot_feedbacks.emplace_back(rh.current_feedback.robot_feedback);
 
     if (current_goal_handle_->is_active()) {
       // TODO update once mission handler is updated to ROS2
-      // auto action_server_feedback =
-      // processAggregatedFeedbackInfo(robot_feedbacks);
-      auto feedback           = std::make_shared<Mission::Feedback>();
-      feedback->info.state    = iroc_fleet_manager::msg::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED;
-      feedback->info.message  = "Feedback not implemented yet.";
-      feedback->info.progress = 0.0;
+      auto action_server_feedback = processAggregatedFeedbackInfo(robot_feedbacks);
+      auto feedback               = std::make_shared<Mission::Feedback>();
+      feedback->info.state        = iroc_fleet_manager::msg::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED;
+      feedback->info.message      = "Feedback not implemented yet.";
+      feedback->info.progress     = 0.0;
       current_goal_handle_->publish_feedback(feedback);
     }
   }
@@ -1318,16 +1218,16 @@ std::vector<iroc_mission_handler::msg::MissionResult> IROCFleetManager::getRobot
     std::scoped_lock lock(fleet_mission_handlers_.mtx);
     for (auto &handler : fleet_mission_handlers_.handlers) {
       iroc_mission_handler::msg::MissionResult robot_result;
-      if (handler.got_result && !handler.current_result.success) {
+      if (handler.got_result && !handler.current_result.robot_result.success) {
         robot_result.name    = handler.robot_name;
-        robot_result.message = handler.current_result.message;
-        robot_result.success = handler.current_result.success;
+        robot_result.message = handler.current_result.robot_result.message;
+        robot_result.success = handler.current_result.robot_result.success;
       }
 
       if (handler.got_result) {
         robot_result.name    = handler.robot_name;
-        robot_result.message = handler.current_result.message;
-        robot_result.success = handler.current_result.success;
+        robot_result.message = handler.current_result.robot_result.message;
+        robot_result.success = handler.current_result.robot_result.success;
       } else {
         robot_result.name    = handler.robot_name;
         robot_result.message = "Robot did not finish its mission, mission was aborted.";
@@ -1363,90 +1263,94 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
   fleet_mission_handlers_.handlers.clear();
   lost_robot_names_.clear();
 
-  {
-    fleet_mission_handlers_.handlers.reserve(robots.size());
-    // Initialize the robots received in the goal request
-    for (const auto &robot : robots) {
-      bool success = true;
-      std::stringstream ss;
-      const std::string action_client_topic = "/" + robot.name + "~/action_client_mission_in";
+  fleet_mission_handlers_.handlers.reserve(robots.size());
+  // Initialize the robots received in the goal request
+  for (const auto &robot : robots) {
+    std::stringstream ss;
+    const std::string action_client_topic = "/" + robot.name + "~/action_client_mission_in";
 
-      auto action_client_ptr = rclcpp_action::create_client<iroc_mission_handler::action::Mission>(node_, action_client_topic);
+    auto action_client_ptr = rclcpp_action::create_client<iroc_mission_handler::action::Mission>(node_, action_client_topic);
 
-      RCLCPP_INFO(node_->get_logger(), "Created action client on topic \'ac/mission\' -> \'%s\'", action_client_topic.c_str());
+    RCLCPP_INFO(node_->get_logger(), "Creating action client on topic '%s'", action_client_topic.c_str());
 
-      // Wait for server
-      if (!action_client_ptr->wait_for_action_server(std::chrono::seconds(5))) {
-        RCLCPP_WARN(node_->get_logger(), " Action server from robot: %s is not connected. Check the iroc_mission_handler node.", robot.name.c_str());
-        robot_results[robot.name].message = ss.str();
-        robot_results[robot.name].success = false;
-        success                           = false;
-      }
-
-      RCLCPP_INFO(node_->get_logger(), " Created action client on topic \'ac/mission\' -> \'%s\'", action_client_topic.c_str());
-
-      // MissionHandlerActionServerGoal action_goal;
-      // action_goal.frame_id        = robot.frame_id;
-      // action_goal.height_id       = robot.height_id;
-      // action_goal.terminal_action = robot.terminal_action;
-      // action_goal.points          = robot.points;
-
-      auto mission_goal = iroc_mission_handler::action::Mission::Goal();
-
-      mission_goal.robot_goal.frame_id        = robot.frame_id;
-      mission_goal.robot_goal.height_id       = robot.height_id;
-      mission_goal.robot_goal.terminal_action = robot.terminal_action;
-      mission_goal.robot_goal.points          = robot.points;
-
-
-      if (!action_client_ptr->action_server_is_ready()) {
-        ss << "Action server from robot: " + robot.name + " is not ready. Check the iroc_mission_handler node.\n ";
-        RCLCPP_WARN(node_->get_logger(), " Action server from robot: %s is not ready. Check the iroc_mission_handler node.", robot.name.c_str());
-        robot_results[robot.name].message = ss.str();
-        robot_results[robot.name].success = false;
-        success                           = false;
-      }
-
-      auto send_goal_options = rclcpp_action::Client<iroc_mission_handler::action::Mission>::SendGoalOptions();
-
-      // TODO: handle properly with a function callback
-      send_goal_options.goal_response_callback = [this](MissionGoalHandle::SharedPtr goal_handle) {
-        if (!goal_handle) {
-          RCLCPP_WARN_STREAM(node_->get_logger(), "Fleet mission rejected");
-          return;
-        }
-
-        RCLCPP_INFO_STREAM(node_->get_logger(), "Mission accepted");
-      };
-
-      // Result callback
-      send_goal_options.result_callback = [this](const MissionGoalHandle::WrappedResult &result) { this->missionDoneCallback(result); };
-
-      // Feedback callback
-      send_goal_options.feedback_callback = [this](MissionGoalHandle::SharedPtr, const RobotMission::Feedback::ConstSharedPtr feedback) {
-        this->missionFeedbackCallback(feedback);
-      };
-
-      action_client_ptr->async_send_goal(mission_goal, send_goal_options);
-
-      // Save the ros service clients from mission_manager
-      const std::string mission_activation_client_topic = "/" + robot.name + "~/mission_activation_svc_in";
-      auto sc_robot_activation = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_activation_client_topic, cbkgrp_sc_);
-
-      const std::string mission_pausing_client_topic = "/" + robot.name + "~/mission_pausing_svc_in";
-      auto sc_robot_pausing                          = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_pausing_client_topic, cbkgrp_sc_);
-
-      robot_mission_handler_t robot_handler;
-      robot_handler.robot_name          = robot.name;
-      robot_handler.action_client_ptr   = std::move(action_client_ptr);
-      robot_handler.sc_robot_activation = sc_robot_activation;
-      robot_handler.sc_robot_pausing    = sc_robot_pausing;
-      // Save robot clients in mission handler
-      fleet_mission_handlers_.handlers.emplace_back(std::move(robot_handler));
-      ss << "Mission on robot: " + robot.name + " was successfully processed";
+    // Wait for server
+    if (!action_client_ptr->wait_for_action_server(std::chrono::seconds(5))) {
+      RCLCPP_WARN(node_->get_logger(), " Action server from robot: %s is not connected. Check the iroc_mission_handler node.", robot.name.c_str());
       robot_results[robot.name].message = ss.str();
-      robot_results[robot.name].success = true;
+      robot_results[robot.name].success = false;
+      continue;
     }
+
+    RCLCPP_INFO(node_->get_logger(), " Created action client on topic '%s'", action_client_topic.c_str());
+
+    // Goal message creation
+    auto mission_goal                       = RobotMission::Goal();
+    mission_goal.robot_goal.frame_id        = robot.frame_id;
+    mission_goal.robot_goal.height_id       = robot.height_id;
+    mission_goal.robot_goal.terminal_action = robot.terminal_action;
+    mission_goal.robot_goal.points          = robot.points;
+
+    // Robot handler creation
+    robot_mission_handler_t robot_handler;
+    robot_handler.robot_name        = robot.name;
+    robot_handler.action_client_ptr = action_client_ptr;
+    robot_handler.got_result        = false;
+
+
+    if (!action_client_ptr->action_server_is_ready()) {
+      ss << "Action server from robot: " + robot.name + " is not ready. Check the iroc_mission_handler node.\n ";
+      RCLCPP_WARN(node_->get_logger(), " Action server from robot: %s is not ready. Check the iroc_mission_handler node.", robot.name.c_str());
+      robot_results[robot.name].message = ss.str();
+      robot_results[robot.name].success = false;
+    }
+
+    auto send_goal_options = rclcpp_action::Client<RobotMission>::SendGoalOptions();
+
+    // TODO: handle properly with a function callback
+    send_goal_options.goal_response_callback = [this, robot_name = robot.name](MissionGoalHandle::SharedPtr goal_handle) {
+      std::scoped_lock lock(fleet_mission_handlers_.mtx);
+      auto *handler = findRobotHandler(robot_name, fleet_mission_handlers_);
+      if (!goal_handle) {
+        RCLCPP_WARN_STREAM(node_->get_logger(), "Goal was rejected by robot");
+        if (handler) {
+          handler->got_result                          = true;
+          handler->current_result.robot_result.success = false;
+          handler->current_result.robot_result.message = "Goal rejected by mission handler";
+        }
+        return;
+      }
+      RCLCPP_INFO(node_->get_logger(), "Goal accepted by robot '%s'", robot_name.c_str());
+      // Save the goal handle
+      if (handler) {
+        handler->current_goal_handle = goal_handle;
+      }
+    };
+
+    // Result callback
+    send_goal_options.result_callback = [this](const MissionGoalHandle::WrappedResult &result) { this->missionDoneCallback(result); };
+
+    // Feedback callback
+    send_goal_options.feedback_callback = [this](MissionGoalHandle::SharedPtr, const RobotMission::Feedback::ConstSharedPtr feedback) {
+      this->missionFeedbackCallback(feedback);
+    };
+
+    action_client_ptr->async_send_goal(mission_goal, send_goal_options);
+
+    // Save the ros service clients from mission_manager
+    const std::string mission_activation_client_topic = "/" + robot.name + "~/mission_activation_svc_in";
+    robot_handler.sc_robot_activation = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_activation_client_topic, cbkgrp_sc_);
+
+    const std::string mission_pausing_client_topic = "/" + robot.name + "~/mission_pausing_svc_in";
+    robot_handler.sc_robot_pausing                 = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_pausing_client_topic, cbkgrp_sc_);
+
+
+    // Save the handler
+    fleet_mission_handlers_.handlers.emplace_back(std::move(robot_handler));
+    ss << "Mission goal sent successfully to robot '" << robot.name << "'";
+    robot_results[robot.name].success = true;
+    robot_results[robot.name].message = ss.str();
+
+    RCLCPP_INFO(node_->get_logger(), "%s", ss.str().c_str());
   }
 
   return robot_results;
@@ -1514,13 +1418,20 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> IROCFl
  * Aggregates the feedback status message from the robots feedback.
  *
  */
-/*
-FeedbackType IROCFleetManager::processAggregatedFeedbackInfo(const
-std::vector<iroc_mission_handler::MissionFeedback> &robot_feedbacks) const {
 
-  FeedbackType action_server_feedback;
+Mission::Feedback IROCFleetManager::processAggregatedFeedbackInfo(const std::vector<iroc_mission_handler::msg::MissionFeedback> &robot_feedbacks) const {
+
+  Mission::Feedback feedback;
+  // FeedbackType action_server_feedback;
   std::vector<std::string> robots_msg;
   std::vector<double> robots_progress;
+
+  if (robot_feedbacks.empty()) {
+    feedback.info.progress = 0.0;
+    feedback.info.message  = "No robot feedback available";
+    feedback.info.state    = iroc_fleet_manager::msg::WaypointMissionInfo::STATE_INVALID;
+    return feedback;
+  }
 
   for (const auto &rbf : robot_feedbacks) {
     robots_msg.emplace_back(rbf.message);
@@ -1528,70 +1439,54 @@ std::vector<iroc_mission_handler::MissionFeedback> &robot_feedbacks) const {
   }
 
   // Get average of active robots progress for the general progress
-  auto mission_progress = std::accumulate(robots_progress.begin(),
-robots_progress.end(), 0.0) / robots_progress.size();
+  auto mission_progress = std::accumulate(robots_progress.begin(), robots_progress.end(), 0.0) / robots_progress.size();
 
   // Checks if ALL messages are exactly "MISSION_LOADED"
   auto [message, state] = processFeedbackMsg();
 
-  action_server_feedback.info.progress        = mission_progress;
-  action_server_feedback.info.message         = message;
-  action_server_feedback.info.state           = state;
-  action_server_feedback.info.robot_feedbacks = robot_feedbacks;
+  feedback.info.progress        = mission_progress;
+  feedback.info.message         = message;
+  feedback.info.state           = state;
+  feedback.info.robot_feedbacks = robot_feedbacks;
 
-  return action_server_feedback;
+  return feedback;
 }
-*/
 
 /*!
  * Obtains the feedback from each robot to provide a status for the general
  * mission.
  *
  */
-/*
-std::tuple<std::string, std::string> IROCFleetManager::processFeedbackMsg()
-const {
 
-  auto all_loaded = std::all_of(fleet_mission_handlers_.handlers.begin(),
-fleet_mission_handlers_.handlers.end(),
-                                [](const auto &handler) { return
-handler.current_feedback.message == "MISSION_LOADED"; });
+std::tuple<std::string, std::string> IROCFleetManager::processFeedbackMsg() const {
+
+  auto all_loaded = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
+                                [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "MISSION_LOADED"; });
 
   if (all_loaded)
-    return std::make_tuple("All missions loaded",
-iroc_fleet_manager::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED);
+    return std::make_tuple("All missions loaded", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED);
 
-  auto all_executing = std::all_of(fleet_mission_handlers_.handlers.begin(),
-fleet_mission_handlers_.handlers.end(),
-                                   [](const auto &handler) { return
-handler.current_feedback.message == "EXECUTING"; });
+  auto all_executing = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
+                                   [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "EXECUTING"; });
 
   if (all_executing)
-    return std::make_tuple("Robots executing mission",
-iroc_fleet_manager::WaypointMissionInfo::STATE_EXECUTING);
+    return std::make_tuple("Robots executing mission", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_EXECUTING);
 
-  auto all_paused = std::all_of(fleet_mission_handlers_.handlers.begin(),
-fleet_mission_handlers_.handlers.end(),
-                                [](const auto &handler) { return
-handler.current_feedback.message == "PAUSED"; });
+  auto all_paused = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
+                                [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "PAUSED"; });
 
   if (all_paused)
-    return std::make_tuple("All robots paused",
-iroc_fleet_manager::WaypointMissionInfo::STATE_PAUSED);
+    return std::make_tuple("All robots paused", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_PAUSED);
 
-  auto any_idle = std::any_of(fleet_mission_handlers_.handlers.begin(),
-fleet_mission_handlers_.handlers.end(),
-                              [](const auto &handler) { return
-handler.current_feedback.message == "IDLE"; });
+  auto any_idle = std::any_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
+                              [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "IDLE"; });
 
   if (any_idle)
-    return std::make_tuple("One robot is idle, check mission_manager",
-iroc_fleet_manager::WaypointMissionInfo::STATE_ERROR);
+    return std::make_tuple("One robot is idle, check mission_manager", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_ERROR);
 
-  return std::make_tuple("Not defined message",
-iroc_fleet_manager::WaypointMissionInfo::STATE_INVALID);
+  return std::make_tuple("Not defined message", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_INVALID);
 }
-*/
+
 /*!
  * Helper method to obtain a robot handler
  *
@@ -1618,46 +1513,24 @@ IROCFleetManager::robot_mission_handler_t *IROCFleetManager::findRobotHandler(co
 void IROCFleetManager::cancelRobotClients() {
 
   RCLCPP_INFO(node_->get_logger(), " Canceling robot clients...");
-  RCLCPP_INFO(node_->get_logger(), " Missing implementation, to be added once mission "
-                                   "handler is updated to ROS2.");
-  // TODO update once mission handler is updated to ROS2
-  /*
-  {
-    ROS_INFO("[IROCFleetManager]: Canceling robot clients...");
-    std::scoped_lock lock(fleet_mission_handlers_.mtx);
-    for (auto &rh : fleet_mission_handlers_.handlers) {
+  std::scoped_lock lock(fleet_mission_handlers_.mtx);
 
-      // Check if robot is in list of lost robots
-      bool lost_robot = std::any_of(lost_robot_names_.begin(),
-lost_robot_names_.end(), [&rh](const auto &lost_robot) { return rh.robot_name ==
-lost_robot; });
+  for (auto &handler : fleet_mission_handlers_.handlers) {
+    if (handler.current_goal_handle && !handler.got_result) {
+      RCLCPP_INFO(node_->get_logger(), "Canceling goal for robot '%s'", handler.robot_name.c_str());
 
-      bool robot_got_result =
-std::any_of(fleet_mission_handlers_.handlers.begin(),
-fleet_mission_handlers_.handlers.end(),
-                                          [&rh](const auto &handler) { return
-rh.robot_name == handler.robot_name && handler.got_result; });
+      auto cancel_callback = [this, robot_name = handler.robot_name](std::shared_ptr<rclcpp_action::Client<RobotMission>::CancelResponse> response) {
+        if (response->return_code == action_msgs::srv::CancelGoal::Response::ERROR_NONE) {
+          RCLCPP_INFO(node_->get_logger(), "Cancel accepted for robot '%s'", robot_name.c_str());
+        } else {
+          RCLCPP_WARN(node_->get_logger(), "Cancel rejected for robot '%s'", robot_name.c_str());
+        }
+      };
 
-      if (lost_robot || robot_got_result) {
-        ROS_INFO_STREAM("[IROCFleetManager]: Robot \"" << rh.robot_name << "\"
-with no active mission, skipping cancel..."); continue;
-      }
-
-      if (rh.action_client_ptr == NULL) {
-        // This is possible if mission handler was restarted with an active
-        // mission
-        ROS_WARN_STREAM("[IROCFleetManager]: Action client for robot \"" <<
-rh.robot_name << "\" is null!"); continue;
-      }
-      const auto action_client_state = rh.action_client_ptr->getState();
-      if (!action_client_state.isDone()) {
-        ROS_INFO_STREAM("[IROCFleetManager]: Robot \"" << rh.robot_name << "\"
-has an active mission, cancelling..."); rh.action_client_ptr->cancelGoal();
-        rh.action_client_ptr->waitForResult(ros::Duration(1.0));
-      }
+      // Send the cancel request
+      handler.action_client_ptr->async_cancel_goal(handler.current_goal_handle, cancel_callback);
     }
   }
-  */
 }
 
 template <typename ServiceType>
