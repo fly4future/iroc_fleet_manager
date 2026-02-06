@@ -1,9 +1,9 @@
 #pragma once
 
 #include "iroc_fleet_manager/utils/types.h"
-#include "iroc_mission_handler/Subtask.h"
-#include "iroc_mission_handler/Waypoint.h"
-#include <mrs_msgs/Reference.h>
+#include "iroc_mission_handler/msg/subtask.hpp"
+#include "iroc_mission_handler/msg/waypoint.hpp"
+#include <mrs_msgs/msg/reference.hpp>
 
 #include <vector>
 
@@ -54,11 +54,11 @@ template <typename Msg_T>
 Msg_T toRosMsg(const custom_types::Waypoint& waypoint) {
   Msg_T ros_waypoint;
 
-  ros_waypoint.reference = toRosMsg<mrs_msgs::Reference>(waypoint.reference);
+  ros_waypoint.reference = toRosMsg<mrs_msgs::msg::Reference>(waypoint.reference);
 
   ros_waypoint.subtasks.reserve(waypoint.getSubtasks().size());
   for (const auto& subtask : waypoint.getSubtasks()) {
-    ros_waypoint.subtasks.emplace_back(toRosMsg<iroc_mission_handler::Subtask>(subtask));
+    ros_waypoint.subtasks.emplace_back(toRosMsg<iroc_mission_handler::msg::Subtask>(subtask));
   }
 
   ros_waypoint.parallel_execution = waypoint.parallel_execution;

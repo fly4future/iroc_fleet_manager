@@ -92,6 +92,9 @@ def launch_setup(context, *args, **kwargs):
              f"/{robot_name}/mission_handler/mission_activation"),
             (f"/{robot_name}/mission_pausing_svc_in",
              f"/{robot_name}/mission_handler/mission_pausing"),
+            # Action
+            (f"/{robot_name}/action_client_mission_in",
+             f"/{robot_name}/mission_handler"),
         ])
 
     # Container + component

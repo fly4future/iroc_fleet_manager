@@ -9,7 +9,7 @@
 #include <mrs_msgs/msg/system_health_info.hpp>
 #include <mrs_msgs/msg/uav_info.hpp>
 #include <mrs_msgs/msg/safety_area_manager_diagnostics.hpp>
-#include <mrs_robot_diagnostics/enums/robot_type.h>
+// #include <mrs_robot_diagnostics/enums/robot_type.h>
 #include <string>
 #include <unordered_map>
 

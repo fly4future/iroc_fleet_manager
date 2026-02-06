@@ -45,11 +45,12 @@ set(DEPENDENCIES
   iroc_mission_handler
   pluginlib
   rosidl_default_generators
+  nlohmann_json
 )
 
 set(LIBRARIES
   IROCFleetManager
-  # IROCFleetManager_WaypointPlanner
+  IROCFleetManager_WaypointPlanner
   # IROCFleetManager_CoveragePlanner
   # IROCFleetManager_AutonomyTestPlanner
   # EnergyAwareMCPP
@@ -114,6 +115,7 @@ target_link_libraries(IrocFleetManager_IrocFleetManager
     pluginlib::pluginlib
     mrs_lib::mrs_lib
     iroc_mission_handler::iroc_mission_handler
+    nlohmann_json::nlohmann_json
     ${iroc_mission_handler_TARGETS}
     ${mrs_msgs_TARGETS}
 )
@@ -126,7 +128,7 @@ target_link_libraries(IrocFleetManager_IrocFleetManager
 
 add_library(IROCFleetManager SHARED
   src/fleet_manager.cpp
-  # src/utils/json_var_parser.cpp
+  src/utils/json_var_parser.cpp
 )
 
 target_link_libraries(IROCFleetManager
@@ -149,27 +151,28 @@ target_compile_definitions(IROCFleetManager PRIVATE USE_ROS_TIMER=${USE_ROS_TIME
 
 ## | ----------- IROCFleetManager_WaypointPlanner ------------ |
 
-# add_library(IROCFleetManager_WaypointPlanner SHARED
-#   src/planner_plugins/waypoint_planner.cpp
-# )
-#
-# target_link_libraries(IROCFleetManager_WaypointPlanner
-#   PRIVATE
-#     iroc_fleet_manager::iroc_fleet_manager
-#     rclcpp::rclcpp
-#     rclcpp_action::rclcpp_action           
-#     rclcpp_components::component
-#     pluginlib::pluginlib
-#     mrs_lib::mrs_lib
-#     ${mrs_msgs_TARGETS}
-# )
-#
-# # Link to generated interfaces
-# rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-# target_link_libraries(IROCFleetManager_WaypointPlanner PRIVATE ${cpp_typesupport_target})
-#
-# rclcpp_components_register_nodes(IROCFleetManager_WaypointPlanner "iroc_fleet_manager::WaypointPlanner")
-# target_compile_definitions(IROCFleetManager_WaypointPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+add_library(IROCFleetManager_WaypointPlanner SHARED
+  src/planner_plugins/waypoint_planner.cpp
+)
+
+target_link_libraries(IROCFleetManager_WaypointPlanner
+  PRIVATE
+    IROCFleetManager
+    iroc_fleet_manager::iroc_fleet_manager
+    rclcpp::rclcpp
+    rclcpp_action::rclcpp_action           
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
+)
+
+# Link to generated interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(IROCFleetManager_WaypointPlanner PRIVATE ${cpp_typesupport_target})
+
+rclcpp_components_register_nodes(IROCFleetManager_WaypointPlanner "iroc_fleet_manager::WaypointPlanner")
+target_compile_definitions(IROCFleetManager_WaypointPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
 
 ## | ----------- EnergyAwareMCPP ------------ |
 

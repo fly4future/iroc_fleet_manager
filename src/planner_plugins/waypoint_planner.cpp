@@ -9,20 +9,22 @@ namespace planners
 namespace waypoint_planner
 {
 
-bool WaypointPlanner::initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
+bool WaypointPlanner::initialize(const rclcpp::Node::SharedPtr node, const std::string &name, const std::string &name_space,
                                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
 
-  // nh_ will behave just like normal NodeHandle
-  ros::NodeHandle nh_(parent_nh, name_space);
+  node_  = node;
+  clock_ = node->get_clock();
+
+  cbkgrp_subs_   = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_ss_     = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_timers_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   _name_           = name;
   common_handlers_ = common_handlers;
 
-  ros::Time::waitForValid();
-
   // | ----------------------- finish init ---------------------- |
 
-  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ", _name_.c_str(), name.c_str(), name_space.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: initialized under the name '%s', namespace '%s'", _name_.c_str(), name.c_str(), name_space.c_str());
 
   is_initialized_ = true;
   return true;
@@ -31,7 +33,7 @@ bool WaypointPlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
 bool WaypointPlanner::activate(void) {
 
   int some_number = 0;
-  ROS_INFO("[%s]: activated with some_number=%d", _name_.c_str(), some_number);
+  RCLCPP_INFO(node_->get_logger(), "[%s]: activated with some_number=%d", _name_.c_str(), some_number);
 
   is_active_ = true;
 
@@ -42,14 +44,14 @@ void WaypointPlanner::deactivate(void) {
 
   is_active_ = false;
 
-  ROS_INFO("[%s]: deactivated", _name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: deactivated", _name_.c_str());
 }
 
-std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPlanner::createGoal(const std::string &goal) const {
+std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> WaypointPlanner::createGoal(const std::string &goal) const {
   // Goal to be filled
-  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
-  ROS_INFO("Received goal :%s ",
-           goal.c_str()); // to remove
+  std::vector<iroc_mission_handler::msg::MissionGoal> mission_robots;
+  RCLCPP_INFO(node_->get_logger(), "[%s]: creating goal from the received request", _name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: received goal: %s", _name_.c_str(), goal.c_str());
 
   result_t result;
 
@@ -67,7 +69,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
   json robots;
   bool success = utils::parseVars(json_msg, {{"robots", &robots}});
 
-  if (!result.success) {
+  if (!success) {
     result.success = false;
     result.message = "Faile to parse robots field from JSON";
     return std::make_tuple(result, mission_robots);
@@ -96,11 +98,18 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
       result.message = "Failure while parsing robot data, bad JSON request";
       return std::make_tuple(result, mission_robots);
     }
+    
+    if (!common_handlers_) {
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Common handlers or robots map is not initialized");
+      result.success = false;
+      result.message = "Internal error: Common handlers or robots map is not initialized";
+      return std::make_tuple(result, mission_robots);
+    }
 
     bool isRobotInFleet = common_handlers_->handlers->robots_map.count(name);
 
     if (!isRobotInFleet) {
-      ROS_WARN("[WaypointPlanner] Robot %s not within the fleet", name.c_str());
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Robot " << name << " not within the fleet");
       std::stringstream ss;
       ss << name << " not found in the fleet!";
       result.message = ss.str();
@@ -108,9 +117,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
       return std::make_tuple(result, mission_robots);
     }
 
-    auto waypoints = toRosMsg<iroc_mission_handler::Waypoint>(points);
+    auto waypoints = toRosMsg<iroc_mission_handler::msg::Waypoint>(points);
 
-    iroc_mission_handler::MissionGoal robot_goal;
+    iroc_mission_handler::msg::MissionGoal robot_goal;
     robot_goal.name            = name;
     robot_goal.frame_id        = frame_id;
     robot_goal.height_id       = height_id;
@@ -120,7 +129,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
     mission_robots.push_back(robot_goal);
   } // robots iteration
 
-  ROS_INFO("[WaypointPlanner] Goal created successfully!");
+  RCLCPP_INFO(node_->get_logger(), "[%s]: Goal created successfully!", _name_.c_str());
   result.success = true;
   result.message = "Goal created successfully";
   return std::make_tuple(result, mission_robots);
@@ -131,6 +140,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> WaypointPla
 } // namespace planners
 
 } // namespace iroc_fleet_manager
-
-#include <pluginlib/class_list_macros.h>
+  //
+#include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::planners::waypoint_planner::WaypointPlanner, iroc_fleet_manager::planners::Planner);

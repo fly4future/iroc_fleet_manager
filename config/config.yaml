@@ -9,8 +9,8 @@ fleet_manager:
     # each plugin's properties are defined in 'plugins.yaml'
     planner_names: [
       "WaypointPlanner",
-      "CoveragePlanner",
-      "AutonomyTestPlanner",
+      # "CoveragePlanner",
+      # "AutonomyTestPlanner",
     ]
 
     # define "running instances" of plugins, there can be more than one for each
@@ -18,13 +18,13 @@ fleet_manager:
       address: "iroc_fleet_manager/WaypointPlanner" 
       name_space: "waypoint_planner" 
 
-    CoveragePlanner:
-      address: "iroc_fleet_manager/CoveragePlanner" 
-      name_space: "coverage_planner" 
-
-    AutonomyTestPlanner:
-      address: "iroc_fleet_manager/AutonomyTestPlanner" 
-      name_space: "autonomy_test_planner" 
+    # CoveragePlanner:
+    #   address: "iroc_fleet_manager/CoveragePlanner" 
+    #   name_space: "coverage_planner" 
+    #
+    # AutonomyTestPlanner:
+    #   address: "iroc_fleet_manager/AutonomyTestPlanner" 
+    #   name_space: "autonomy_test_planner" 
 
     # rate to update the common handlers
     update_timer_rate: 1 # [Hz]

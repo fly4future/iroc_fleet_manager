@@ -171,7 +171,7 @@ private:
   std::unique_ptr<pluginlib::ClassLoader<iroc_fleet_manager::planners::Planner>> planner_loader_; // pluginlib loader of dynamically loaded planners
   std::vector<std::string> _planner_names_;                                                       // list of planner names
   std::map<std::string, PlannerParams> planners_;                                                 // map between planner names and planner params
-  std::vector<boost::shared_ptr<iroc_fleet_manager::planners::Planner>> planner_list_;            // list of planners, routines are callable from this
+  std::vector<std::shared_ptr<iroc_fleet_manager::planners::Planner>> planner_list_;              // list of planners, routines are callable from this
   std::mutex mutex_planner_list_;
 
   int _initial_planner_idx_ = 0;
@@ -238,17 +238,6 @@ private:
   template <typename ServiceType>
   result_t callService(mrs_lib::ServiceClientHandler<ServiceType> &sc, const std::shared_ptr<typename ServiceType::Request> &request);
 
-  // TO REMOVE LATER
-  // template <typename Svc_T>
-  // result_t callService(ros::ServiceClient& sc, typename Svc_T::Request req)
-  // const;
-  //
-  // template <typename Svc_T>
-  // result_t callService(ros::ServiceClient& sc) const;
-  //
-  // result_t callService(ros::ServiceClient& sc, const bool val) const;
-
-  // contains handlers that are shared from fleet manager to planners
   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 };
 
@@ -378,41 +367,40 @@ void IROCFleetManager::initialize() {
     PlannerParams new_planner(address, name_space);
     planners_.insert(std::pair<std::string, PlannerParams>(planner_name, new_planner));
 
-    // try {
-    //   ROS_INFO("[IROCFleetManager]: loading the planner '%s'",
-    //   new_planner.address.c_str());
-    //   planner_list_.push_back(planner_loader_->createInstance(new_planner.address.c_str()));
-    // } catch (pluginlib::CreateClassException& ex1) {
-    //   ROS_ERROR("[IROCFleetManager]: CreateClassException for the planner
-    //   '%s'", new_planner.address.c_str()); ROS_ERROR("[IROCFleetManager]:
-    //   Error: %s", ex1.what()); ros::shutdown();
-    // } catch (pluginlib::PluginlibException& ex) {
-    //   ROS_ERROR("[IROCFleetManager]: PluginlibException for the planner
-    //   '%s'", new_planner.address.c_str()); ROS_ERROR("[IROCFleetManager]:
-    //   Error: %s", ex.what()); ros::shutdown();
-    // }
+    try {
+      RCLCPP_INFO(node_->get_logger(), "loading the planner '%s'", new_planner.address.c_str());
+      planner_list_.push_back(planner_loader_->createSharedInstance(new_planner.address.c_str()));
+    }
+    catch (pluginlib::CreateClassException &ex1) {
+      RCLCPP_ERROR(node_->get_logger(), "CreateClassException for the planner '%s'", new_planner.address.c_str());
+      rclcpp::shutdown();
+      exit(1);
+    }
+    catch (pluginlib::PluginlibException &ex) {
+      RCLCPP_ERROR(node_->get_logger(), "PluginlibException for the planner '%s'", new_planner.address.c_str());
+      RCLCPP_ERROR(node_->get_logger(), "Error: %s", ex.what());
+      rclcpp::shutdown();
+      exit(1);
+    }
   }
 
   RCLCPP_INFO(node_->get_logger(), "planners were loaded");
-  // {
-  //   std::scoped_lock lck(robot_handlers_.mtx);
-  //
-  //   for (int i = 0; i < int(planner_list_.size()); i++) {
-  //     try {
-  //       std::map<std::string, PlannerParams>::iterator it;
-  //       it = planners_.find(_planner_names_[i]);
-  //
-  //       ROS_INFO("[IROCFleetManager]: initializing the planner '%s'",
-  //       it->second.address.c_str()); planner_list_[i]->initialize(nh_,
-  //       _planner_names_[i], it->second.name_space, common_handlers_);
-  //
-  //     } catch (std::runtime_error& ex) {
-  //       ROS_ERROR("[IROCFleetManager]: exception caught during planner "
-  //                 "initialization: '%s'",
-  //                 ex.what());
-  //     }
-  //   }
-  // }
+  {
+    std::scoped_lock lck(robot_handlers_.mtx);
+
+    for (int i = 0; i < int(planner_list_.size()); i++) {
+      try {
+        std::map<std::string, PlannerParams>::iterator it;
+        it = planners_.find(_planner_names_[i]);
+
+        RCLCPP_INFO(node_->get_logger(), "initializing the planner '%s'", it->second.address.c_str());
+        planner_list_[i]->initialize(node_, _planner_names_[i], it->second.name_space, common_handlers_);
+      }
+      catch (std::runtime_error &ex) {
+        RCLCPP_ERROR(node_->get_logger(), "Runtime error for the planner '%s'", ex.what());
+      }
+    }
+  }
 
   RCLCPP_INFO(node_->get_logger(), "IROCFleetManager: --------------------");
 
@@ -593,63 +581,49 @@ void IROCFleetManager::timerFeedback() {
 }
 
 void IROCFleetManager::timerUpdateCommonHandlers() {
-  // std::scoped_lock lck(robot_handlers_.mtx);
-  //
-  // // Updating the common handler with the latest messages
-  // for (auto &rh : robot_handlers_.handlers) {
-  //   const auto &robot_name = rh.robot_name;
-  //
-  //   if (rh.sh_general_robot_info.newMsg()) {
-  //     const auto msg                                                   =
-  //     rh.sh_general_robot_info.getMsg();
-  //     common_robot_handlers_.robots_map[robot_name].general_robot_info =
-  //     std::move(msg);
-  //   }
-  //
-  //   if (rh.sh_state_estimation_info.newMsg()) {
-  //     const auto msg                                                      =
-  //     rh.sh_state_estimation_info.getMsg();
-  //     common_robot_handlers_.robots_map[robot_name].state_estimation_info =
-  //     std::move(msg);
-  //   }
-  //
-  //   if (rh.sh_control_info.newMsg()) {
-  //     const auto msg                                             =
-  //     rh.sh_control_info.getMsg();
-  //     common_robot_handlers_.robots_map[robot_name].control_info =
-  //     std::move(msg);
-  //   }
-  //
-  //   if (rh.sh_collision_avoidance_info.newMsg()) {
-  //     const auto msg = rh.sh_collision_avoidance_info.getMsg();
-  //     common_robot_handlers_.robots_map[robot_name].collision_avoidance_info
-  //     = std::move(msg);
-  //   }
-  //
-  //   if (rh.sh_uav_info.newMsg()) {
-  //     const auto msg                                         =
-  //     rh.sh_uav_info.getMsg();
-  //     common_robot_handlers_.robots_map[robot_name].uav_info =
-  //     std::move(msg);
-  //   }
-  //
-  //   if (rh.sh_system_health_info.newMsg()) {
-  //     const auto msg                                                   =
-  //     rh.sh_system_health_info.getMsg();
-  //     common_robot_handlers_.robots_map[robot_name].system_health_info =
-  //     std::move(msg);
-  //   }
-  //
-  //   if (rh.sh_safety_area_info.newMsg()) {
-  //     const auto msg                                                 =
-  //     rh.sh_safety_area_info.getMsg();
-  //     common_robot_handlers_.robots_map[robot_name].safety_area_info =
-  //     std::move(msg);
-  //   }
-  // }
-  // // Updating the common handler with latest message
-  // common_handlers_->handlers =
-  // std::make_shared<CommonRobotHandlers_t>(common_robot_handlers_);
+  std::scoped_lock lck(robot_handlers_.mtx);
+
+  // Updating the common handler with the latest messages
+  for (auto &rh : robot_handlers_.handlers) {
+    const auto &robot_name = rh.robot_name;
+
+    if (rh.sh_general_robot_info.newMsg()) {
+      const auto msg                                                   = rh.sh_general_robot_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].general_robot_info = std::move(msg);
+    }
+
+    if (rh.sh_state_estimation_info.newMsg()) {
+      const auto msg                                                      = rh.sh_state_estimation_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].state_estimation_info = std::move(msg);
+    }
+
+    if (rh.sh_control_info.newMsg()) {
+      const auto msg                                             = rh.sh_control_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].control_info = std::move(msg);
+    }
+
+    if (rh.sh_collision_avoidance_info.newMsg()) {
+      const auto msg                                                         = rh.sh_collision_avoidance_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].collision_avoidance_info = std::move(msg);
+    }
+
+    if (rh.sh_uav_info.newMsg()) {
+      const auto msg                                         = rh.sh_uav_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].uav_info = std::move(msg);
+    }
+
+    if (rh.sh_system_health_info.newMsg()) {
+      const auto msg                                                   = rh.sh_system_health_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].system_health_info = std::move(msg);
+    }
+
+    if (rh.sh_safety_area_info.newMsg()) {
+      const auto msg                                                 = rh.sh_safety_area_info.getMsg();
+      common_robot_handlers_.robots_map[robot_name].safety_area_info = std::move(msg);
+    }
+  }
+  // Updating the common handler with latest message
+  common_handlers_->handlers = std::make_shared<CommonRobotHandlers_t>(common_robot_handlers_);
 }
 
 // | ----------------- service server callback ---------------- |
@@ -1111,9 +1085,6 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
 
   const auto [result, mission_robots] = processGoal(goal_handle);
 
-  // result_t result;
-  // result.success = false;
-
   if (!result.success) {
     auto result_ptr           = std::make_shared<Mission::Result>();
     result_ptr->success       = false;
@@ -1123,8 +1094,6 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
     goal_handle->abort(result_ptr);
     return;
   }
-
-  /*
 
   // Start each robot action/service clients with mission_handler
   const auto results = sendRobotGoals(mission_robots);
@@ -1148,8 +1117,7 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
     }
     result_ptr->success = false;
     result_ptr->message = "Failure starting robot clients.";
-    current_goal_handle_->abort(result_ptr);
-    cancelRobotClients();
+    goal_handle->abort(result_ptr);
     RCLCPP_INFO(node_->get_logger(), " Mission Aborted.");
     return;
   }
@@ -1170,7 +1138,6 @@ rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(const std::shared_
   active_mission_ = false;
   RCLCPP_INFO(node_->get_logger(), "Mission stopped by cancel request.");
   return rclcpp_action::CancelResponse::ACCEPT;
-  */
 }
 
 /*!
@@ -1190,7 +1157,6 @@ void IROCFleetManager::actionPublishFeedback() {
       robot_feedbacks.emplace_back(rh.current_feedback.robot_feedback);
 
     if (current_goal_handle_->is_active()) {
-      // TODO update once mission handler is updated to ROS2
       auto action_server_feedback = processAggregatedFeedbackInfo(robot_feedbacks);
       auto feedback               = std::make_shared<Mission::Feedback>();
       feedback->info.state        = iroc_fleet_manager::msg::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED;
@@ -1267,7 +1233,7 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
   // Initialize the robots received in the goal request
   for (const auto &robot : robots) {
     std::stringstream ss;
-    const std::string action_client_topic = "/" + robot.name + "~/action_client_mission_in";
+    const std::string action_client_topic = "/" + robot.name + "/action_client_mission_in";
 
     auto action_client_ptr = rclcpp_action::create_client<iroc_mission_handler::action::Mission>(node_, action_client_topic);
 
@@ -1337,10 +1303,10 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
     action_client_ptr->async_send_goal(mission_goal, send_goal_options);
 
     // Save the ros service clients from mission_manager
-    const std::string mission_activation_client_topic = "/" + robot.name + "~/mission_activation_svc_in";
+    const std::string mission_activation_client_topic = "/" + robot.name + "/mission_activation_svc_in";
     robot_handler.sc_robot_activation = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_activation_client_topic, cbkgrp_sc_);
 
-    const std::string mission_pausing_client_topic = "/" + robot.name + "~/mission_pausing_svc_in";
+    const std::string mission_pausing_client_topic = "/" + robot.name + "/mission_pausing_svc_in";
     robot_handler.sc_robot_pausing                 = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_pausing_client_topic, cbkgrp_sc_);
 
 
@@ -1410,6 +1376,8 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> IROCFl
   current_mission_goal_.type        = goal->type;
   current_mission_goal_.uuid        = goal->uuid;
   current_mission_goal_.robot_goals = mission_robots;
+
+  RCLCPP_INFO(node_->get_logger(), " Mission goal created successfully for %zu robots.", mission_robots.size());
 
   return std::make_tuple(result, mission_robots);
 }
