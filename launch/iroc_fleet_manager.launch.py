@@ -59,14 +59,13 @@ def launch_setup(context, *args, **kwargs):
     robot_names = load_robot_names(network_config)
 
     static_remappings = [
-        ("~/fleet_manager_feedback_in", f"/{ground_station}/iroc_fleet_manager/feedback"),
-        ("~/mission_action_client_in", "iroc_fleet_manager"),
-        ("~/change_fleet_mission_state_svc_in", "iroc_fleet_manager/change_fleet_mission_state"),
-        ("~/change_robot_mission_state_svc_in", "iroc_fleet_manager/change_robot_mission_state"),
-        ("~/get_world_origin_svc_in", "iroc_fleet_manager/get_world_origin"),
-        ("~/get_safety_border_svc_in", "iroc_fleet_manager/get_safety_border"),
-        ("~/get_obstacles_svc_in", "iroc_fleet_manager/get_obstacles"),
-        ("~/get_mission_data_svc_in", "iroc_fleet_manager/get_mission_data"),
+        ("~/fleet_manager_feedback_out", f"/{ground_station}/iroc_fleet_manager/feedback"),
+        ("~/change_fleet_mission_state_svc_out", "iroc_fleet_manager/change_fleet_mission_state"),
+        ("~/change_robot_mission_state_svc_out", "iroc_fleet_manager/change_robot_mission_state"),
+        ("~/get_world_origin_svc_out", "iroc_fleet_manager/get_world_origin"),
+        ("~/get_safety_border_svc_out", "iroc_fleet_manager/get_safety_border"),
+        ("~/get_obstacles_svc_out", "iroc_fleet_manager/get_obstacles"),
+        ("~/get_mission_data_svc_out", "iroc_fleet_manager/get_mission_data"),
     ]
 
     default_config = os.path.join(pkg_share, "config", "config.yaml")
@@ -89,9 +88,9 @@ def launch_setup(context, *args, **kwargs):
              f"/{robot_name}/safety_area_manager/diagnostics"),
 
             (f"/{robot_name}/mission_activation_svc_in",
-             f"/{robot_name}/mission_handler/mission_activation"),
+             f"/{robot_name}/iroc_mission_handler/mission_activation"),
             (f"/{robot_name}/mission_pausing_svc_in",
-             f"/{robot_name}/mission_handler/mission_pausing"),
+             f"/{robot_name}/iroc_mission_handler/mission_pausing"),
             # Action
             (f"/{robot_name}/action_client_mission_in",
              f"/{robot_name}/mission_handler"),
