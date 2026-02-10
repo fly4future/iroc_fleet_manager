@@ -51,9 +51,9 @@ set(DEPENDENCIES
 set(LIBRARIES
   IROCFleetManager
   IROCFleetManager_WaypointPlanner
-  # IROCFleetManager_CoveragePlanner
+  IROCFleetManager_CoveragePlanner
   # IROCFleetManager_AutonomyTestPlanner
-  # EnergyAwareMCPP
+  EnergyAwareMCPP
 )
 
 foreach(DEP IN LISTS DEPENDENCIES)
@@ -176,58 +176,59 @@ target_compile_definitions(IROCFleetManager_WaypointPlanner PRIVATE USE_ROS_TIME
 
 ## | ----------- EnergyAwareMCPP ------------ |
 
-# set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
-#
-# add_library(EnergyAwareMCPP SHARED
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/coverage_planner.cpp
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/MapPolygon.cpp
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/EnergyCalculator.cpp
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/ShortestPathCalculator.cpp
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/algorithms.cpp
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/utils.cpp
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/MstspSolver.cpp
-#   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
-# )
-#
-# # Need C++17 
-# set_target_properties(EnergyAwareMCPP PROPERTIES
-#   CXX_STANDARD 17
-#   CXX_STANDARD_REQUIRED ON
-# )
-#
-# target_include_directories(EnergyAwareMCPP
-#   PUBLIC
-#     $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
-#     $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
-# )
-#
-# ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)
-#
+set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
+
+add_library(EnergyAwareMCPP SHARED
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/coverage_planner.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/MapPolygon.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/EnergyCalculator.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/ShortestPathCalculator.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/algorithms.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/utils.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/MstspSolver.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
+)
+
+target_include_directories(EnergyAwareMCPP
+  PUBLIC
+  $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
+    $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
+)
+
+ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)
+
 # ## | ----------- IROCFleetManager_CoveragePlanner ------------ |
-#
-# add_library(IROCFleetManager_CoveragePlanner SHARED
-#   src/planner_plugins/coverage_planner.cpp
-# )
-#
-# target_link_libraries(IROCFleetManager_CoveragePlanner
-#   PRIVATE
-#     iroc_fleet_manager::iroc_fleet_manager
-#     rclcpp::rclcpp
-#     rclcpp_action::rclcpp_action
-#     rclcpp_components::component
-#     pluginlib::pluginlib
-#     mrs_lib::mrs_lib
-#     ${mrs_msgs_TARGETS}
-#     EnergyAwareMCPP
-# )
-#
-# # Link to generated interfaces
-# rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-# target_link_libraries(IROCFleetManager_CoveragePlanner PRIVATE ${cpp_typesupport_target})
-#
-# rclcpp_components_register_nodes(IROCFleetManager_CoveragePlanner "iroc_fleet_manager::CoveragePlanner")
-# target_compile_definitions(IROCFleetManager_CoveragePlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
-#
+
+add_library(IROCFleetManager_CoveragePlanner SHARED
+  src/planner_plugins/coverage_planner.cpp
+)
+
+target_link_libraries(IROCFleetManager_CoveragePlanner
+  PRIVATE
+    IROCFleetManager
+    iroc_fleet_manager::iroc_fleet_manager
+    rclcpp::rclcpp
+    rclcpp_action::rclcpp_action
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
+  PUBLIC
+    EnergyAwareMCPP
+)
+
+target_include_directories(IROCFleetManager_CoveragePlanner
+  PRIVATE
+    ${ENERGY_AWARE_MCPP_SRC_DIR}/include
+)
+
+# Link to generated interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(IROCFleetManager_CoveragePlanner PRIVATE ${cpp_typesupport_target})
+
+rclcpp_components_register_nodes(IROCFleetManager_CoveragePlanner "iroc_fleet_manager::CoveragePlanner")
+target_compile_definitions(IROCFleetManager_CoveragePlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+
 # ## | -------- IROCFleetManager_AutonomyTestPlanner ----------- |
 # add_library(IROCFleetManager_AutonomyTestPlanner SHARED
 #   src/planner_plugins/autonomy_test_planner.cpp
@@ -282,10 +283,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-# install(
-#   DIRECTORY ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
-#   DESTINATION include/${PROJECT_NAME}
-# )
+install(
+  DIRECTORY ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
+  DESTINATION include/${PROJECT_NAME}
+)
 
 ## --------------------------------------------------------------
 ## |                           Export                           |

@@ -41,7 +41,6 @@
 #include <mrs_msgs/srv/string.hpp>
 
 // Third party
-#include <boost/smart_ptr/shared_ptr.hpp>
 #include <numeric>
 #include <tuple>
 
@@ -1084,6 +1083,16 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
 
   const auto goal = goal_handle->get_goal();
 
+  // Check is goal is not empty 
+  if (goal->details.empty()) {
+    auto result_ptr     = std::make_shared<Mission::Result>();
+    result_ptr->success = false;
+    result_ptr->message = "Received empty goal, aborting mission.";
+    RCLCPP_WARN(node_->get_logger(), " Received empty goal, aborting mission.");
+    goal_handle->abort(result_ptr);
+    return;
+  }
+
   const auto [result, mission_robots] = processGoal(goal_handle);
 
   if (!result.success) {
@@ -1498,11 +1507,11 @@ result_t IROCFleetManager::callService(mrs_lib::ServiceClientHandler<ServiceType
   if (response) {
     if (response.value()->success) {
       RCLCPP_INFO_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000,
-                                  "Called service "  << sc.getService() << "  with response \"" << response.value()->message << "\".");
+                                  "Called service"  << sc.getService() << "  with response \"" << response.value()->message << "\".");
       return {true, response.value()->message};
     } else {
       RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000,
-                                  "Called service " << sc.getService() << "with response \"" << response.value()->message << "\".");
+                                  "Called service" << sc.getService() << "with response \"" << response.value()->message << "\".");
       return {false, response.value()->message};
     }
   } else {

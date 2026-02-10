@@ -36,7 +36,9 @@ struct solution_cost_t {
     double max_path_cost;
     double path_cost_sum;
 
-    solution_cost_t() = delete;
+   // Add explicit constructor
+    solution_cost_t(double max_cost, double sum_cost) 
+        : max_path_cost(max_cost), path_cost_sum(sum_cost) {}
 
     static solution_cost_t max() {
         return {std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};

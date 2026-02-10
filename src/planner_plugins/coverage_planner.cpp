@@ -1,4 +1,5 @@
 #include <iroc_fleet_manager/iroc_plugins/coverage_planner.h>
+#include "ament_index_cpp/get_package_share_directory.hpp"
 
 namespace iroc_fleet_manager
 {
@@ -9,32 +10,35 @@ namespace planners
 namespace coverage_planner
 {
 
-bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
+bool CoveragePlanner::initialize(const rclcpp::Node::SharedPtr node, const std::string &name, const std::string &name_space,
                                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
+  node_  = node;
+  clock_ = node->get_clock();
 
-  // nh_ will behave just like normal NodeHandle
-  ros::NodeHandle nh_(parent_nh, name_space);
+  cbkgrp_subs_   = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_ss_     = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_timers_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   name_            = name;
   common_handlers_ = common_handlers;
-  ros::Time::waitForValid();
 
   /* load parameters */
-  mrs_lib::ParamLoader param_loader(nh_, "CoveragePlanner");
+  mrs_lib::ParamLoader param_loader(node_, "CoveragePlanner");
 
-  param_loader.addYamlFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
+  std::string package_path = ament_index_cpp::get_package_share_directory("iroc_fleet_manager");
+  param_loader.addYamlFile(package_path + "/config/coverage_planner_config.yaml");
 
   planner_config_ = parse_algorithm_config(param_loader);
 
   if (!param_loader.loadedSuccessfully()) {
-    ROS_ERROR("[%s]: could not load all parameters!", name_.c_str());
+    RCLCPP_ERROR(node_->get_logger(), "Could not load all parameters!");
     is_initialized_ = false;
     return true;
   }
 
   // | ----------------------- finish init ---------------------- |
 
-  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ", name_.c_str(), name.c_str(), name_space.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: initialized under the name '%s', namespace '%s'", name_.c_str(), name.c_str(), name_space.c_str());
 
   is_initialized_ = true;
   return true;
@@ -42,7 +46,7 @@ bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
 
 bool CoveragePlanner::activate(void) {
 
-  ROS_INFO("[%s]: activated", name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: activated", name_.c_str());
 
   is_active_ = true;
 
@@ -53,19 +57,18 @@ void CoveragePlanner::deactivate(void) {
 
   is_active_ = false;
 
-  ROS_INFO("[%s]: deactivated", name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: deactivated", name_.c_str());
 }
 
-std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePlanner::createGoal(const std::string &goal) const {
+std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> CoveragePlanner::createGoal(const std::string &goal) const {
   // Goal to be filled
-  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
-  ROS_INFO("[CoveragePlanner] Received goal :%s ",
-           goal.c_str()); // to remove
+  std::vector<iroc_mission_handler::msg::MissionGoal> mission_robots;
+  RCLCPP_INFO(node_->get_logger(), "[%s]: creating goal from the received request", name_.c_str());
 
   // Custom messages used in the coverage planner
-  std::vector<iroc_fleet_manager::CoverageMissionRobot> robots_msg;
-  std::vector<mrs_msgs::Point2D> search_area_msg;
-  mrs_msgs::Point2D latlon_origin_msg;
+  std::vector<iroc_fleet_manager::msg::CoverageMissionRobot> robots_msg;
+  std::vector<mrs_msgs::msg::Point2D> search_area_msg;
+  mrs_msgs::msg::Point2D latlon_origin_msg;
 
   result_t result;
   json json_msg;
@@ -78,6 +81,8 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     result.message = "Faile to parse JSON msg";
     return std::make_tuple(result, mission_robots);
   }
+
+  RCLCPP_INFO(node_->get_logger(), "[%s]: received goal: %s", name_.c_str(), goal.c_str());
 
   std::vector<custom_types::Point2D> search_area;
   json robots;
@@ -94,17 +99,32 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
                                                 {"terminal_action", &terminal_action},
                                             });
   if (!success) {
-      result.success = false;
-      result.message = "Failure while parsing robot data, bad JSON request";
-      return std::make_tuple(result, mission_robots);
+    result.success = false;
+    result.message = "Failure while parsing robot data, bad JSON request";
+    return std::make_tuple(result, mission_robots);
   }
-  
-  search_area_msg = toRosMsg<mrs_msgs::Point2D>(search_area);
+
+  // Check if not empty
+  if (robots.empty()) {
+    result.success = false;
+    result.message = "Received empty robots list, aborting mission.";
+    RCLCPP_WARN(node_->get_logger(), " Received empty robots list, aborting mission.");
+    return std::make_tuple(result, mission_robots);
+  }
+
+  if (search_area.empty()) {
+    result.success = false;
+    result.message = "Received empty search area, aborting mission.";
+    RCLCPP_WARN(node_->get_logger(), " Received empty search area, aborting mission.");
+    return std::make_tuple(result, mission_robots);
+  }
+
+  search_area_msg = toRosMsg<mrs_msgs::msg::Point2D>(search_area);
 
   // Extract robots
   robots_msg.reserve(robots.size());
   for (const auto &robot : robots) {
-    iroc_fleet_manager::CoverageMissionRobot robot_msg;
+    iroc_fleet_manager::msg::CoverageMissionRobot robot_msg;
     std::string name;
 
     name = robot.get<std::string>();
@@ -112,7 +132,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     bool isRobotInFleet = common_handlers_->handlers->robots_map.count(name);
 
     if (!isRobotInFleet) {
-      ROS_WARN("[CoveragePlanner] Robot %s not within the fleet", name.c_str());
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Robot " << name << " not within the fleet");
       std::stringstream ss;
       ss << name << " not found in the fleet!";
       result.message = ss.str();
@@ -121,7 +141,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     }
 
     robot_msg.name            = name;
-    robot_msg.frame_id        = iroc_mission_handler::MissionGoal::FRAME_ID_LATLON;
+    robot_msg.frame_id        = iroc_mission_handler::msg::MissionGoal::FRAME_ID_LATLON;
     robot_msg.height_id       = height_id;
     robot_msg.height          = height;
     robot_msg.terminal_action = terminal_action;
@@ -137,10 +157,10 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   // For simplicity taking the first origin, but we could also validate if all
   // of the origins are consistent
 
-  latlon_origin_msg.x = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->safety_area.origin_x;
-  latlon_origin_msg.y = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->safety_area.origin_y;
+  latlon_origin_msg.x = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->world_origin.x;
+  latlon_origin_msg.y = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->world_origin.y;
 
-  iroc_fleet_manager::CoverageMission mission;
+  iroc_fleet_manager::msg::CoverageMission mission;
   mission.robots        = robots_msg;
   mission.search_area   = search_area_msg;
   mission.latlon_origin = latlon_origin_msg;
@@ -149,7 +169,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
 
   // Filling the mission_robots vector with the generated paths
   for (int it = 0; it < mission.robots.size(); it++) {
-    iroc_mission_handler::MissionGoal robot;
+    iroc_mission_handler::msg::MissionGoal robot;
     robot.name            = mission.robots[it].name;
     robot.points          = paths[it];
     robot.terminal_action = mission.robots[it].terminal_action;
@@ -158,7 +178,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     mission_robots.push_back(robot);
   }
 
-  ROS_INFO("[CoveragePlanner] Goal created successfully!");
+  RCLCPP_INFO(node_->get_logger(), "[%s]: Goal created successfully!", name_.c_str());
   result.success = true;
   result.message = "Goal created successfully";
   return std::make_tuple(result, mission_robots);
@@ -263,7 +283,7 @@ std::vector<MapPolygon> assign_closest_polygons(const std::vector<point_t> &uav_
   return assigned_polygons;
 }
 
-CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission) const {
+CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::msg::CoverageMission &mission) const {
 
   // Fly zone and no fly zones
   std::vector<point_t> fly_zone;
@@ -288,7 +308,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   // Create a logger to log everything directly into stdout
   auto shared_logger = std::make_shared<loggers::SimpleLogger>();
   EnergyCalculator energy_calculator{planner_config_.energy_calculator_config, shared_logger};
-  ROS_INFO_STREAM("[CoveragePlanner:]: Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed());
+  RCLCPP_INFO_STREAM(node_->get_logger(), "[CoveragePlanner:]: Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed());
 
   // Decompose polygon for each UAV
   auto decomposed_polygon = decompose_polygon(mission.robots.size(), planner_config_, polygon);
@@ -309,7 +329,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   // Assign each UAV to its closest polygon
   auto assigned_polygons = assign_closest_polygons(uav_positions, decomposed_polygon);
 
-  ROS_INFO("[CoveragePlanner:]: Size of decomposed polygon: %zu", decomposed_polygon.size());
+  RCLCPP_INFO_STREAM(node_->get_logger(), "[CoveragePlanner:]: Decomposed the polygon into " << decomposed_polygon.size() << " sub-polygons.");
 
   // For saving the paths for each UAV
   coverage_paths_t coverage_paths;
@@ -328,14 +348,14 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       uav_index++;
     }
     catch (const polygon_decomposition_error &e) {
-      ROS_WARN_STREAM("[CoveragePlanner:]: Error while decomposing the polygon");
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Error during polygon decomposition: " << e.what());
       return coverage_paths_t();
     }
 
     auto best_paths = best_solution.paths;
     for (auto &path : best_paths) {
-      std::vector<iroc_mission_handler::Waypoint> coverage_path;
-      mrs_msgs::Reference point;
+      std::vector<iroc_mission_handler::msg::Waypoint> coverage_path;
+      mrs_msgs::msg::Reference point;
       for (auto &p : path) {
         // TODO Replace with mrs_lib transformer?
         auto lat_lon_p = meters_to_gps_coordinates({p.x, p.y}, planner_config_.lat_lon_origin);
@@ -347,7 +367,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
         point.position.z = mission.robots[0].height; // We are using same height for all robots
         point.heading    = 0.0;
 
-        iroc_mission_handler::Waypoint waypoint;
+        iroc_mission_handler::msg::Waypoint waypoint;
         waypoint.reference = point;
         coverage_path.push_back(waypoint);
       }
@@ -364,5 +384,5 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
 } // namespace iroc_fleet_manager
 
-#include <pluginlib/class_list_macros.h>
+#include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::planners::coverage_planner::CoveragePlanner, iroc_fleet_manager::planners::Planner);
