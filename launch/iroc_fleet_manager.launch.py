@@ -66,6 +66,7 @@ def launch_setup(context, *args, **kwargs):
         ("~/get_safety_border_svc_out", "iroc_fleet_manager/get_safety_border"),
         ("~/get_obstacles_svc_out", "iroc_fleet_manager/get_obstacles"),
         ("~/get_mission_data_svc_out", "iroc_fleet_manager/get_mission_data"),
+        ("~/upload_fleet_mission_svc_out", "iroc_fleet_manager/upload_fleet_mission"),
     ]
 
     default_config = os.path.join(pkg_share, "config", "config.yaml")
@@ -91,6 +92,10 @@ def launch_setup(context, *args, **kwargs):
              f"/{robot_name}/iroc_mission_handler/mission_activation"),
             (f"/{robot_name}/mission_pausing_svc_in",
              f"/{robot_name}/iroc_mission_handler/mission_pausing"),
+            (f"/{robot_name}/upload_mission_svc_in",
+             f"/{robot_name}/iroc_mission_handler/upload_mission"),
+            (f"/{robot_name}/unload_mission_svc_in",
+             f"/{robot_name}/iroc_mission_handler/unload_mission"),
             # Action
             (f"/{robot_name}/action_client_mission_in",
              f"/{robot_name}/mission_handler"),

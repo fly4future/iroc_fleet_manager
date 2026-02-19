@@ -13,6 +13,9 @@
 #include <iroc_fleet_manager/srv/get_obstacles_srv.hpp>
 #include <iroc_fleet_manager/srv/get_safety_border_srv.hpp>
 #include <iroc_fleet_manager/srv/get_world_origin_srv.hpp>
+#include <iroc_fleet_manager/srv/upload_fleet_mission_srv.hpp>
+#include <iroc_mission_handler/srv/upload_mission_srv.hpp>
+#include <iroc_mission_handler/srv/unload_mission_srv.hpp>
 // TODO
 #include <iroc_fleet_manager/planner.h>
 #include <iroc_fleet_manager/action/execute_mission.hpp>
@@ -130,6 +133,15 @@ private:
   // Mission getters
   mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetMissionPointsSrv> ss_get_mission_data_;
 
+  // Upload fleet mission service server
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::UploadFleetMissionSrv> ss_upload_fleet_mission_;
+
+  // Staged mission state (guarded by staged_mission_mtx_)
+  std::mutex staged_mission_mtx_;
+  std::vector<iroc_mission_handler::msg::MissionGoal> staged_mission_robots_;
+  std::string staged_mission_uuid_;
+  std::atomic<bool> has_staged_mission_{false};
+
   std::atomic_bool active_mission_        = false;
   std::atomic_bool active_mission_change_ = false;
 
@@ -187,9 +199,12 @@ private:
     MissionGoalHandle::SharedPtr current_goal_handle;
     mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger> sc_robot_activation;
     mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger> sc_robot_pausing;
+    mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UploadMissionSrv> sc_upload_mission;
+    mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UnloadMissionSrv> sc_unload_mission;
     iroc_mission_handler::action::Mission::Feedback current_feedback;
     iroc_mission_handler::action::Mission::Result current_result;
-    bool got_result = false;
+    bool got_result         = false;
+    bool is_upload_staged   = false;
   };
 
   struct fleet_mission_handlers_t
@@ -234,6 +249,12 @@ private:
   void cancelRobotClients();
   std::vector<iroc_mission_handler::msg::MissionResult> getRobotResults();
   std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> processGoal(const std::shared_ptr<GoalHandleMission> goal_handle);
+  std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> processGoalFromRequest(const std::string &type, const std::string &details,
+                                                                                                   const std::string &uuid);
+  bool uploadFleetMissionCallback(const std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Request> &request,
+                                  const std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Response> &response);
+  std::map<std::string, result_t> uploadRobotMissions(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots);
+  void rollbackUpload(const std::vector<std::string> &succeeded_robots);
   template <typename ServiceType>
   result_t callService(mrs_lib::ServiceClientHandler<ServiceType> &sc, const std::shared_ptr<typename ServiceType::Request> &request);
 
@@ -460,6 +481,14 @@ void IROCFleetManager::initialize() {
       node_, "~/get_mission_data_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request> request,
              std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> response) { getMissionData(request, response); },
+      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+
+  ss_upload_fleet_mission_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::UploadFleetMissionSrv>(
+      node_, "~/upload_fleet_mission_svc_out",
+      [this](std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Request> request,
+             std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Response> response) {
+        return uploadFleetMissionCallback(request, response);
+      },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
 
   // // | ------------------ action server methods ----------------- |
@@ -1081,14 +1110,56 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
 
   std::scoped_lock lock(action_server_mutex_);
 
+  // --- Fast-path: use pre-staged mission if available ---
+  std::vector<iroc_mission_handler::msg::MissionGoal> staged_robots;
+  bool use_staged = false;
+  {
+    std::scoped_lock lk(staged_mission_mtx_);
+    if (has_staged_mission_) {
+      staged_robots       = std::move(staged_mission_robots_);
+      has_staged_mission_ = false;
+      use_staged          = true;
+    }
+  }
+
+  if (use_staged) {
+    RCLCPP_INFO(node_->get_logger(), " Using pre-staged mission for execution.");
+    const auto results   = sendRobotGoals(staged_robots);
+    bool       all_success = std::all_of(results.begin(), results.end(), [](const auto &pair) { return pair.second.success; });
+
+    if (!all_success) {
+      auto result_ptr = std::make_shared<Mission::Result>();
+      iroc_mission_handler::msg::MissionResult robot_result;
+      for (const auto &res : results) {
+        robot_result.name    = res.first;
+        robot_result.message = res.second.message;
+        robot_result.success = res.second.success;
+        result_ptr->robot_results.emplace_back(robot_result);
+        if (!res.second.success) {
+          RCLCPP_WARN(node_->get_logger(), " Failure starting robot client for %s: %s", res.first.c_str(), res.second.message.c_str());
+        }
+      }
+      result_ptr->success = false;
+      result_ptr->message = "Failure starting robot clients (staged path).";
+      goal_handle->abort(result_ptr);
+      RCLCPP_INFO(node_->get_logger(), " Mission Aborted (staged path).");
+      return;
+    }
+
+    RCLCPP_INFO(node_->get_logger(), " Successfully sent staged goal to robots.");
+    current_goal_handle_ = goal_handle;
+    active_mission_      = true;
+    return;
+  }
+
+  // --- Slow-path (backward compat): process goal from action message ---
   const auto goal = goal_handle->get_goal();
 
-  // Check is goal is not empty 
   if (goal->details.empty()) {
     auto result_ptr     = std::make_shared<Mission::Result>();
     result_ptr->success = false;
-    result_ptr->message = "Received empty goal, aborting mission.";
-    RCLCPP_WARN(node_->get_logger(), " Received empty goal, aborting mission.");
+    result_ptr->message = "No staged mission and no goal details provided. Upload first via POST /mission.";
+    RCLCPP_WARN(node_->get_logger(), " Received empty goal with no staged mission, aborting.");
     goal_handle->abort(result_ptr);
     return;
   }
@@ -1110,19 +1181,16 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
 
   bool all_success = std::all_of(results.begin(), results.end(), [](const auto &pair) { return pair.second.success; });
 
-  // TODO: check maybe not necessary anymore (or different way of doing it), as if the goal is rejected we will handle with the callbacks
   if (!all_success) {
     auto result_ptr = std::make_shared<Mission::Result>();
     iroc_mission_handler::msg::MissionResult robot_result;
-    for (const auto &result : results) {
-      std::stringstream ss;
-      robot_result.name    = result.first;
-      robot_result.message = result.second.message;
-      robot_result.success = result.second.success;
+    for (const auto &res : results) {
+      robot_result.name    = res.first;
+      robot_result.message = res.second.message;
+      robot_result.success = res.second.success;
       result_ptr->robot_results.emplace_back(robot_result);
-      if (!result.second.success) {
-        ss << result.first << " failed with response: " << result.second.message;
-        RCLCPP_WARN(node_->get_logger(), " Failure starting robot clients: %s", ss.str().c_str());
+      if (!res.second.success) {
+        RCLCPP_WARN(node_->get_logger(), " Failure starting robot client for %s: %s", res.first.c_str(), res.second.message.c_str());
       }
     }
     result_ptr->success = false;
@@ -1321,20 +1389,14 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
 }
 
 
-std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> IROCFleetManager::processGoal(const std::shared_ptr<GoalHandleMission> goal_handle) {
-  // Here we make the validation with the planners
-  // First we check if the type matches the loaded planners
-  // check the existance of the requested planner
+std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>>
+IROCFleetManager::processGoalFromRequest(const std::string &type, const std::string &details, const std::string &uuid) {
   result_t result;
-  bool check = false;
-  int planner_idx;
-
-  // Get the goal
-  auto goal = goal_handle->get_goal();
+  bool     check       = false;
+  int      planner_idx = 0;
 
   for (int i = 0; i < int(_planner_names_.size()); i++) {
-    std::string planner_name = _planner_names_[i];
-    if (planner_name == goal->type) {
+    if (_planner_names_[i] == type) {
       check       = true;
       planner_idx = i;
       break;
@@ -1342,27 +1404,21 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> IROCFl
   }
 
   if (!check) {
-    RCLCPP_WARN(node_->get_logger(), " The requested planner (%s) is not within the loaded planners", goal->type.c_str());
+    RCLCPP_WARN(node_->get_logger(), " The requested planner (%s) is not within the loaded planners", type.c_str());
     result.success = false;
     result.message = "Requested planner is not within the loaded planners";
     return std::make_tuple(result, std::vector<iroc_mission_handler::msg::MissionGoal>());
   }
 
-  RCLCPP_INFO(node_->get_logger(), " Received a request for %s, activating the planner...", goal->type.c_str());
+  RCLCPP_INFO(node_->get_logger(), " Received a request for %s, activating the planner...", type.c_str());
 
-  // activate the planner
   planner_list_[planner_idx]->activate();
   active_planner_idx_ = planner_idx;
 
   std::scoped_lock lck(robot_handlers_.mtx, mission_goals_mtx_);
 
-  // Validate the goal with the planner
-  const auto [goal_creation_result, mission_robots] = planner_list_[planner_idx]->createGoal(goal->details);
+  const auto [goal_creation_result, mission_robots] = planner_list_[planner_idx]->createGoal(details);
 
-  auto goal_type = std::make_shared<iroc_mission_handler::action::Mission::Goal>();
-
-
-  // Check if the goal was created successfully
   if (!goal_creation_result.success) {
     result.success = false;
     result.message = goal_creation_result.message;
@@ -1371,13 +1427,156 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> IROCFl
 
   result.success                    = true;
   result.message                    = "Goal created successfully";
-  current_mission_goal_.type        = goal->type;
-  current_mission_goal_.uuid        = goal->uuid;
+  current_mission_goal_.type        = type;
+  current_mission_goal_.uuid        = uuid;
   current_mission_goal_.robot_goals = mission_robots;
 
   RCLCPP_INFO(node_->get_logger(), " Mission goal created successfully for %zu robots.", mission_robots.size());
 
   return std::make_tuple(result, mission_robots);
+}
+
+std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> IROCFleetManager::processGoal(const std::shared_ptr<GoalHandleMission> goal_handle) {
+  auto goal = goal_handle->get_goal();
+  return processGoalFromRequest(goal->type, goal->details, goal->uuid);
+}
+
+std::map<std::string, result_t> IROCFleetManager::uploadRobotMissions(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots) {
+  std::scoped_lock lck(fleet_mission_handlers_.mtx);
+  std::map<std::string, result_t> robot_results;
+
+  fleet_mission_handlers_.handlers.clear();
+  lost_robot_names_.clear();
+  fleet_mission_handlers_.handlers.reserve(robots.size());
+
+  for (const auto &robot : robots) {
+    robot_mission_handler_t handler;
+    handler.robot_name      = robot.name;
+    handler.got_result      = false;
+    handler.is_upload_staged = false;
+
+    const std::string upload_topic   = "/" + robot.name + "/upload_mission_svc_in";
+    const std::string unload_topic   = "/" + robot.name + "/unload_mission_svc_in";
+    const std::string activate_topic = "/" + robot.name + "/mission_activation_svc_in";
+    const std::string pausing_topic  = "/" + robot.name + "/mission_pausing_svc_in";
+
+    handler.sc_upload_mission   = mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UploadMissionSrv>(node_, upload_topic, cbkgrp_sc_);
+    handler.sc_unload_mission   = mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UnloadMissionSrv>(node_, unload_topic, cbkgrp_sc_);
+    handler.sc_robot_activation = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, activate_topic, cbkgrp_sc_);
+    handler.sc_robot_pausing    = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, pausing_topic, cbkgrp_sc_);
+
+    fleet_mission_handlers_.handlers.emplace_back(std::move(handler));
+
+    auto &h   = fleet_mission_handlers_.handlers.back();
+    auto  req = std::make_shared<iroc_mission_handler::srv::UploadMissionSrv::Request>();
+    req->robot_goal = robot;
+
+    RCLCPP_INFO(node_->get_logger(), " Uploading mission to robot '%s' via '%s'", robot.name.c_str(), upload_topic.c_str());
+    const auto resp = callService<iroc_mission_handler::srv::UploadMissionSrv>(h.sc_upload_mission, req);
+
+    robot_results[robot.name] = resp;
+    if (resp.success) {
+      h.is_upload_staged = true;
+      RCLCPP_INFO(node_->get_logger(), " Mission uploaded successfully to robot '%s'", robot.name.c_str());
+    } else {
+      RCLCPP_WARN(node_->get_logger(), " Mission upload failed for robot '%s': %s", robot.name.c_str(), resp.message.c_str());
+    }
+  }
+
+  return robot_results;
+}
+
+void IROCFleetManager::rollbackUpload(const std::vector<std::string> &succeeded_robots) {
+  std::scoped_lock lck(fleet_mission_handlers_.mtx);
+
+  for (const auto &robot_name : succeeded_robots) {
+    auto *h = findRobotHandler(robot_name, fleet_mission_handlers_);
+    if (!h || !h->is_upload_staged) {
+      continue;
+    }
+
+    RCLCPP_INFO(node_->get_logger(), " Rolling back upload for robot '%s'", robot_name.c_str());
+    auto req         = std::make_shared<iroc_mission_handler::srv::UnloadMissionSrv::Request>();
+    const auto resp  = callService<iroc_mission_handler::srv::UnloadMissionSrv>(h->sc_unload_mission, req);
+    h->is_upload_staged = false;
+
+    if (!resp.success) {
+      RCLCPP_WARN(node_->get_logger(), " Rollback failed for robot '%s': %s", robot_name.c_str(), resp.message.c_str());
+    }
+  }
+}
+
+bool IROCFleetManager::uploadFleetMissionCallback(const std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Request> &request,
+                                                  const std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Response> &response) {
+  RCLCPP_INFO(node_->get_logger(), " Received upload fleet mission request (type=%s).", request->type.c_str());
+
+  if (active_mission_) {
+    response->success = false;
+    response->message = "Fleet mission is executing, cannot upload";
+    RCLCPP_WARN(node_->get_logger(), " Upload rejected: %s", response->message.c_str());
+    return true;
+  }
+
+  if (has_staged_mission_) {
+    response->success = false;
+    response->message = "Mission already staged, stop or unload first";
+    RCLCPP_WARN(node_->get_logger(), " Upload rejected: %s", response->message.c_str());
+    return true;
+  }
+
+  // Validate goal with planner and produce per-robot goals
+  const auto [goal_result, mission_robots] = processGoalFromRequest(request->type, request->details, request->uuid);
+
+  if (!goal_result.success) {
+    response->success = false;
+    response->message = goal_result.message;
+    RCLCPP_WARN(node_->get_logger(), " Upload rejected: planner failed: %s", goal_result.message.c_str());
+    return true;
+  }
+
+  // Upload to each robot (synchronous)
+  const auto upload_results = uploadRobotMissions(mission_robots);
+
+  std::vector<std::string>                         succeeded;
+  std::vector<iroc_mission_handler::msg::MissionResult> robot_results_msg;
+  bool all_success = true;
+
+  for (const auto &[name, res] : upload_results) {
+    iroc_mission_handler::msg::MissionResult mr;
+    mr.name    = name;
+    mr.success = res.success;
+    mr.message = res.message;
+    robot_results_msg.emplace_back(mr);
+
+    if (res.success) {
+      succeeded.push_back(name);
+    } else {
+      all_success = false;
+    }
+  }
+
+  if (!all_success) {
+    rollbackUpload(succeeded);
+    response->success      = false;
+    response->message      = "Upload failed on one or more robots";
+    response->robot_results = robot_results_msg;
+    RCLCPP_WARN(node_->get_logger(), " Upload failed, rolled back.");
+    return true;
+  }
+
+  // Commit staged mission
+  {
+    std::scoped_lock lk(staged_mission_mtx_);
+    staged_mission_robots_ = mission_robots;
+    staged_mission_uuid_   = request->uuid;
+    has_staged_mission_    = true;
+  }
+
+  response->success       = true;
+  response->message       = "Mission uploaded to all robots successfully";
+  response->robot_results  = robot_results_msg;
+  RCLCPP_INFO(node_->get_logger(), " Mission uploaded successfully to %zu robots.", mission_robots.size());
+  return true;
 }
 
 /*!
