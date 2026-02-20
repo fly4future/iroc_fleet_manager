@@ -874,7 +874,7 @@ bool IROCFleetManager::getObstaclesCallback(iroc_fleet_manager::GetObstaclesSrv:
 
     bool is_latlon = (msg->safety_area.border.horizontal_frame == "latlon_origin");
     if (is_latlon) {
-      hash_stream << std::fixed << std::setprecision(7); 
+      hash_stream << std::fixed << std::setprecision(5); 
     } else {
       hash_stream << std::fixed << std::setprecision(4); 
     }
