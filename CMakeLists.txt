@@ -52,7 +52,7 @@ set(LIBRARIES
   IROCFleetManager
   IROCFleetManager_WaypointPlanner
   IROCFleetManager_CoveragePlanner
-  # IROCFleetManager_AutonomyTestPlanner
+  IROCFleetManager_AutonomyTestPlanner
   EnergyAwareMCPP
 )
 
@@ -230,28 +230,26 @@ target_link_libraries(IROCFleetManager_CoveragePlanner PRIVATE ${cpp_typesupport
 rclcpp_components_register_nodes(IROCFleetManager_CoveragePlanner "iroc_fleet_manager::CoveragePlanner")
 target_compile_definitions(IROCFleetManager_CoveragePlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
 
-# ## | -------- IROCFleetManager_AutonomyTestPlanner ----------- |
-# add_library(IROCFleetManager_AutonomyTestPlanner SHARED
-#   src/planner_plugins/autonomy_test_planner.cpp
-# )
-#
-# target_link_libraries(IROCFleetManager_AutonomyTestPlanner
-#   PRIVATE
-#     iroc_fleet_manager::iroc_fleet_manager
-#     rclcpp::rclcpp
-#     rclcpp_action::rclcpp_action
-#     rclcpp_components::component
-#     pluginlib::pluginlib
-#     mrs_lib::mrs_lib
-#     ${mrs_msgs_TARGETS}
-# )
-#
-# # Link to generated interfaces
-# rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-# target_link_libraries(IROCFleetManager_AutonomyTestPlanner PRIVATE ${cpp_typesupport_target})
-#
-# rclcpp_components_register_nodes(IROCFleetManager_AutonomyTestPlanner "iroc_fleet_manager::AutonomyTestPlanner")
-# target_compile_definitions(IROCFleetManager_AutonomyTestPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
+## | -------- IROCFleetManager_AutonomyTestPlanner ----------- |
+
+add_library(IROCFleetManager_AutonomyTestPlanner SHARED
+  src/planner_plugins/autonomy_test_planner.cpp
+)
+
+target_link_libraries(IROCFleetManager_AutonomyTestPlanner
+  PRIVATE
+    iroc_fleet_manager::iroc_fleet_manager
+    rclcpp::rclcpp
+    rclcpp_action::rclcpp_action
+    rclcpp_components::component
+    pluginlib::pluginlib
+    mrs_lib::mrs_lib
+    ${mrs_msgs_TARGETS}
+)
+
+target_link_libraries(IROCFleetManager_AutonomyTestPlanner PRIVATE ${cpp_typesupport_target})
+
+target_compile_definitions(IROCFleetManager_AutonomyTestPlanner PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
 
 ## --------------------------------------------------------------
 ## |                       Export plugins                       |
