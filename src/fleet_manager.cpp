@@ -46,7 +46,6 @@
 // Third party
 #include <chrono>
 #include <numeric>
-#include <thread>
 #include <tuple>
 
 #include <iroc_fleet_manager/common_handlers.h>
@@ -207,6 +206,7 @@ private:
     iroc_mission_handler::action::Mission::Result current_result;
     bool got_result       = false;
     bool is_upload_staged = false;
+    bool auto_activate    = false; // activate via service as soon as goal is accepted (staged path)
   };
 
   struct fleet_mission_handlers_t
@@ -244,7 +244,7 @@ private:
                       const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> &response);
 
   // helper methods
-  std::map<std::string, result_t> sendRobotGoals(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots);
+  std::map<std::string, result_t> sendRobotGoals(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots, bool auto_activate = false);
   robot_mission_handler_t *findRobotHandler(const std::string &robot_name, fleet_mission_handlers_t &mission_handlers) const;
   std::shared_ptr<Mission::Feedback> processAggregatedFeedbackInfo(const std::vector<iroc_mission_handler::msg::MissionFeedback> &robot_feedbacks) const;
   std::tuple<std::string, std::string> processFeedbackMsg() const;
@@ -1119,7 +1119,9 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
 
   if (use_staged) {
     RCLCPP_INFO(node_->get_logger(), " Using pre-staged mission for execution.");
-    const auto results = sendRobotGoals(staged_robots);
+    // auto_activate=true: each robot is activated inside goal_response_callback
+    // as soon as it accepts the goal, with no blocking in this callback.
+    const auto results = sendRobotGoals(staged_robots, true);
     bool all_success   = std::all_of(results.begin(), results.end(), [](const auto &pair) { return pair.second.success; });
 
     if (!all_success) {
@@ -1141,45 +1143,9 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
       return;
     }
 
-    RCLCPP_INFO(node_->get_logger(), " Successfully sent staged goal to robots.");
+    RCLCPP_INFO(node_->get_logger(), " Successfully sent staged goal to robots. Activation will happen per-robot on goal acceptance.");
     current_goal_handle_ = goal_handle;
     active_mission_      = true;
-
-    // async_send_goal is truly async — wait until every robot has responded to
-    // the goal (accepted or rejected) before calling the activation service.
-    RCLCPP_INFO(node_->get_logger(), " Waiting for all robot goals to be accepted before activating.");
-    {
-      const auto deadline    = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-      const auto poll_period = std::chrono::milliseconds(20);
-      while (std::chrono::steady_clock::now() < deadline) {
-        bool all_responded;
-        {
-          std::scoped_lock lk(fleet_mission_handlers_.mtx);
-          all_responded = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
-                                      [](const auto &h) { return h.current_goal_handle != nullptr || h.got_result; });
-        }
-        if (all_responded)
-          break;
-        std::this_thread::sleep_for(poll_period);
-      }
-    }
-
-    // Auto-activate only the robots whose goals were accepted.
-    RCLCPP_INFO(node_->get_logger(), " Auto-activating robots (staged path).");
-    {
-      std::scoped_lock lk(fleet_mission_handlers_.mtx);
-      for (auto &rh : fleet_mission_handlers_.handlers) {
-        if (!rh.current_goal_handle) {
-          RCLCPP_WARN(node_->get_logger(), " Robot %s did not accept the goal — skipping activation.", rh.robot_name.c_str());
-          continue;
-        }
-        auto req        = std::make_shared<std_srvs::srv::Trigger::Request>();
-        const auto resp = callService<std_srvs::srv::Trigger>(rh.sc_robot_activation, req);
-        if (!resp.success) {
-          RCLCPP_WARN(node_->get_logger(), " Failed to activate robot %s: %s", rh.robot_name.c_str(), resp.message.c_str());
-        }
-      }
-    }
     return;
   }
 
@@ -1326,7 +1292,7 @@ std::vector<iroc_mission_handler::msg::MissionResult> IROCFleetManager::getRobot
  * where successfully initialized.
  */
 
-std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots) {
+std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots, bool auto_activate) {
   std::scoped_lock lck(fleet_mission_handlers_.mtx);
   std::map<std::string, result_t> robot_results;
 
@@ -1366,6 +1332,7 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
     robot_handler.robot_name        = robot.name;
     robot_handler.action_client_ptr = action_client_ptr;
     robot_handler.got_result        = false;
+    robot_handler.auto_activate     = auto_activate;
 
     // Save the ros service clients from mission_manager
     const std::string mission_activation_client_topic = "/" + robot.name + "/mission_activation_svc_in";
@@ -1374,28 +1341,48 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
     const std::string mission_pausing_client_topic = "/" + robot.name + "/mission_pausing_svc_in";
     robot_handler.sc_robot_pausing                 = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_pausing_client_topic, cbkgrp_sc_);
 
+    const std::string upload_mission_client_topic = "/" + robot.name + "/upload_mission_svc_in";
+    robot_handler.sc_upload_mission               = mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UploadMissionSrv>(node_, upload_mission_client_topic, cbkgrp_sc_);
+
+    const std::string unload_mission_client_topic = "/" + robot.name + "/unload_mission_svc_in";
+    robot_handler.sc_unload_mission               = mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UnloadMissionSrv>(node_, unload_mission_client_topic, cbkgrp_sc_);
+
     // Save the handler
     fleet_mission_handlers_.handlers.emplace_back(std::move(robot_handler));
 
     auto send_goal_options = rclcpp_action::Client<RobotMission>::SendGoalOptions();
 
-    // TODO: handle properly with a function callback
     send_goal_options.goal_response_callback = [this, robot_name = robot.name](MissionGoalHandle::SharedPtr goal_handle) {
-      std::scoped_lock lock(fleet_mission_handlers_.mtx);
-      auto *handler = findRobotHandler(robot_name, fleet_mission_handlers_);
-      if (!goal_handle) {
-        RCLCPP_WARN_STREAM(node_->get_logger(), "Goal was rejected by robot");
-        if (handler) {
-          handler->got_result                          = true;
-          handler->current_result.robot_result.success = false;
-          handler->current_result.robot_result.message = "Goal rejected by mission handler";
+      // Extract what we need under the mutex, then release before any service call.
+      bool should_activate = false;
+      mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger> sc_activation;
+      {
+        std::scoped_lock lock(fleet_mission_handlers_.mtx);
+        auto *handler = findRobotHandler(robot_name, fleet_mission_handlers_);
+        if (!goal_handle) {
+          RCLCPP_WARN_STREAM(node_->get_logger(), "Goal was rejected by robot '" << robot_name << "'");
+          if (handler) {
+            handler->got_result                          = true;
+            handler->current_result.robot_result.success = false;
+            handler->current_result.robot_result.message = "Goal rejected by mission handler";
+          }
+          return;
         }
-        return;
+        RCLCPP_INFO(node_->get_logger(), "Goal accepted by robot '%s'", robot_name.c_str());
+        if (handler) {
+          handler->current_goal_handle = goal_handle;
+          should_activate              = handler->auto_activate;
+          sc_activation                = handler->sc_robot_activation;
+        }
       }
-      RCLCPP_INFO(node_->get_logger(), "Goal accepted by robot '%s'", robot_name.c_str());
-      // Save the goal handle
-      if (handler) {
-        handler->current_goal_handle = goal_handle;
+      // Activate outside the mutex to avoid holding it during a blocking service call.
+      if (should_activate) {
+        RCLCPP_INFO(node_->get_logger(), " Auto-activating robot '%s' (staged path).", robot_name.c_str());
+        auto req        = std::make_shared<std_srvs::srv::Trigger::Request>();
+        const auto resp = callService<std_srvs::srv::Trigger>(sc_activation, req);
+        if (!resp.success) {
+          RCLCPP_WARN(node_->get_logger(), " Failed to activate robot '%s': %s", robot_name.c_str(), resp.message.c_str());
+        }
       }
     };
 
@@ -1531,6 +1518,7 @@ void IROCFleetManager::rollbackUpload(const std::vector<std::string> &succeeded_
     h->is_upload_staged = false;
 
     if (!resp.success) {
+      // TODO consider retrying or marking the robot as needing manual intervention for cleanup
       RCLCPP_WARN(node_->get_logger(), " Rollback failed for robot '%s': %s", robot_name.c_str(), resp.message.c_str());
     }
   }
@@ -1572,11 +1560,11 @@ bool IROCFleetManager::uploadFleetMissionCallback(const std::shared_ptr<iroc_fle
   bool all_success = true;
 
   for (const auto &[name, res] : upload_results) {
-    iroc_mission_handler::msg::MissionResult mr;
-    mr.name    = name;
-    mr.success = res.success;
-    mr.message = res.message;
-    robot_results_msg.emplace_back(mr);
+    iroc_mission_handler::msg::MissionResult mission_result;
+    mission_result.name    = name;
+    mission_result.success = res.success;
+    mission_result.message = res.message;
+    robot_results_msg.emplace_back(mission_result);
 
     if (res.success) {
       succeeded.push_back(name);
