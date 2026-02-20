@@ -75,12 +75,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetSafetyBorderSrv.srv"
   "srv/GetObstaclesSrv.srv"
   "srv/GetMissionPointsSrv.srv"
+  "srv/UploadFleetMissionSrv.srv"
   "action/ExecuteMission.action"
-  DEPENDENCIES 
-    builtin_interfaces 
-    std_msgs 
-    geometry_msgs 
-    mrs_msgs 
+  DEPENDENCIES
+    builtin_interfaces
+    std_msgs
+    geometry_msgs
+    mrs_msgs
     iroc_mission_handler
 )
 
