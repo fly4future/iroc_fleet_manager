@@ -16,7 +16,7 @@
 #include <iroc_fleet_manager/srv/upload_fleet_mission_srv.hpp>
 #include <iroc_mission_handler/srv/upload_mission_srv.hpp>
 #include <iroc_mission_handler/srv/unload_mission_srv.hpp>
-// TODO
+
 #include <iroc_fleet_manager/planner.h>
 #include <iroc_fleet_manager/action/execute_mission.hpp>
 #include <iroc_fleet_manager/msg/mission_goal.hpp>
@@ -44,7 +44,9 @@
 #include <mrs_msgs/srv/string.hpp>
 
 // Third party
+#include <algorithm>
 #include <chrono>
+#include <map>
 #include <numeric>
 #include <tuple>
 
@@ -769,19 +771,16 @@ bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iro
       }
     } else if (request->type == "stop") {
       RCLCPP_INFO(node_->get_logger(), " Calling mission stopping for robot: %s.", request->robot_name.c_str());
-      // TODO when mission handler is updated to ROS2
-      // const auto action_client_state = rh_ptr->action_client_ptr->getState();
-      // if (action_client_state.isDone()) {
-      //   ss << "robot \"" << rh_ptr->robot_name << "\" mission done,
-      //   skipping\n"; success = false; ROS_WARN_STREAM("[IROCFleetManager]:
-      //   Robot \"" << rh_ptr->robot_name << "\" mission done. Skipping.");
-      // } else {
-      //   ss << "Call successful.\n";
-      //   ROS_INFO_STREAM("[IROCFleetManager]: Cancelling \"" <<
-      //   rh_ptr->robot_name << "\" mission.");
-      //   rh_ptr->action_client_ptr->cancelGoal();
-      //   rh_ptr->action_client_ptr->waitForResult(ros::Duration(1.0));
-      // }
+      auto cancel_callback = [this, robot_name = rh_ptr->robot_name](std::shared_ptr<rclcpp_action::Client<RobotMission>::CancelResponse> response) {
+        if (response->return_code == action_msgs::srv::CancelGoal::Response::ERROR_NONE) {
+          RCLCPP_INFO(node_->get_logger(), "Cancel accepted for robot '%s'", robot_name.c_str());
+        } else {
+          RCLCPP_WARN(node_->get_logger(), "Cancel rejected for robot '%s'", robot_name.c_str());
+        }
+      };
+
+      rh_ptr->action_client_ptr->async_cancel_goal(rh_ptr->current_goal_handle, cancel_callback);
+
     } else {
       success = false;
       ss << "Unsupported type\n";
@@ -810,33 +809,33 @@ bool IROCFleetManager::getWorldOriginCallback(const std::shared_ptr<iroc_fleet_m
 
   std::scoped_lock lck(robot_handlers_.mtx);
   RCLCPP_INFO(node_->get_logger(), " Processing a getWorldOriginCallback.");
-  std::set<std::string> origin_hashes;
 
-  double origin_x;
-  double origin_y;
+  if (robot_handlers_.handlers.empty()) {
+    response->success = false;
+    response->message = "No robots registered in the fleet.";
+    return true;
+  }
+
+  std::map<std::string, std::string> robot_hashes;
+  double origin_x  = 0.0;
+  double origin_y  = 0.0;
   bool first_robot = true;
 
   for (const auto &rh : robot_handlers_.handlers) {
 
     if (!rh.sh_safety_area_info.hasMsg()) {
-      response->message = "No safety area info received, check if the Safety "
-                          "Area Manager is running!";
+      response->message = "No safety area info received from robot '" + rh.robot_name + "', check if the Safety Area Manager is running!";
       response->success = false;
       return true;
     }
 
-    const auto msg = rh.sh_safety_area_info.peekMsg();
+    const auto msg    = rh.sh_safety_area_info.peekMsg();
+    const bool is_latlon = (msg->world_origin.units == "LATLON");
+
     std::ostringstream hash_stream;
-
-    bool is_latlon = (msg->world_origin.units == "LATLON");
-    if (is_latlon) {
-      hash_stream << std::fixed << std::setprecision(7);
-    } else {
-      hash_stream << std::fixed << std::setprecision(4);
-    }
-
-    hash_stream << msg->world_origin.x << "|" << msg->world_origin.y << "|";
-    origin_hashes.insert(hash_stream.str());
+    hash_stream << std::fixed << std::setprecision(is_latlon ? 7 : 4);
+    hash_stream << msg->world_origin.x << "|" << msg->world_origin.y;
+    robot_hashes[rh.robot_name] = hash_stream.str();
 
     if (first_robot) {
       origin_x    = msg->world_origin.x;
@@ -845,57 +844,72 @@ bool IROCFleetManager::getWorldOriginCallback(const std::shared_ptr<iroc_fleet_m
     }
   }
 
-  bool has_discrepancies = origin_hashes.size() > 1;
+  std::set<std::string> unique_hashes;
+  for (const auto &[name, hash] : robot_hashes) {
+    unique_hashes.insert(hash);
+  }
 
-  if (has_discrepancies) {
+  if (unique_hashes.size() > 1) {
+    for (const auto &[name, hash] : robot_hashes) {
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Robot '" << name << "' world origin: " << hash);
+    }
     RCLCPP_WARN(node_->get_logger(), " Discrepancy with the robot origins!!");
     response->message = "Discrepancy in the origins between the fleet, please set the origin!";
     response->success = false;
     return true;
-  } else {
-    response->message  = "All robots in the fleet with same origin";
-    response->success  = true;
-    response->origin_x = origin_x;
-    response->origin_y = origin_y;
-    return true;
   }
+
+  response->message  = "All robots in the fleet with same origin";
+  response->success  = true;
+  response->origin_x = origin_x;
+  response->origin_y = origin_y;
+  return true;
 }
 
 bool IROCFleetManager::getSafetyBorderCallback([[maybe_unused]] const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Request> &request,
                                                const std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Response> &response) {
   std::scoped_lock lck(robot_handlers_.mtx);
   RCLCPP_INFO(node_->get_logger(), " Processing a getSafetyBorderCallback.");
-  std::set<std::string> config_hashes;
+
+  if (robot_handlers_.handlers.empty()) {
+    response->success = false;
+    response->message = "No robots registered in the fleet.";
+    return true;
+  }
+
+  std::map<std::string, std::string> robot_hashes;
   mrs_msgs::msg::Prism reference_border;
   bool first_robot = true;
 
   for (const auto &rh : robot_handlers_.handlers) {
 
     if (!rh.sh_safety_area_info.hasMsg()) {
-      response->message = "No safety area info received, check if the Safety "
-                          "Area Manager is running!";
+      response->message = "No safety area info received from robot '" + rh.robot_name + "', check if the Safety Area Manager is running!";
       response->success = false;
       return true;
     }
 
-    const auto msg = rh.sh_safety_area_info.peekMsg();
+    const auto msg       = rh.sh_safety_area_info.peekMsg();
+    const bool is_latlon = (msg->border.horizontal_frame == "latlon_origin");
+    const int xy_prec    = is_latlon ? 7 : 4;
+    constexpr int z_prec = 4;  // altitude is always metric, independent of horizontal frame
+
     std::ostringstream hash_stream;
+    hash_stream << std::fixed;
 
-    bool is_latlon = (msg->border.horizontal_frame == "latlon_origin");
-    if (is_latlon) {
-      hash_stream << std::fixed << std::setprecision(7);
-    } else {
-      hash_stream << std::fixed << std::setprecision(4);
-    }
+    // Altitude and metadata fields use metric precision
+    hash_stream << std::setprecision(z_prec);
+    hash_stream << msg->border.max_z << "|" << msg->border.min_z << "|";
+    hash_stream << msg->border.horizontal_frame << "|" << msg->border.vertical_frame << "|";
+    hash_stream << msg->safety_area_enabled << "|";
 
-    hash_stream << msg->border.max_z << "|" << msg->border.min_z << "|" << msg->border.horizontal_frame << "|" << msg->border.vertical_frame << "|"
-                << msg->safety_area_enabled << "|";
-
+    // Border polygon points — vertex order is semantically significant, do not sort
+    hash_stream << std::setprecision(xy_prec);
     for (const auto &point : msg->border.points) {
-      hash_stream << point.x << "," << point.y << ";";
+      hash_stream << "[" << point.x << "," << point.y << "]";
     }
 
-    config_hashes.insert(hash_stream.str());
+    robot_hashes[rh.robot_name] = hash_stream.str();
 
     if (first_robot) {
       reference_border = msg->border;
@@ -903,20 +917,25 @@ bool IROCFleetManager::getSafetyBorderCallback([[maybe_unused]] const std::share
     }
   }
 
-  bool has_discrepancies = config_hashes.size() > 1;
+  std::set<std::string> unique_hashes;
+  for (const auto &[name, hash] : robot_hashes) {
+    unique_hashes.insert(hash);
+  }
 
-  if (has_discrepancies) {
+  if (unique_hashes.size() > 1) {
+    for (const auto &[name, hash] : robot_hashes) {
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Robot '" << name << "' safety border hash: " << hash);
+    }
     RCLCPP_WARN(node_->get_logger(), " Discrepancy with the robot borders!!");
     response->success = false;
-    response->message = "Discrepancy in the borders between the fleet, please "
-                        "set the safety borders!";
-    return true;
-  } else {
-    response->success = true;
-    response->message = "All robots in the fleet with the same safety border";
-    response->border  = reference_border;
+    response->message = "Discrepancy in the borders between the fleet, please set the safety borders!";
     return true;
   }
+
+  response->success = true;
+  response->message = "All robots in the fleet with the same safety border";
+  response->border  = reference_border;
+  return true;
 }
 
 bool IROCFleetManager::getObstaclesCallback([[maybe_unused]] const std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request> &request,
@@ -925,71 +944,79 @@ bool IROCFleetManager::getObstaclesCallback([[maybe_unused]] const std::shared_p
   std::scoped_lock lck(robot_handlers_.mtx);
   RCLCPP_INFO(node_->get_logger(), " Processing a getObstaclesCallback.");
 
-  std::set<std::string> config_hashes;
+  if (robot_handlers_.handlers.empty()) {
+    response->success = false;
+    response->message = "No robots registered in the fleet.";
+    return true;
+  }
+
+  std::map<std::string, std::string> robot_hashes;
   std::vector<mrs_msgs::msg::Prism> reference_obstacles;
   bool first_robot = true;
 
   for (const auto &rh : robot_handlers_.handlers) {
 
     if (!rh.sh_safety_area_info.hasMsg()) {
-      response->message = "No safety area info received, check if the Safety "
-                          "Area Manager is running!";
+      response->message = "No safety area info received from robot '" + rh.robot_name + "', check if the Safety Area Manager is running!";
       response->success = false;
       return true;
     }
 
-    const auto msg = rh.sh_safety_area_info.peekMsg();
-    std::ostringstream hash_stream;
+    const auto msg       = rh.sh_safety_area_info.peekMsg();
+    const bool is_latlon = (msg->border.horizontal_frame == "latlon_origin");
+    const int xy_prec    = is_latlon ? 7 : 4;
+    constexpr int z_prec = 4;  // altitude is always metric
 
-    bool is_latlon = (msg->border.horizontal_frame == "latlon_origin");
-    if (is_latlon) {
-      hash_stream << std::fixed << std::setprecision(7);
-    } else {
-      hash_stream << std::fixed << std::setprecision(4);
+    // Build a canonical hash for each prism individually, then sort the list so
+    // that obstacle ordering differences between robots do not produce false discrepancies.
+    // Vertex order within each prism is preserved (it defines the polygon boundary).
+    std::vector<std::string> prism_hashes;
+    prism_hashes.reserve(msg->obstacles.size());
+
+    for (const auto &prism : msg->obstacles) {
+      std::ostringstream ps;
+      ps << std::fixed << std::setprecision(xy_prec);
+      for (const auto &point : prism.points) {
+        ps << "[" << point.x << "," << point.y << "]";
+      }
+      ps << std::setprecision(z_prec);
+      ps << "{z:" << prism.max_z << "," << prism.min_z << "}";
+      prism_hashes.push_back(ps.str());
     }
 
-    // TODO update with new obstacle message structure
-    //  for (const auto &point : msg->safety_area.obstacles.data)
-    //    hash_stream << point.x << "," << point.y << ";";
-    //
-    //  for (const auto &row : msg->safety_area.obstacles.rows)
-    //    hash_stream << row << "|";
-    //
-    //  for (const auto &max_z : msg->safety_area.obstacles.max_z)
-    //    hash_stream << max_z << "|";
-    //
-    //  for (const auto &min_z : msg->safety_area.obstacles.min_z)
-    //    hash_stream << min_z << "|";
-    //
-    //  config_hashes.insert(hash_stream.str());
-    //
-    //  if (first_robot) {
-    //    reference_obstacles                  = msg->safety_area.obstacles;
-    //    reference_obstacles.horizontal_frame =
-    //    msg->safety_area.border.horizontal_frame; // Obstacles follow same
-    //    frame as the border reference_obstacles.vertical_frame   =
-    //    msg->safety_area.border.vertical_frame; first_robot = false;
-    //  }
+    std::sort(prism_hashes.begin(), prism_hashes.end());
+
+    std::ostringstream hash_stream;
+    for (const auto &ph : prism_hashes) {
+      hash_stream << ph;
+    }
+    robot_hashes[rh.robot_name] = hash_stream.str();
+
+    if (first_robot) {
+      reference_obstacles = msg->obstacles;
+      first_robot         = false;
+    }
   }
 
-  bool has_discrepancies = config_hashes.size() > 1;
+  std::set<std::string> unique_hashes;
+  for (const auto &[name, hash] : robot_hashes) {
+    unique_hashes.insert(hash);
+  }
 
-  if (has_discrepancies) {
-
-    for (const auto &hash : config_hashes) {
-      RCLCPP_WARN_STREAM(node_->get_logger(), hash);
+  if (unique_hashes.size() > 1) {
+    for (const auto &[name, hash] : robot_hashes) {
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Robot '" << name << "' obstacles hash: " << hash);
     }
     RCLCPP_WARN(node_->get_logger(), " Discrepancy with the robot obstacles!!");
     response->success = false;
-    response->message = "Discrepancy in the obstacles between the fleet, "
-                        "please set the obstacles!";
-    return true;
-  } else {
-    response->success   = true;
-    response->message   = "All robots in the fleet with the same safety border";
-    response->obstacles = reference_obstacles;
+    response->message = "Discrepancy in the obstacles between the fleet, please set the obstacles!";
     return true;
   }
+
+  response->success   = true;
+  response->message   = "All robots in the fleet with the same obstacles";
+  response->obstacles = reference_obstacles;
+  return true;
 }
 
 bool IROCFleetManager::getMissionData(const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request> &request,
@@ -1342,10 +1369,12 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
     robot_handler.sc_robot_pausing                 = mrs_lib::ServiceClientHandler<std_srvs::srv::Trigger>(node_, mission_pausing_client_topic, cbkgrp_sc_);
 
     const std::string upload_mission_client_topic = "/" + robot.name + "/upload_mission_svc_in";
-    robot_handler.sc_upload_mission               = mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UploadMissionSrv>(node_, upload_mission_client_topic, cbkgrp_sc_);
+    robot_handler.sc_upload_mission =
+        mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UploadMissionSrv>(node_, upload_mission_client_topic, cbkgrp_sc_);
 
     const std::string unload_mission_client_topic = "/" + robot.name + "/unload_mission_svc_in";
-    robot_handler.sc_unload_mission               = mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UnloadMissionSrv>(node_, unload_mission_client_topic, cbkgrp_sc_);
+    robot_handler.sc_unload_mission =
+        mrs_lib::ServiceClientHandler<iroc_mission_handler::srv::UnloadMissionSrv>(node_, unload_mission_client_topic, cbkgrp_sc_);
 
     // Save the handler
     fleet_mission_handlers_.handlers.emplace_back(std::move(robot_handler));
