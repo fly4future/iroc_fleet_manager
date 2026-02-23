@@ -1,4 +1,3 @@
-string robot_name
 uint8 type
 
 uint8 TYPE_START = 0

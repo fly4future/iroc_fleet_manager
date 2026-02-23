@@ -8,6 +8,7 @@
 #include <std_srvs/srv/trigger.hpp>
 
 // Fleet manager
+#include <iroc_fleet_manager/srv/change_fleet_mission_state_srv.hpp>
 #include <iroc_fleet_manager/srv/change_robot_mission_state_srv.hpp>
 #include <iroc_fleet_manager/srv/get_mission_points_srv.hpp>
 #include <iroc_fleet_manager/srv/get_obstacles_srv.hpp>
@@ -125,7 +126,7 @@ private:
 
   // | ----------------------- ROS service servers ---------------------- |
 
-  mrs_lib::ServiceServerHandler<mrs_msgs::srv::String> ss_change_fleet_mission_state_;
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv> ss_change_fleet_mission_state_;
   mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv> ss_change_robot_mission_state_;
 
   // Environment getters
@@ -232,8 +233,8 @@ private:
   void handle_accepted(const std::shared_ptr<GoalHandleMission> goal_handle);
   rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleMission> goal_handle);
 
-  bool changeFleetMissionStateCallback(const std::shared_ptr<mrs_msgs::srv::String::Request> &request,
-                                       const std::shared_ptr<mrs_msgs::srv::String::Response> &response);
+  bool changeFleetMissionStateCallback(const std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Request> &request,
+                                       const std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Response> &response);
   bool changeRobotMissionStateCallback(const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request> &request,
                                        const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response> &response);
   bool getWorldOriginCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request> &request,
@@ -450,9 +451,10 @@ void IROCFleetManager::initialize() {
 
   // | --------------------- service servers -------------------- |
 
-  ss_change_fleet_mission_state_ = mrs_lib::ServiceServerHandler<mrs_msgs::srv::String>(
+  ss_change_fleet_mission_state_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv>(
       node_, "~/change_fleet_mission_state_svc_out",
-      [this](std::shared_ptr<mrs_msgs::srv::String::Request> request, std::shared_ptr<mrs_msgs::srv::String::Response> response) {
+      [this](std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Request> request,
+             std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Response> response) {
         changeFleetMissionStateCallback(request, response);
       },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
@@ -663,56 +665,65 @@ void IROCFleetManager::timerUpdateCommonHandlers() {
  * state of the mission: Start, Pause or Stop.
  *
  */
-bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs_msgs::srv::String::Request> &request,
-                                                       const std::shared_ptr<mrs_msgs::srv::String::Response> &response) {
+bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Request> &request,
+                                                       const std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Response> &response) {
+  using Req = iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Request;
+
   std::stringstream ss;
   bool success           = true;
   active_mission_change_ = true;
 
   std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
 
-  RCLCPP_INFO(node_->get_logger(), " Received a %s request for the fleet", request->value.c_str());
+  RCLCPP_INFO(node_->get_logger(), " Received a fleet mission state change request (type=%u).", request->type);
 
   if (current_goal_handle_->is_active()) {
-    if (request->value == "start") {
-      RCLCPP_INFO(node_->get_logger(), "Activating the mission for all robots.");
-
-      for (auto &rh : fleet_mission_handlers_.handlers) {
-        auto request    = std::make_shared<std_srvs::srv::Trigger::Request>();
-        const auto resp = callService<std_srvs::srv::Trigger>(rh.sc_robot_activation, request);
-        if (!resp.success) {
-          success = false;
-          RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", rh.robot_name.c_str(), resp.message.c_str());
+    switch (request->type) {
+      case Req::TYPE_START: {
+        RCLCPP_INFO(node_->get_logger(), "Activating the mission for all robots.");
+        for (auto &rh : fleet_mission_handlers_.handlers) {
+          auto trigger_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+          const auto resp  = callService<std_srvs::srv::Trigger>(rh.sc_robot_activation, trigger_req);
+          if (!resp.success) {
+            success = false;
+            RCLCPP_WARN(node_->get_logger(), " Activation call for robot '%s' failed: %s", rh.robot_name.c_str(), resp.message.c_str());
+          }
         }
+        break;
       }
-    } else if (request->value == "pause") {
-      RCLCPP_INFO(node_->get_logger(), "Pausing the mission for all robots.");
-      for (auto &rh : fleet_mission_handlers_.handlers) {
-        auto request    = std::make_shared<std_srvs::srv::Trigger::Request>();
-        const auto resp = callService<std_srvs::srv::Trigger>(rh.sc_robot_pausing, request);
-        if (!resp.success) {
-          success = false;
-          RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", rh.robot_name.c_str(), resp.message.c_str());
+      case Req::TYPE_PAUSE: {
+        RCLCPP_INFO(node_->get_logger(), "Pausing the mission for all robots.");
+        for (auto &rh : fleet_mission_handlers_.handlers) {
+          auto trigger_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+          const auto resp  = callService<std_srvs::srv::Trigger>(rh.sc_robot_pausing, trigger_req);
+          if (!resp.success) {
+            success = false;
+            RCLCPP_WARN(node_->get_logger(), " Pausing call for robot '%s' failed: %s", rh.robot_name.c_str(), resp.message.c_str());
+          }
         }
+        break;
       }
-    } else if (request->value == "stop") {
-      RCLCPP_INFO(node_->get_logger(), "Cancelling the mission for all robots.");
-      cancelRobotClients();
-    } else {
-      success = false;
-      ss << "Unsupported type\n";
+      case Req::TYPE_STOP: {
+        RCLCPP_INFO(node_->get_logger(), "Cancelling the mission for all robots.");
+        cancelRobotClients();
+        break;
+      }
+      default: {
+        success = false;
+        ss << "Unsupported type: " << static_cast<int>(request->type) << "\n";
+        break;
+      }
     }
-
   } else {
     success = false;
     ss << "No active mission.\n";
   }
 
   if (success) {
-    RCLCPP_INFO(node_->get_logger(), " Successfully processed the %s request.", request->value.c_str());
+    RCLCPP_INFO(node_->get_logger(), " Successfully processed fleet mission state change (type=%u).", request->type);
   } else {
     RCLCPP_WARN(node_->get_logger(), " Failure: %s", ss.str().c_str());
-  };
+  }
 
   response->success      = success;
   response->message      = ss.str();
@@ -727,19 +738,20 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<mrs
  */
 bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request> &request,
                                                        const std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response> &response) {
+  using Req = iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request;
 
   std::stringstream ss;
   active_mission_change_ = true;
 
   std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
 
-  RCLCPP_INFO(node_->get_logger(), " Received a %s request for %s", request->type.c_str(), request->robot_name.c_str());
+  RCLCPP_INFO(node_->get_logger(), " Received mission state change request (type=%u) for robot '%s'.", request->type, request->robot_name.c_str());
 
   auto *rh_ptr = findRobotHandler(request->robot_name, fleet_mission_handlers_);
 
   if (rh_ptr == nullptr) {
-    ss << "robot \"" << request->robot_name << "\" not found as a part of the mission, skipping\n";
-    RCLCPP_WARN(node_->get_logger(), " Robot %s not found as a part of the mission. Skipping.", request->robot_name.c_str());
+    ss << "Robot \"" << request->robot_name << "\" not found as a part of the mission.\n";
+    RCLCPP_WARN(node_->get_logger(), " Robot '%s' not found as a part of the mission. Skipping.", request->robot_name.c_str());
     response->message = ss.str();
     response->success = false;
     return true;
@@ -747,56 +759,62 @@ bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iro
 
   bool success = true;
   if (current_goal_handle_->is_active()) {
-    if (request->type == "start") {
-      RCLCPP_INFO(node_->get_logger(), " Calling mission activation for robot: %s.", request->robot_name.c_str());
-      auto service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
-      const auto resp      = callService<std_srvs::srv::Trigger>(rh_ptr->sc_robot_activation, service_request);
-      if (!resp.success) {
-        success = false;
-        RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", request->robot_name.c_str(), resp.message.c_str());
-        ss << "Call for robot \"" << request->robot_name << "\" was not successful with message: " << resp.message << "\n";
-      } else {
-        ss << "Call successful.\n";
-      }
-    } else if (request->type == "pause") {
-      RCLCPP_INFO(node_->get_logger(), " Calling mission pausing for robot: %s.", request->robot_name.c_str());
-      auto service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
-      const auto resp      = callService<std_srvs::srv::Trigger>(rh_ptr->sc_robot_pausing, service_request);
-      if (!resp.success) {
-        success = false;
-        RCLCPP_WARN(node_->get_logger(), " Call for robot %s was not successful with message: %s", request->robot_name.c_str(), resp.message.c_str());
-        ss << "Call for robot \"" << request->robot_name << "\" was not successful with message: " << resp.message << "\n";
-      } else {
-        ss << "Call successful.\n";
-      }
-    } else if (request->type == "stop") {
-      RCLCPP_INFO(node_->get_logger(), " Calling mission stopping for robot: %s.", request->robot_name.c_str());
-      auto cancel_callback = [this, robot_name = rh_ptr->robot_name](std::shared_ptr<rclcpp_action::Client<RobotMission>::CancelResponse> response) {
-        if (response->return_code == action_msgs::srv::CancelGoal::Response::ERROR_NONE) {
-          RCLCPP_INFO(node_->get_logger(), "Cancel accepted for robot '%s'", robot_name.c_str());
+    switch (request->type) {
+      case Req::TYPE_START: {
+        RCLCPP_INFO(node_->get_logger(), " Calling mission activation for robot '%s'.", request->robot_name.c_str());
+        auto trigger_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+        const auto resp  = callService<std_srvs::srv::Trigger>(rh_ptr->sc_robot_activation, trigger_req);
+        if (!resp.success) {
+          success = false;
+          RCLCPP_WARN(node_->get_logger(), " Activation call for robot '%s' failed: %s", request->robot_name.c_str(), resp.message.c_str());
+          ss << "Activation call for robot \"" << request->robot_name << "\" failed: " << resp.message << "\n";
         } else {
-          RCLCPP_WARN(node_->get_logger(), "Cancel rejected for robot '%s'", robot_name.c_str());
+          ss << "Activation call successful.\n";
         }
-      };
-
-      rh_ptr->action_client_ptr->async_cancel_goal(rh_ptr->current_goal_handle, cancel_callback);
-
-    } else {
-      success = false;
-      ss << "Unsupported type\n";
+        break;
+      }
+      case Req::TYPE_PAUSE: {
+        RCLCPP_INFO(node_->get_logger(), " Calling mission pausing for robot '%s'.", request->robot_name.c_str());
+        auto trigger_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+        const auto resp  = callService<std_srvs::srv::Trigger>(rh_ptr->sc_robot_pausing, trigger_req);
+        if (!resp.success) {
+          success = false;
+          RCLCPP_WARN(node_->get_logger(), " Pausing call for robot '%s' failed: %s", request->robot_name.c_str(), resp.message.c_str());
+          ss << "Pausing call for robot \"" << request->robot_name << "\" failed: " << resp.message << "\n";
+        } else {
+          ss << "Pausing call successful.\n";
+        }
+        break;
+      }
+      case Req::TYPE_STOP: {
+        RCLCPP_INFO(node_->get_logger(), " Calling mission stopping for robot '%s'.", request->robot_name.c_str());
+        auto cancel_callback = [this, robot_name = rh_ptr->robot_name](std::shared_ptr<rclcpp_action::Client<RobotMission>::CancelResponse> response) {
+          if (response->return_code == action_msgs::srv::CancelGoal::Response::ERROR_NONE) {
+            RCLCPP_INFO(node_->get_logger(), "Cancel accepted for robot '%s'.", robot_name.c_str());
+          } else {
+            RCLCPP_WARN(node_->get_logger(), "Cancel rejected for robot '%s'.", robot_name.c_str());
+          }
+        };
+        rh_ptr->action_client_ptr->async_cancel_goal(rh_ptr->current_goal_handle, cancel_callback);
+        break;
+      }
+      default: {
+        success = false;
+        ss << "Unsupported type: " << static_cast<int>(request->type) << "\n";
+        break;
+      }
     }
-
   } else {
     success = false;
-    ss << "No active mission\n";
+    ss << "No active mission.\n";
   }
 
   if (success) {
-    RCLCPP_INFO(node_->get_logger(), " Successfully processed the %s request for %s.", request->type.c_str(), request->robot_name.c_str());
-    ss << "Successfully processed the " << request->type << " request for " << request->robot_name << ".\n";
+    RCLCPP_INFO(node_->get_logger(), " Successfully processed mission state change (type=%u) for robot '%s'.", request->type, request->robot_name.c_str());
+    ss << "Successfully processed request for robot \"" << request->robot_name << "\".\n";
   } else {
     RCLCPP_WARN(node_->get_logger(), " Failure: %s", ss.str().c_str());
-  };
+  }
 
   response->success      = success;
   response->message      = ss.str();

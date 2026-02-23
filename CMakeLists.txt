@@ -70,6 +70,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CoverageMission.msg"
   "msg/CoverageMissionRobot.msg"
   "msg/WaypointMissionInfo.msg"
+  "srv/ChangeFleetMissionStateSrv.srv"
   "srv/ChangeRobotMissionStateSrv.srv"
   "srv/GetWorldOriginSrv.srv"
   "srv/GetSafetyBorderSrv.srv"
