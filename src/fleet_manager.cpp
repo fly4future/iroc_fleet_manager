@@ -681,31 +681,53 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
     switch (request->type) {
       case Req::TYPE_START: {
         RCLCPP_INFO(node_->get_logger(), "Activating the mission for all robots.");
+        int succeeded       = 0;
+        const int total     = static_cast<int>(fleet_mission_handlers_.handlers.size());
         for (auto &rh : fleet_mission_handlers_.handlers) {
           auto trigger_req = std::make_shared<std_srvs::srv::Trigger::Request>();
           const auto resp  = callService<std_srvs::srv::Trigger>(rh.sc_robot_activation, trigger_req);
-          if (!resp.success) {
+          iroc_mission_handler::msg::MissionResult robot_result;
+          robot_result.name    = rh.robot_name;
+          robot_result.success = resp.success;
+          robot_result.message = resp.message;
+          response->robot_results.push_back(robot_result);
+          if (resp.success) {
+            succeeded++;
+          } else {
             success = false;
             RCLCPP_WARN(node_->get_logger(), " Activation call for robot '%s' failed: %s", rh.robot_name.c_str(), resp.message.c_str());
           }
         }
+        ss << "Activated " << succeeded << "/" << total << " robots.";
         break;
       }
       case Req::TYPE_PAUSE: {
         RCLCPP_INFO(node_->get_logger(), "Pausing the mission for all robots.");
+        int succeeded       = 0;
+        const int total     = static_cast<int>(fleet_mission_handlers_.handlers.size());
         for (auto &rh : fleet_mission_handlers_.handlers) {
           auto trigger_req = std::make_shared<std_srvs::srv::Trigger::Request>();
           const auto resp  = callService<std_srvs::srv::Trigger>(rh.sc_robot_pausing, trigger_req);
-          if (!resp.success) {
+          iroc_mission_handler::msg::MissionResult robot_result;
+          robot_result.name    = rh.robot_name;
+          robot_result.success = resp.success;
+          robot_result.message = resp.message;
+          response->robot_results.push_back(robot_result);
+          if (resp.success) {
+            succeeded++;
+          } else {
             success = false;
             RCLCPP_WARN(node_->get_logger(), " Pausing call for robot '%s' failed: %s", rh.robot_name.c_str(), resp.message.c_str());
           }
         }
+        ss << "Paused " << succeeded << "/" << total << " robots.";
         break;
       }
       case Req::TYPE_STOP: {
+        const int total = static_cast<int>(fleet_mission_handlers_.handlers.size());
         RCLCPP_INFO(node_->get_logger(), "Cancelling the mission for all robots.");
         cancelRobotClients();
+        ss << "Stop requested for " << total << " robot(s).";
         break;
       }
       default: {
@@ -720,7 +742,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
   }
 
   if (success) {
-    RCLCPP_INFO(node_->get_logger(), " Successfully processed fleet mission state change (type=%u).", request->type);
+    RCLCPP_INFO(node_->get_logger(), " %s", ss.str().c_str());
   } else {
     RCLCPP_WARN(node_->get_logger(), " Failure: %s", ss.str().c_str());
   }
@@ -796,6 +818,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iro
           }
         };
         rh_ptr->action_client_ptr->async_cancel_goal(rh_ptr->current_goal_handle, cancel_callback);
+        ss << "Stop requested for robot '" << request->robot_name << "'.";
         break;
       }
       default: {
@@ -1097,7 +1120,12 @@ void IROCFleetManager::missionDoneCallback(const rclcpp_action::ClientGoalHandle
 
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
-    auto *rh_ptr           = findRobotHandler(robot_name, fleet_mission_handlers_);
+    auto *rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
+    if (rh_ptr == nullptr) {
+      RCLCPP_WARN_STREAM(node_->get_logger(),
+                         "missionDoneCallback: no handler for '" << robot_name << "', ignoring result.");
+      return;
+    }
     rh_ptr->current_result = *result.result;
     rh_ptr->got_result     = true;
   }
@@ -1119,7 +1147,12 @@ void IROCFleetManager::missionFeedbackCallback(const RobotMission::Feedback::Con
 
   {
     std::scoped_lock lck(fleet_mission_handlers_.mtx);
-    auto *rh_ptr             = findRobotHandler(robot_name, fleet_mission_handlers_);
+    auto *rh_ptr = findRobotHandler(robot_name, fleet_mission_handlers_);
+    if (rh_ptr == nullptr) {
+      RCLCPP_WARN_STREAM(node_->get_logger(),
+                         "missionFeedbackCallback: no handler for '" << robot_name << "', ignoring feedback.");
+      return;
+    }
     rh_ptr->current_feedback = *feedback;
   }
 }

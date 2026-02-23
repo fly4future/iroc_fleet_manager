@@ -6,3 +6,4 @@ uint8 TYPE_STOP  = 2
 ---
 bool success
 string message
+iroc_mission_handler/MissionResult[] robot_results
