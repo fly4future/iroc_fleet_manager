@@ -54,6 +54,7 @@
 #include <tuple>
 
 #include <iroc_fleet_manager/common_handlers.h>
+#include <iroc_fleet_manager/enums/fleet_mission_state.h>
 //
 #if USE_ROS_TIMER == 1
 typedef mrs_lib::ROSTimer TimerType;
@@ -142,10 +143,8 @@ private:
   std::mutex staged_mission_mtx_;
   std::vector<iroc_mission_handler::msg::MissionGoal> staged_mission_robots_;
   std::string staged_mission_uuid_;
-  std::atomic<bool> has_staged_mission_{false};
 
-  std::atomic_bool active_mission_        = false;
-  std::atomic_bool active_mission_change_ = false;
+  std::atomic<fleet_mission_state_t> fleet_state_{fleet_mission_state_t::IDLE};
 
   // | --------------- dynamic loading of planners -------------- |
   struct planner_t
@@ -245,6 +244,7 @@ private:
                       const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> &response);
 
   // helper methods
+  void updateFleetState(fleet_mission_state_t new_state);
   std::map<std::string, result_t> sendRobotGoals(const std::vector<iroc_mission_handler::msg::MissionGoal> &robots, bool auto_activate = false);
   robot_mission_handler_t *findRobotHandler(const std::string &robot_name, fleet_mission_handlers_t &mission_handlers) const;
   std::shared_ptr<Mission::Feedback> processAggregatedFeedbackInfo(const std::vector<iroc_mission_handler::msg::MissionFeedback> &robot_feedbacks) const;
@@ -505,6 +505,12 @@ void IROCFleetManager::initialize() {
   is_initialized_ = true;
 }
 
+void IROCFleetManager::updateFleetState(fleet_mission_state_t new_state) {
+  RCLCPP_INFO(node_->get_logger(), "[FleetMissionState] %s -> %s",
+              to_string(fleet_state_.load()), to_string(new_state));
+  fleet_state_.store(new_state);
+}
+
 /*!
  * Main Timer: Responsible of monitoring and validating the progress of the
  * missions for each robot within the fleet.
@@ -521,9 +527,7 @@ void IROCFleetManager::timerMain() {
     return;
   }
 
-  // Activate based on asynchronous service call which locks the action server
-  // and fleet_mission_handler mutexes
-  if (active_mission_change_ || !active_mission_) {
+  if (fleet_state_.load() != fleet_mission_state_t::EXECUTING) {
     return;
   }
 
@@ -547,7 +551,7 @@ void IROCFleetManager::timerMain() {
       result->message       = "Early failure detected, aborting mission.";
       result->robot_results = getRobotResults();
       current_goal_handle_->abort(result);
-      active_mission_ = false;
+      updateFleetState(fleet_mission_state_t::IDLE);
       cancelRobotClients();
       RCLCPP_INFO(node_->get_logger(), " Mission aborted.");
       return;
@@ -571,7 +575,7 @@ void IROCFleetManager::timerMain() {
         result->message       = "Early failure detected, aborting mission.";
         result->robot_results = getRobotResults();
         current_goal_handle_->abort(result);
-        active_mission_ = false;
+        updateFleetState(fleet_mission_state_t::IDLE);
         cancelRobotClients();
         RCLCPP_INFO(node_->get_logger(), " Mission finished.");
         return;
@@ -583,7 +587,7 @@ void IROCFleetManager::timerMain() {
       result->message       = "All robots finished successfully, mission finished";
       result->robot_results = getRobotResults();
       current_goal_handle_->succeed(result);
-      active_mission_ = false;
+      updateFleetState(fleet_mission_state_t::IDLE);
       cancelRobotClients();
       RCLCPP_INFO(node_->get_logger(), " Mission finished.");
     }
@@ -601,10 +605,11 @@ void IROCFleetManager::timerFeedback() {
     return;
   }
 
-  // Activate based on asynchronous service call which locks the action server
-  // and fleet_mission_handler mutexes
-  if (active_mission_change_ || !active_mission_) {
-    return;
+  {
+    const auto state = fleet_state_.load();
+    if (state != fleet_mission_state_t::EXECUTING && state != fleet_mission_state_t::PAUSED) {
+      return;
+    }
   }
 
   actionPublishFeedback();
@@ -668,8 +673,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
   using Req = iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Request;
 
   std::stringstream ss;
-  bool success           = true;
-  active_mission_change_ = true;
+  bool success = true;
 
   std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
 
@@ -678,6 +682,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
   if (current_goal_handle_->is_active()) {
     switch (request->type) {
       case Req::TYPE_START: {
+        updateFleetState(fleet_mission_state_t::EXECUTING);
         RCLCPP_INFO(node_->get_logger(), "Activating the mission for all robots.");
         int succeeded       = 0;
         const int total     = static_cast<int>(fleet_mission_handlers_.handlers.size());
@@ -696,10 +701,14 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
             RCLCPP_WARN(node_->get_logger(), " Activation call for robot '%s' failed: %s", rh.robot_name.c_str(), resp.message.c_str());
           }
         }
+        if (succeeded == 0) {
+          updateFleetState(fleet_mission_state_t::PAUSED);
+        }
         ss << "Activated " << succeeded << "/" << total << " robots.";
         break;
       }
       case Req::TYPE_PAUSE: {
+        updateFleetState(fleet_mission_state_t::PAUSED);
         RCLCPP_INFO(node_->get_logger(), "Pausing the mission for all robots.");
         int succeeded       = 0;
         const int total     = static_cast<int>(fleet_mission_handlers_.handlers.size());
@@ -717,6 +726,9 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
             success = false;
             RCLCPP_WARN(node_->get_logger(), " Pausing call for robot '%s' failed: %s", rh.robot_name.c_str(), resp.message.c_str());
           }
+        }
+        if (succeeded == 0) {
+          updateFleetState(fleet_mission_state_t::EXECUTING);
         }
         ss << "Paused " << succeeded << "/" << total << " robots.";
         break;
@@ -745,9 +757,8 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
     RCLCPP_WARN(node_->get_logger(), " Failure: %s", ss.str().c_str());
   }
 
-  response->success      = success;
-  response->message      = ss.str();
-  active_mission_change_ = false;
+  response->success = success;
+  response->message = ss.str();
   return true;
 }
 
@@ -761,8 +772,6 @@ bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iro
   using Req = iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request;
 
   std::stringstream ss;
-  active_mission_change_ = true;
-
   std::scoped_lock lock(action_server_mutex_, fleet_mission_handlers_.mtx);
 
   RCLCPP_INFO(node_->get_logger(), " Received mission state change request (type=%u) for robot '%s'.", request->type, request->robot_name.c_str());
@@ -837,9 +846,8 @@ bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iro
     RCLCPP_WARN(node_->get_logger(), " Failure: %s", ss.str().c_str());
   }
 
-  response->success      = success;
-  response->message      = ss.str();
-  active_mission_change_ = false;
+  response->success = success;
+  response->message = ss.str();
   return true;
 }
 
@@ -1063,10 +1071,13 @@ bool IROCFleetManager::getMissionData(const std::shared_ptr<iroc_fleet_manager::
 
   std::scoped_lock lck(mission_goals_mtx_);
 
-  if (!active_mission_) {
-    response->success = false;
-    response->message = "No active mission.";
-    return true;
+  {
+    const auto state = fleet_state_.load();
+    if (state != fleet_mission_state_t::EXECUTING && state != fleet_mission_state_t::PAUSED) {
+      response->success = false;
+      response->message = "No active mission.";
+      return true;
+    }
   }
 
   response->success      = true;
@@ -1096,8 +1107,11 @@ void IROCFleetManager::missionActiveCallback(const std::string &robot_name) cons
 
 void IROCFleetManager::missionDoneCallback(const rclcpp_action::ClientGoalHandle<RobotMission>::WrappedResult &result) {
 
-  if (!active_mission_) {
-    return;
+  {
+    const auto state = fleet_state_.load();
+    if (state == fleet_mission_state_t::IDLE || state == fleet_mission_state_t::STAGED) {
+      return;
+    }
   }
   const auto robot_name = result.result->robot_result.name;
 
@@ -1137,8 +1151,11 @@ void IROCFleetManager::missionDoneCallback(const rclcpp_action::ClientGoalHandle
 
 void IROCFleetManager::missionFeedbackCallback(const RobotMission::Feedback::ConstSharedPtr feedback) {
 
-  if (!active_mission_) {
-    return;
+  {
+    const auto state = fleet_state_.load();
+    if (state == fleet_mission_state_t::IDLE || state == fleet_mission_state_t::STAGED) {
+      return;
+    }
   }
 
   auto robot_name = feedback->robot_feedback.name;
@@ -1173,15 +1190,18 @@ rclcpp_action::GoalResponse IROCFleetManager::handle_goal(const rclcpp_action::G
     return rclcpp_action::GoalResponse::REJECT;
   }
 
-  if (active_mission_) {
-    RCLCPP_WARN(node_->get_logger(), "Rejecting goal: fleet mission already active.");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
+  {
+    const auto state = fleet_state_.load();
+    if (state == fleet_mission_state_t::EXECUTING || state == fleet_mission_state_t::PAUSED) {
+      RCLCPP_WARN(node_->get_logger(), "Rejecting goal: fleet mission already active (state: %s).", to_string(state));
+      return rclcpp_action::GoalResponse::REJECT;
+    }
 
-  // Empty goal (start-path from bridge) requires a pre-staged mission.
-  if (goal->type.empty() && !has_staged_mission_) {
-    RCLCPP_WARN(node_->get_logger(), "Rejecting goal: no staged mission and no goal details provided.");
-    return rclcpp_action::GoalResponse::REJECT;
+    // Empty goal (start-path from bridge) requires a pre-staged mission.
+    if (goal->type.empty() && state != fleet_mission_state_t::STAGED) {
+      RCLCPP_WARN(node_->get_logger(), "Rejecting goal: no staged mission and no goal details provided.");
+      return rclcpp_action::GoalResponse::REJECT;
+    }
   }
 
   RCLCPP_INFO(node_->get_logger(), "Accepting goal.");
@@ -1197,10 +1217,9 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
   bool use_staged = false;
   {
     std::scoped_lock lk(staged_mission_mtx_);
-    if (has_staged_mission_) {
-      staged_robots       = std::move(staged_mission_robots_);
-      has_staged_mission_ = false;
-      use_staged          = true;
+    if (fleet_state_.load() == fleet_mission_state_t::STAGED) {
+      staged_robots = std::move(staged_mission_robots_);
+      use_staged    = true;
     }
   }
 
@@ -1232,7 +1251,7 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
 
     RCLCPP_INFO(node_->get_logger(), " Successfully sent staged goal to robots. Activation will happen per-robot on goal acceptance.");
     current_goal_handle_ = goal_handle;
-    active_mission_      = true;
+    updateFleetState(fleet_mission_state_t::EXECUTING);
     return;
   }
 
@@ -1285,7 +1304,7 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
   }
   RCLCPP_INFO(node_->get_logger(), " Successfully sent the goal to robots in mission.");
   current_goal_handle_ = goal_handle;
-  active_mission_      = true;
+  updateFleetState(fleet_mission_state_t::EXECUTING);
 }
 
 rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(const std::shared_ptr<GoalHandleMission> goal_handle) {
@@ -1297,7 +1316,7 @@ rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(const std::shared_
   current_goal_handle_->abort(result);
 
   cancelRobotClients();
-  active_mission_ = false;
+  updateFleetState(fleet_mission_state_t::IDLE);
   RCLCPP_INFO(node_->get_logger(), "Mission stopped by cancel request.");
   return rclcpp_action::CancelResponse::ACCEPT;
 }
@@ -1617,18 +1636,21 @@ bool IROCFleetManager::uploadFleetMissionCallback(const std::shared_ptr<iroc_fle
                                                   const std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Response> &response) {
   RCLCPP_INFO(node_->get_logger(), " Received upload fleet mission request (type=%s).", request->type.c_str());
 
-  if (active_mission_) {
-    response->success = false;
-    response->message = "Fleet mission is executing, cannot upload";
-    RCLCPP_WARN(node_->get_logger(), " Upload rejected: %s", response->message.c_str());
-    return true;
-  }
+  {
+    const auto state = fleet_state_.load();
+    if (state == fleet_mission_state_t::EXECUTING || state == fleet_mission_state_t::PAUSED) {
+      response->success = false;
+      response->message = "Fleet mission is executing, cannot upload";
+      RCLCPP_WARN(node_->get_logger(), " Upload rejected: %s", response->message.c_str());
+      return true;
+    }
 
-  if (has_staged_mission_) {
-    response->success = false;
-    response->message = "Mission already staged, stop or unload first";
-    RCLCPP_WARN(node_->get_logger(), " Upload rejected: %s", response->message.c_str());
-    return true;
+    if (state == fleet_mission_state_t::STAGED) {
+      response->success = false;
+      response->message = "Mission already staged, stop or unload first";
+      RCLCPP_WARN(node_->get_logger(), " Upload rejected: %s", response->message.c_str());
+      return true;
+    }
   }
 
   // Validate goal with planner and produce per-robot goals
@@ -1676,8 +1698,8 @@ bool IROCFleetManager::uploadFleetMissionCallback(const std::shared_ptr<iroc_fle
     std::scoped_lock lk(staged_mission_mtx_);
     staged_mission_robots_ = mission_robots;
     staged_mission_uuid_   = request->uuid;
-    has_staged_mission_    = true;
   }
+  updateFleetState(fleet_mission_state_t::STAGED);
 
   response->success       = true;
   response->message       = "Mission uploaded to all robots successfully";
