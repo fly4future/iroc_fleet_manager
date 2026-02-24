@@ -84,14 +84,14 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
 
   RCLCPP_INFO(node_->get_logger(), "[%s]: received goal: %s", name_.c_str(), goal.c_str());
 
-  std::vector<custom_types::Point2D> search_area;
+  std::vector<iroc_common::custom_types::Point2D> search_area;
   json robots;
   int frame_id;
   int height;
   int height_id;
   int terminal_action;
 
-  bool success = utils::parseVars(json_msg, {
+  bool success = iroc_common::utils::parseVars(json_msg, {
                                                 {"search_area", &search_area},
                                                 {"robots", &robots},
                                                 {"height", &height},

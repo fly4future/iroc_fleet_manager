@@ -43,6 +43,7 @@ set(DEPENDENCIES
   mrs_lib
   mrs_robot_diagnostics
   iroc_mission_handler
+  iroc_common
   pluginlib
   rosidl_default_generators
   nlohmann_json
@@ -104,13 +105,12 @@ target_sources(IrocFleetManager_IrocFleetManager
   FILES
     "include/iroc_fleet_manager/planner.h"
     "include/iroc_fleet_manager/common_handlers.h"
-    "include/iroc_fleet_manager/utils/json_var_parser.h"
-    "include/iroc_fleet_manager/utils/types.h"
     "include/iroc_fleet_manager/utils/conversions.h"
 )
 
 target_link_libraries(IrocFleetManager_IrocFleetManager
   INTERFACE
+    iroc_common::iroc_common
     rclcpp::rclcpp
     rclcpp_action::rclcpp_action
     rclcpp_components::component
@@ -130,12 +130,12 @@ target_link_libraries(IrocFleetManager_IrocFleetManager
 
 add_library(IROCFleetManager SHARED
   src/fleet_manager.cpp
-  src/utils/json_var_parser.cpp
 )
 
 target_link_libraries(IROCFleetManager
   PRIVATE
     iroc_fleet_manager::iroc_fleet_manager
+    iroc_common::iroc_common
     rclcpp::rclcpp
     rclcpp_action::rclcpp_action
     rclcpp_components::component

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "iroc_fleet_manager/utils/types.h"
+#include <iroc_common/types.h>
 #include "iroc_mission_handler/msg/subtask.hpp"
 #include "iroc_mission_handler/msg/waypoint.hpp"
 #include <mrs_msgs/msg/reference.hpp>
@@ -12,7 +12,7 @@ namespace iroc_fleet_manager {
 // Helper functions to simplify the ROS API
 
 template <typename Msg_T>
-Msg_T toRosMsg(const custom_types::Point2D& point) {
+Msg_T toRosMsg(const iroc_common::custom_types::Point2D& point) {
   Msg_T msg_point;
   msg_point.x = point.x;
   msg_point.y = point.y;
@@ -20,7 +20,7 @@ Msg_T toRosMsg(const custom_types::Point2D& point) {
 }
 
 template <typename Msg_T>
-Msg_T toRosMsg(const custom_types::Point3D& point) {
+Msg_T toRosMsg(const iroc_common::custom_types::Point3D& point) {
   Msg_T msg_point;
   msg_point.x = point.x;
   msg_point.y = point.y;
@@ -29,7 +29,7 @@ Msg_T toRosMsg(const custom_types::Point3D& point) {
 }
 
 template <typename Msg_T>
-Msg_T toRosMsg(const custom_types::Reference& point) {
+Msg_T toRosMsg(const iroc_common::custom_types::Reference& point) {
   Msg_T msg_point;
   msg_point.position.x = point.x;
   msg_point.position.y = point.y;
@@ -39,7 +39,7 @@ Msg_T toRosMsg(const custom_types::Reference& point) {
 }
 
 template <typename Msg_T>
-Msg_T toRosMsg(const custom_types::Subtask& subtask) {
+Msg_T toRosMsg(const iroc_common::custom_types::Subtask& subtask) {
   Msg_T ros_subtask;
   ros_subtask.type = subtask.type;
   ros_subtask.parameters = subtask.parameters;
@@ -51,7 +51,7 @@ Msg_T toRosMsg(const custom_types::Subtask& subtask) {
 }
 
 template <typename Msg_T>
-Msg_T toRosMsg(const custom_types::Waypoint& waypoint) {
+Msg_T toRosMsg(const iroc_common::custom_types::Waypoint& waypoint) {
   Msg_T ros_waypoint;
 
   ros_waypoint.reference = toRosMsg<mrs_msgs::msg::Reference>(waypoint.reference);

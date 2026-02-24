@@ -23,7 +23,9 @@
 #include <iroc_fleet_manager/msg/mission_goal.hpp>
 
 #include <iroc_mission_handler/action/mission.hpp>
-#include <iroc_fleet_manager/utils/types.h>
+
+#include <iroc_common/result.h>
+#include <iroc_common/call_service.h>
 
 // Robot diagnostics
 #include <mrs_msgs/msg/collision_avoidance_info.hpp>
@@ -62,12 +64,8 @@ typedef mrs_lib::ThreadTimer TimerType;
 namespace iroc_fleet_manager
 {
 
-// Forward declaration of result struct
-struct result_t
-{
-  bool success;
-  std::string message;
-};
+// Use shared result_t from iroc_common
+using result_t = iroc_common::result_t;
 
 class PlannerParams {
 
@@ -1810,24 +1808,7 @@ void IROCFleetManager::cancelRobotClients() {
 
 template <typename ServiceType>
 result_t IROCFleetManager::callService(mrs_lib::ServiceClientHandler<ServiceType> &sc, const std::shared_ptr<typename ServiceType::Request> &request) {
-
-  auto response = sc.callSync(request);
-
-  if (response) {
-    if (response.value()->success) {
-      RCLCPP_INFO_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000,
-                                  "Called service" << sc.getService() << "  with response \"" << response.value()->message << "\".");
-      return {true, response.value()->message};
-    } else {
-      RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000,
-                                  "Called service" << sc.getService() << "with response \"" << response.value()->message << "\".");
-      return {false, response.value()->message};
-    }
-  } else {
-    const std::string msg = std::string("Failed to call service ") + sc.getService() + ".";
-    RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000, msg);
-    return {false, msg};
-  }
+  return iroc_common::callService(sc, request, node_->get_logger(), clock_);
 }
 
 } // namespace iroc_fleet_manager

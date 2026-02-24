@@ -67,7 +67,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Waypoi
   }
 
   json robots;
-  bool success = utils::parseVars(json_msg, {{"robots", &robots}});
+  bool success = iroc_common::utils::parseVars(json_msg, {{"robots", &robots}});
 
   if (!success) {
     result.success = false;
@@ -79,13 +79,13 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Waypoi
 
   for (auto &robot : robots) {
     std::string name;
-    std::vector<custom_types::Waypoint> points;
+    std::vector<iroc_common::custom_types::Waypoint> points;
     int frame_id;
     int height;
     int height_id;
     int terminal_action;
 
-    bool success = utils::parseVars(robot, {
+    bool success = iroc_common::utils::parseVars(robot, {
                                                {"name", &name},
                                                {"points", &points},
                                                {"frame_id", &frame_id},

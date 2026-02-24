@@ -1,7 +1,8 @@
 #pragma once
 
+#include <iroc_common/result.h>
 #include <iroc_fleet_manager/common_handlers.h>
-#include <iroc_fleet_manager/utils/json_var_parser.h>
+#include <iroc_common/json_var_parser.h>
 #include <iroc_mission_handler/action/mission.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -9,73 +10,54 @@ namespace iroc_fleet_manager {
 
 namespace planners {
 
-struct result_t {
-  bool success;
-  std::string message;
-};
+// Re-export iroc_common::result_t under the planners namespace for convenience.
+using result_t = iroc_common::result_t;
 
 using json = nlohmann::json;
 
 class Planner {
  public:
   /**
-   * @brief Initializes the planner. It is called once for every planner. The
-   * runtime is not limited.
-   *
-   * @param nh the node handle of the FleetManager
-   * @param name of the planner for distinguishing multiple running instances of
-   * the same code
-   * @param name_space the parameter namespace of the planner, can be used
-   * during initialization of the private node handle
-   *
-   * @return true if success
+   * @brief Initializes the planner. Called once at startup.
    */
-  virtual bool initialize(const rclcpp::Node::SharedPtr node, const std::string& name, const std::string& name_space,
+  virtual bool initialize(const rclcpp::Node::SharedPtr node, const std::string &name, const std::string &name_space,
                           std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) = 0;
 
   /**
-   * @brief It is called before the planner will be required and used. Should
-   * not take much time (within miliseconds).
-   *
-   * @return true if success
+   * @brief Called before the planner is used. Should return quickly (milliseconds).
    */
   virtual bool activate(void) = 0;
 
   /**
-   * @brief is called when this planner is no longer needed. However, it can be
-   * activated later.
+   * @brief Called when this planner is no longer needed.
    */
   virtual void deactivate(void) = 0;
 
   /**
-   * @brief Request for planner to process an incoming goal
-   * @param incoming goal for the planner, string with JSON format type
-   * @return the goals of the robots in the fleet.
+   * @brief Process an incoming JSON goal and return per-robot mission goals.
    */
-  virtual std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> createGoal(const std::string& goal) const = 0;
+  virtual std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> createGoal(const std::string &goal) const = 0;
 
   virtual ~Planner() = default;
 
  protected:
-  result_t parseJson(const std::string& goal, json& json_msg) const;
+  result_t parseJson(const std::string &goal, json &json_msg) const;
 };
 
-result_t Planner::parseJson(const std::string& goal, json& json_msg) const {
-
+result_t Planner::parseJson(const std::string &goal, json &json_msg) const {
   result_t result;
   try {
     json_msg = json::parse(goal);
-  } catch (const json::exception& e) {
+  }
+  catch (const json::exception &e) {
     RCLCPP_WARN_STREAM(rclcpp::get_logger("IROCFleetManager"), "Bad json input: " << e.what());
     result.success = false;
     result.message = "BadRequest_400: Bad JSON input";
     return result;
   }
-
   result.success = true;
   return result;
 }
 
-} // namespace planners 
+} // namespace planners
 } // namespace iroc_fleet_manager
-

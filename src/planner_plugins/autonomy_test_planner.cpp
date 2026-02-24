@@ -49,7 +49,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Autono
     return std::make_tuple(result, mission_robots);
   }
 
-  bool success = utils::parseVars(json_msg, {{"robots", &robots}});
+  bool success = iroc_common::utils::parseVars(json_msg, {{"robots", &robots}});
 
   if (!success) {
     result.success = false;
@@ -62,7 +62,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Autono
     std::string name;
     int segment_length;
 
-    const auto succ = utils::parseVars(robot, {{"name", &name}, {"segment_length", &segment_length}});
+    const auto succ = iroc_common::utils::parseVars(robot, {{"name", &name}, {"segment_length", &segment_length}});
 
     if (!succ) {
       result.success = false;
