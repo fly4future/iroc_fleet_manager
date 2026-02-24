@@ -1171,7 +1171,18 @@ rclcpp_action::GoalResponse IROCFleetManager::handle_goal(const rclcpp_action::G
   RCLCPP_INFO(node_->get_logger(), "Received goal request with ID %s", rclcpp_action::to_string(uuid).c_str());
 
   if (!is_initialized_) {
-    RCLCPP_WARN(node_->get_logger(), "Not initialized yet, rejecting goal.");
+    RCLCPP_WARN(node_->get_logger(), "Rejecting goal: not initialized yet.");
+    return rclcpp_action::GoalResponse::REJECT;
+  }
+
+  if (active_mission_) {
+    RCLCPP_WARN(node_->get_logger(), "Rejecting goal: fleet mission already active.");
+    return rclcpp_action::GoalResponse::REJECT;
+  }
+
+  // Empty goal (start-path from bridge) requires a pre-staged mission.
+  if (goal->type.empty() && !has_staged_mission_) {
+    RCLCPP_WARN(node_->get_logger(), "Rejecting goal: no staged mission and no goal details provided.");
     return rclcpp_action::GoalResponse::REJECT;
   }
 
