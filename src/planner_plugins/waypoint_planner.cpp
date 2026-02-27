@@ -69,9 +69,11 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Waypoi
   json robots;
   bool success = iroc_common::utils::parseVars(json_msg, {{"robots", &robots}});
 
-  if (!success) {
+  // parseVars succeeds whenever the key exists, even if its value is null.
+  // An explicit is_array() check rejects null / scalar / object values.
+  if (!success || !robots.is_array()) {
     result.success = false;
-    result.message = "Faile to parse robots field from JSON";
+    result.message = "Failed to parse robots field from JSON: must be an array";
     return std::make_tuple(result, mission_robots);
   }
 
