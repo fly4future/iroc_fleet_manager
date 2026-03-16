@@ -451,8 +451,6 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
   std::vector<MapPolygon> polygons_decomposed;
 
   // Run algorithm for each rotation and save the best result
-  double best_solution_cost = std::numeric_limits<double>::max();
-  mstsp_solver::final_solution_t best_solution;
   for (const auto& rotation : best_initial_rotations)
   {
     // Decompose polygon using initial rotation

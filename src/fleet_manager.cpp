@@ -851,7 +851,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iro
   return true;
 }
 
-bool IROCFleetManager::getWorldOriginCallback(const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request> &request,
+bool IROCFleetManager::getWorldOriginCallback([[maybe_unused]] const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request> &request,
                                               const std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Response> &response) {
 
   std::scoped_lock lck(robot_handlers_.mtx);
@@ -1066,7 +1066,7 @@ bool IROCFleetManager::getObstaclesCallback([[maybe_unused]] const std::shared_p
   return true;
 }
 
-bool IROCFleetManager::getMissionData(const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request> &request,
+bool IROCFleetManager::getMissionData([[maybe_unused]] const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request> &request,
                                       const std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> &response) {
 
   std::scoped_lock lck(mission_goals_mtx_);
@@ -1307,7 +1307,7 @@ void IROCFleetManager::handle_accepted(const std::shared_ptr<GoalHandleMission> 
   updateFleetState(fleet_mission_state_t::EXECUTING);
 }
 
-rclcpp_action::CancelResponse IROCFleetManager::handle_cancel(const std::shared_ptr<GoalHandleMission> goal_handle) {
+rclcpp_action::CancelResponse IROCFleetManager::handle_cancel([[maybe_unused]] const std::shared_ptr<GoalHandleMission> goal_handle) {
   RCLCPP_INFO(node_->get_logger(), "Received request to cancel goal");
 
   auto result     = std::make_shared<Mission::Result>();

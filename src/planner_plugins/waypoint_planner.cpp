@@ -83,7 +83,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Waypoi
     std::string name;
     std::vector<iroc_common::custom_types::Waypoint> points;
     int frame_id;
-    int height;
     int height_id;
     int terminal_action;
 

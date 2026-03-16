@@ -86,7 +86,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
 
   std::vector<iroc_common::custom_types::Point2D> search_area;
   json robots;
-  int frame_id;
   int height;
   int height_id;
   int terminal_action;
@@ -168,7 +167,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
   auto paths = getCoveragePaths(mission);
 
   // Filling the mission_robots vector with the generated paths
-  for (int it = 0; it < mission.robots.size(); it++) {
+  for (size_t it = 0; it < mission.robots.size(); it++) {
     iroc_mission_handler::msg::MissionGoal robot;
     robot.name            = mission.robots[it].name;
     robot.points          = paths[it];
@@ -335,7 +334,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   coverage_paths_t coverage_paths;
   // For accessing the robots information from mission goal
   int uav_index = 0;
-  for (const auto &polygon : decomposed_polygon) {
+  for ([[maybe_unused]] const auto &polygon : decomposed_polygon) {
     mstsp_solver::final_solution_t best_solution;
     try {
 
