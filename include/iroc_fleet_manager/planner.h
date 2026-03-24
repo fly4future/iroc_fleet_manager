@@ -6,9 +6,11 @@
 #include <iroc_mission_handler/action/mission.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-namespace iroc_fleet_manager {
+namespace iroc_fleet_manager
+{
 
-namespace planners {
+namespace planners
+{
 
 // Re-export iroc_common::result_t under the planners namespace for convenience.
 using result_t = iroc_common::result_t;
@@ -16,7 +18,7 @@ using result_t = iroc_common::result_t;
 using json = nlohmann::json;
 
 class Planner {
- public:
+public:
   /**
    * @brief Initializes the planner. Called once at startup.
    */
@@ -40,7 +42,7 @@ class Planner {
 
   virtual ~Planner() = default;
 
- protected:
+protected:
   result_t parseJson(const std::string &goal, json &json_msg) const;
 };
 

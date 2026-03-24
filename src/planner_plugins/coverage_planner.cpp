@@ -67,11 +67,11 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
 
   // Custom messages used in the coverage planner
   std::vector<iroc_fleet_manager::msg::CoverageMissionRobot> robots_msg;
-  std::vector<mrs_msgs::msg::Point2D> search_area_msg;
-  mrs_msgs::msg::Point2D latlon_origin_msg;
+  std::vector<mrs_msgs::msg::Point2D>                        search_area_msg;
+  mrs_msgs::msg::Point2D                                     latlon_origin_msg;
 
   result_t result;
-  json json_msg;
+  json     json_msg;
 
   // Parsing JSON and creating robots JSON for post processing
   result = parseJson(goal, json_msg);
@@ -85,18 +85,18 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
   RCLCPP_INFO(node_->get_logger(), "[%s]: received goal: %s", name_.c_str(), goal.c_str());
 
   std::vector<iroc_common::custom_types::Point2D> search_area;
-  json robots;
-  int height;
-  int height_id;
-  int terminal_action;
+  json                                            robots;
+  int                                             height;
+  int                                             height_id;
+  int                                             terminal_action;
 
   bool success = iroc_common::utils::parseVars(json_msg, {
-                                                {"search_area", &search_area},
-                                                {"robots", &robots},
-                                                {"height", &height},
-                                                {"height_id", &height_id},
-                                                {"terminal_action", &terminal_action},
-                                            });
+                                                             {"search_area", &search_area},
+                                                             {"robots", &robots},
+                                                             {"height", &height},
+                                                             {"height_id", &height_id},
+                                                             {"terminal_action", &terminal_action},
+                                                         });
   if (!success) {
     result.success = false;
     result.message = "Failure while parsing robot data, bad JSON request";
@@ -124,7 +124,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
   robots_msg.reserve(robots.size());
   for (const auto &robot : robots) {
     iroc_fleet_manager::msg::CoverageMissionRobot robot_msg;
-    std::string name;
+    std::string                                   name;
 
     name = robot.get<std::string>();
 
@@ -185,7 +185,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
 
 
 algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const {
-  const std::string yaml_prefix = "fleet_manager/planners/coverage_planner/";
+  const std::string  yaml_prefix = "fleet_manager/planners/coverage_planner/";
   algorithm_config_t algorithm_config;
 
   // Load basic drone parameters
@@ -236,7 +236,7 @@ algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader 
 }
 
 point_t calculate_centroid(const MapPolygon &polygon) {
-  auto points  = polygon.get_all_points();
+  auto   points = polygon.get_all_points();
   double sum_x = 0, sum_y = 0;
   for (const auto &point : points) {
     sum_x += point.first;
@@ -251,7 +251,7 @@ double calculate_distance(const point_t &p1, const point_t &p2) {
 
 std::vector<MapPolygon> assign_closest_polygons(const std::vector<point_t> &uav_positions, std::vector<MapPolygon> polygons) {
   std::vector<MapPolygon> assigned_polygons(uav_positions.size());
-  std::vector<point_t> polygon_centroids;
+  std::vector<point_t>    polygon_centroids;
 
   // Calculate centroids for all polygons
   for (const auto &poly : polygons) {
@@ -285,7 +285,7 @@ std::vector<MapPolygon> assign_closest_polygons(const std::vector<point_t> &uav_
 CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::msg::CoverageMission &mission) const {
 
   // Fly zone and no fly zones
-  std::vector<point_t> fly_zone;
+  std::vector<point_t>              fly_zone;
   std::vector<std::vector<point_t>> no_fly_zones;
 
   // Fill the search area
@@ -305,7 +305,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   ShortestPathCalculator shortest_path_calculator(polygon);
 
   // Create a logger to log everything directly into stdout
-  auto shared_logger = std::make_shared<loggers::SimpleLogger>();
+  auto             shared_logger = std::make_shared<loggers::SimpleLogger>();
   EnergyCalculator energy_calculator{planner_config_.energy_calculator_config, shared_logger};
   RCLCPP_INFO_STREAM(node_->get_logger(), "[CoveragePlanner:]: Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed());
 
@@ -354,7 +354,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     auto best_paths = best_solution.paths;
     for (auto &path : best_paths) {
       std::vector<iroc_mission_handler::msg::Waypoint> coverage_path;
-      mrs_msgs::msg::Reference point;
+      mrs_msgs::msg::Reference                         point;
       for (auto &p : path) {
         // TODO Replace with mrs_lib transformer?
         auto lat_lon_p = meters_to_gps_coordinates({p.x, p.y}, planner_config_.lat_lon_origin);

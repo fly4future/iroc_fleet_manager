@@ -1,10 +1,13 @@
 #include <iroc_fleet_manager/iroc_plugins/autonomy_test_planner.h>
 
-namespace iroc_fleet_manager {
+namespace iroc_fleet_manager
+{
 
-namespace planners {
+namespace planners
+{
 
-namespace autonomy_test_planner {
+namespace autonomy_test_planner
+{
 
 bool AutonomyTestPlanner::initialize(const rclcpp::Node::SharedPtr node, const std::string &name, const std::string &name_space,
                                      std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
@@ -36,7 +39,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Autono
   RCLCPP_INFO(node_->get_logger(), "[%s]: creating goal from the received request", name_.c_str());
 
   std::vector<iroc_mission_handler::msg::MissionGoal> mission_robots;
-  result_t result;
+  result_t                                            result;
 
   json json_msg, robots;
 
@@ -60,7 +63,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Autono
   mission_robots.reserve(robots.size());
   for (auto &robot : robots) {
     std::string name;
-    int segment_length;
+    int         segment_length;
 
     const auto succ = iroc_common::utils::parseVars(robot, {{"name", &name}, {"segment_length", &segment_length}});
 
@@ -106,7 +109,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Autono
 std::vector<iroc_mission_handler::msg::Waypoint> AutonomyTestPlanner::getAutonomyPoints(double segment_length) const {
 
   std::vector<mrs_msgs::msg::Reference> points;
-  mrs_msgs::msg::Reference point;
+  mrs_msgs::msg::Reference              point;
 
   // Center point
   point.position.x = 0.0;
@@ -175,7 +178,7 @@ std::vector<iroc_mission_handler::msg::Waypoint> AutonomyTestPlanner::getAutonom
     wp.reference.position.x = p.position.x;
     wp.reference.position.y = p.position.y;
     wp.reference.position.z = p.position.z;
-    wp.reference.heading     = p.heading;
+    wp.reference.heading    = p.heading;
 
     autonomy_points.push_back(wp);
   }

@@ -80,26 +80,26 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Waypoi
   mission_robots.reserve(robots.size());
 
   for (auto &robot : robots) {
-    std::string name;
+    std::string                                      name;
     std::vector<iroc_common::custom_types::Waypoint> points;
-    int frame_id;
-    int height_id;
-    int terminal_action;
+    int                                              frame_id;
+    int                                              height_id;
+    int                                              terminal_action;
 
     bool success = iroc_common::utils::parseVars(robot, {
-                                               {"name", &name},
-                                               {"points", &points},
-                                               {"frame_id", &frame_id},
-                                               {"height_id", &height_id},
-                                               {"terminal_action", &terminal_action},
-                                           });
+                                                            {"name", &name},
+                                                            {"points", &points},
+                                                            {"frame_id", &frame_id},
+                                                            {"height_id", &height_id},
+                                                            {"terminal_action", &terminal_action},
+                                                        });
 
     if (!success) {
       result.success = false;
       result.message = "Failure while parsing robot data, bad JSON request";
       return std::make_tuple(result, mission_robots);
     }
-    
+
     if (!common_handlers_) {
       RCLCPP_WARN_STREAM(node_->get_logger(), "Common handlers or robots map is not initialized");
       result.success = false;

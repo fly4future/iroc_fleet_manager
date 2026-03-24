@@ -5,13 +5,9 @@
 #undef X_ENUM_BASE_TYPE
 #undef X_ENUM_SEQ
 
-#define X_ENUM_NAME      fleet_mission_state_t
+#define X_ENUM_NAME fleet_mission_state_t
 #define X_ENUM_BASE_TYPE uint8_t
-#define X_ENUM_SEQ       \
-  (IDLE)                 \
-  (STAGED)               \
-  (EXECUTING)            \
-  (PAUSED)
+#define X_ENUM_SEQ (IDLE)(STAGED)(EXECUTING)(PAUSED)
 
 namespace iroc_fleet_manager
 {
@@ -20,4 +16,4 @@ namespace iroc_fleet_manager
 
 DEFINE_ENUM_WITH_CONVERSIONS(X_ENUM_NAME, X_ENUM_BASE_TYPE, X_ENUM_SEQ)
 
-}
+} // namespace iroc_fleet_manager

@@ -40,8 +40,8 @@ public:
 private:
   // Additional type for coverage planner
   typedef std::vector<std::vector<iroc_mission_handler::msg::Waypoint>> coverage_paths_t;
-  rclcpp::Node::SharedPtr node_;
-  rclcpp::Clock::SharedPtr clock_;
+  rclcpp::Node::SharedPtr                                               node_;
+  rclcpp::Clock::SharedPtr                                              clock_;
 
   rclcpp::CallbackGroup::SharedPtr cbkgrp_subs_;
   rclcpp::CallbackGroup::SharedPtr cbkgrp_ss_;
@@ -50,7 +50,7 @@ private:
   bool is_initialized_ = false;
   bool is_active_      = false;
 
-  mutable algorithm_config_t planner_config_;
+  mutable algorithm_config_t                            planner_config_;
   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 
   algorithm_config_t parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const;
