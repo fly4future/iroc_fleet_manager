@@ -25,6 +25,7 @@
   <depend>mrs_msgs</depend>
   <depend>mrs_robot_diagnostics</depend>
   <depend>iroc_mission_handler</depend>
+  <depend>nlohmann-json-dev</depend>
   <depend>iroc_common</depend>
   
   <exec_depend>rosidl_default_runtime</exec_depend>
