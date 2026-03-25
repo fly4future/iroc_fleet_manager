@@ -156,7 +156,7 @@ private:
 
   // | ----------------------- Staged mission state ---------------------- |
 
-  std::mutex                                          staged_mission_mtx_;     ///< Guards staged mission fields below.
+  std::mutex                                          staged_mission_mtx_;     ///< Guards staged mission fields: staged_mission_robots_ and staged_mission_uuid_.
   std::vector<iroc_mission_handler::msg::MissionGoal> staged_mission_robots_;  ///< Per-robot goals for the staged mission.
   std::string                                         staged_mission_uuid_;    ///< UUID of the staged mission.
 
@@ -214,7 +214,7 @@ private:
   struct robot_topic_handlers_t
   {
     std::recursive_mutex                    mtx;      ///< Guards access to the handlers vector.
-    std::vector<robot_diagnostics_topics_t> handlers;
+    std::vector<robot_diagnostics_topics_t> handlers; 
   } robot_handlers_;
 
   CommonRobotHandlers_t common_robot_handlers_; ///< Latest cached robot data, shared with planners.
