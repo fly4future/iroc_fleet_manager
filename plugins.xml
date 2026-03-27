@@ -13,3 +13,8 @@
     <description>IROCFleetManager_AutonomyTestPlanner</description>
   </class>
 </library>
+<library path="lib/libIROCFleetManager_CzAltitudeCoveragePlanner">
+  <class name="iroc_fleet_manager/CzAltitudeCoveragePlanner" type="iroc_fleet_manager::planners::cz_altitude_coverage_planner::CzAltitudeCoveragePlanner" base_class_type="iroc_fleet_manager::planners::Planner">
+    <description>IROCFleetManager_CzAltitudeCoveragePlanner</description>
+  </class>
+</library>

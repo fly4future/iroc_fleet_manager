@@ -26,6 +26,10 @@
   <depend>geometry_msgs</depend>
   <depend>pluginlib</depend>
 
+  <depend>proj</depend>
+  <depend>curl</depend>
+  <depend>libzip-dev</depend>
+
   <export>
     <nodelet plugin="${prefix}/nodelets.xml" />
     <iroc_fleet_manager plugin="${prefix}/plugins.xml" />

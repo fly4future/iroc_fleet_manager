@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_definitions(-O0)
 
 set(ENERGY_AWARE_MCPP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/EnergyAwareMCPP")
+set(CZ_ALTITUDE_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/CzAltitude")
 
 set(CATKIN_DEPENDENCIES
   cmake_modules
@@ -27,12 +28,26 @@ set(LIBRARIES
   IROCFleetManager_WaypointPlanner
   IROCFleetManager_CoveragePlanner
   IROCFleetManager_AutonomyTestPlanner
+  IROCFleetManager_CzAltitudeCoveragePlanner
   EnergyAwareMCPP
+  CzAltitude
 )
 
 find_package(catkin REQUIRED COMPONENTS
   ${CATKIN_DEPENDENCIES}
 )
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PROJ REQUIRED proj)
+pkg_check_modules(libzip REQUIRED libzip)
+find_package(CURL REQUIRED)
+find_package(Threads REQUIRED)
+
+find_path(LASZIP_INCLUDE_DIR NAMES laszip/laszip_api.h)
+find_library(LASZIP_LIBRARY NAMES laszip)
+if(NOT LASZIP_INCLUDE_DIR OR NOT LASZIP_LIBRARY)
+    message(FATAL_ERROR "LASzip not found! Install with: sudo apt install liblaszip-dev")
+endif()
 
 #actions
 add_action_files(DIRECTORY action FILES
@@ -74,6 +89,7 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${ENERGY_AWARE_MCPP_SRC_DIR}/include
+  ${CZ_ALTITUDE_SRC_DIR}/include
 )
 
 # IROCFleetManager
@@ -124,6 +140,10 @@ add_library(EnergyAwareMCPP
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/mstsp_solver/TargetSet.cpp
 )
 
+add_library(CzAltitude
+  ${CZ_ALTITUDE_SRC_DIR}/src/DMR5GElevationGrid.cpp
+)
+
 # find_package(yaml-cpp REQUIRED)
 
 target_include_directories(EnergyAwareMCPP
@@ -131,6 +151,24 @@ target_include_directories(EnergyAwareMCPP
   ${catkin_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
   ${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP
+)
+
+# searching for header files
+target_include_directories(CzAltitude
+  PUBLIC
+  ${CZ_ALTITUDE_SRC_DIR}/include
+  ${LASZIP_INCLUDE_DIR}
+  ${PROJ_INCLUDE_DIRS}
+  ${CURL_INCLUDE_DIRS}
+  ${libzip_INCLUDE_DIRS}  # ${LIBZIP_INCLUDE_DIRS}
+)
+
+target_link_libraries(CzAltitude
+  ${CURL_LIBRARIES}
+  ${PROJ_LIBRARIES}
+  ${libzip_LIBRARIES}
+  ${LASZIP_LIBRARY}
+  Threads::Threads
 )
 
 # IROCFleetManager_CoveragePlanner
@@ -163,6 +201,24 @@ add_dependencies(IROCFleetManager_AutonomyTestPlanner
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(IROCFleetManager_AutonomyTestPlanner
+  ${catkin_LIBRARIES}
+)
+
+# IROCFleetManager_CzAltitudeCoveragePlanner
+## Declare a C++ library
+add_library(IROCFleetManager_CzAltitudeCoveragePlanner
+  src/planner_plugins/cz_altitude_coverage_planner.cpp
+)
+
+add_dependencies(IROCFleetManager_CzAltitudeCoveragePlanner
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(IROCFleetManager_CzAltitudeCoveragePlanner
+  EnergyAwareMCPP
+  CzAltitude
   ${catkin_LIBRARIES}
 )
 
