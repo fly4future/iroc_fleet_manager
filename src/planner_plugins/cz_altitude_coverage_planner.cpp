@@ -151,9 +151,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CzAltitudeC
   // Here the path is extended. Every 15 m is added a new waypoint. Also the altitude of each waypoint is added.
   coverage_paths_t new_paths;
   try {
-    // ROS_INFO("file path %s " << dmr5g_files_path);
-    std::cout << "file path " << dmr5g_files_path << std::endl;
-
     DMR5GElevationGrid elev_grid("/home/f4f/iroc_ws/src/IROC_core/ros_packages/iroc_fleet_manager/lib/CzAltitude/data/dmr5g_index.csv",
       "/home/f4f/iroc_ws/src/IROC_core/ros_packages/iroc_fleet_manager/lib/CzAltitude/data/dmr5g_unzipped");
 
