@@ -207,41 +207,122 @@ namespace mstsp_solver
   //}
 
   /* path_with_heading() //{ */
-  
-  std::vector<point_heading_t<double>> MstspSolver::path_with_heading(const std::vector<Target>& targets, int unique_alt_id) const
+  // std::vector<point_heading_t<double>> MstspSolver::path_with_heading(const std::vector<Target> &targets, int unique_alt_id) const {
+  //   // double unique_alt = m_config.sweeping_step;
+  //   // if (unique_alt_id % 2 == 0) {
+  //   //     unique_alt = m_config.sweeping_alt + ((unique_alt_id / 2) + 1) * m_config.unique_alt_step;
+  //   // } else {
+  //   //     unique_alt = m_config.sweeping_alt - ((unique_alt_id - 1) / 2 + 1) * m_config.unique_alt_step;
+  //   // }
+  //   double transit_alt = m_config.sweeping_alt + 1.0; // Pevná výška pro přeletové trasy
+  //   double sweep_alt = m_config.sweeping_alt;    // Pevná výška pro sweepovací vzory
+
+  //   std::vector<point_heading_t<double>> res;
+  //   res.emplace_back(m_config.starting_point);
+  //   res.front().z = transit_alt;
+
+  //   double last_heading = 0;
+  //   for (const auto &target: targets) {
+  //       // Calculate the path from previous target to this one using the shortest path calculator
+  //       auto path_to_target = add_path_heading(
+  //               m_shortest_path_calculator.shortest_path_between_points({res.back().x, res.back().y},
+  //                                                                       target.starting_point), last_heading,
+  //               transit_alt);
+  //       path_to_target.pop_back();
+  //       path_to_target.erase(path_to_target.begin());
+
+  //       res.insert(res.end(), path_to_target.begin(), path_to_target.end());
+
+  //       auto path = add_path_heading(sweeping(m_target_sets[target.target_set_index].polygon, target.rotation_angle,
+  //                                             m_config.sweeping_step, m_config.wall_distance, target.first_line_up),
+  //                                     target.rotation_angle, sweep_alt);
+
+  //       // Přidáme bod pro vertikální sestup (nad začátkem sweepovací trasy)
+  //       auto descent_point = path.front();
+  //       descent_point.z = transit_alt;
+  //       res.push_back(descent_point);
+
+  //       res.insert(res.end(), path.begin(), path.end());
+
+  //       // Přidáme bod pro vertikální výstup (nad koncem sweepovací trasy)
+  //       auto ascent_point = path.back();
+  //       ascent_point.z = transit_alt;
+  //       res.push_back(ascent_point);
+
+  //       last_heading = target.rotation_angle;
+  //   }
+  //   auto path_to_start = add_path_heading(
+  //           m_shortest_path_calculator.shortest_path_between_points({res.back().x, res.back().y},
+  //                                                                   m_config.starting_point), last_heading,
+  //           transit_alt);
+  //   path_to_start.erase(path_to_start.begin());
+
+  //   res.insert(res.end(), path_to_start.begin(), path_to_start.end());
+  //   return res;
+  // }
+  //}
+
+
+  std::vector<point_heading_t<double>> MstspSolver::path_with_heading(const std::vector<Target> &targets, int unique_alt_id) const
   {
-    double unique_alt = m_config.sweeping_step;
-    if (unique_alt_id % 2 == 0)
-    {
-      unique_alt = m_config.sweeping_alt + ((unique_alt_id / 2) + 1) * m_config.unique_alt_step;
-    } else
-    {
-      unique_alt = m_config.sweeping_alt - ((unique_alt_id - 1) / 2 + 1) * m_config.unique_alt_step;
-    }
+    double transit_alt = m_config.sweeping_alt + 1.0; // Pevná výška pro přeletové trasy
+    double sweep_alt = m_config.sweeping_alt;    // Pevná výška pro sweepovací vzory
 
     std::vector<point_heading_t<double>> res;
     res.emplace_back(m_config.starting_point);
-    res.front().z = unique_alt;
+    res.front().z = transit_alt;
 
     double last_heading = 0;
-    for (const auto& target : targets)
-    {
-      // Calculate the path from previous target to this one using the shortest path calculator
-      auto path_to_target = add_path_heading(m_shortest_path_calculator.shortest_path_between_points({res.back().x, res.back().y}, target.starting_point),
-                                             last_heading, unique_alt);
+    for (const auto &target: targets) {
+      std::vector<point_t> transit_path_points;
+      point_t previous_point = {res.back().x, res.back().y};
+
+      // If the previous point is the global starting point, this is the first transit path.
+      // Create a direct path for it, ignoring no-fly zones.
+      if (previous_point == m_config.starting_point) {
+        transit_path_points = {previous_point, target.starting_point};
+      } else {
+        // Otherwise, it's a path between two sweep areas, so avoid obstacles.
+        transit_path_points = m_shortest_path_calculator.shortest_path_between_points(previous_point, target.starting_point);
+      }
+
+      // transit_path_points = m_shortest_path_calculator.shortest_path_between_points(previous_point, target.starting_point);
+
+      auto path_to_target = add_path_heading(transit_path_points, last_heading, transit_alt);
       path_to_target.pop_back();
       path_to_target.erase(path_to_target.begin());
+      
+      // duplicate path_to_target
+      std::vector<point_heading_t<double>> doubled_path_to_target;
+      doubled_path_to_target.reserve(path_to_target.size() * 2);
+      for (const auto& point : path_to_target) {
+        doubled_path_to_target.push_back(point);
+        doubled_path_to_target.push_back(point);
+      }
 
-      res.insert(res.end(), path_to_target.begin(), path_to_target.end());
+      res.insert(res.end(), doubled_path_to_target.begin(), doubled_path_to_target.end());
 
-      auto path = add_path_heading(
-          sweeping(m_target_sets[target.target_set_index].polygon, target.rotation_angle, m_config.sweeping_step, m_config.wall_distance, target.first_line_up),
-          target.rotation_angle, m_config.sweeping_alt);
+      auto path = add_path_heading(sweeping(m_target_sets[target.target_set_index].polygon, target.rotation_angle,
+                                            m_config.sweeping_step, m_config.wall_distance, target.first_line_up),
+                                    target.rotation_angle, sweep_alt);
+      
+      // Add a point for vertical descent (above start of sweeping path)
+      auto descent_point = path.front();
+      descent_point.z = transit_alt;
+      res.push_back(descent_point);
+
       res.insert(res.end(), path.begin(), path.end());
+
+      // Add a point for vertical ascent (above the end of sweeping path)
+      auto ascent_point = path.back();
+      ascent_point.z = transit_alt;
+      res.push_back(ascent_point);
+
       last_heading = target.rotation_angle;
     }
-    auto path_to_start = add_path_heading(m_shortest_path_calculator.shortest_path_between_points({res.back().x, res.back().y}, m_config.starting_point),
-                                          last_heading, unique_alt);
+    // For the path back to start, create a direct path, ignoring no-fly zones.
+    auto path_to_start = add_path_heading({{res.back().x, res.back().y}, m_config.starting_point},
+                                          last_heading, transit_alt);
     path_to_start.erase(path_to_start.begin());
 
     res.insert(res.end(), path_to_start.begin(), path_to_start.end());

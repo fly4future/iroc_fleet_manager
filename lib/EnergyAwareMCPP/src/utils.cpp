@@ -69,10 +69,15 @@ bool segments_intersect(const segment_t& s1, const segment_t& s2)
 
   auto intersection = segment_segment_intersection(s1, s2);
   // Return true only of the intersection of lines is between the constraints of the first and the second segments
-  return intersection.first >= std::min(s1.first.first, s1.second.first) && intersection.first <= std::max(s1.first.first, s1.second.first)
-         && intersection.first >= std::min(s2.first.first, s2.second.first) && intersection.first <= std::max(s2.first.first, s2.second.first)
-         && intersection.second >= std::min(s1.first.second, s1.second.second) && intersection.second <= std::max(s1.first.second, s1.second.second)
-         && intersection.second >= std::min(s2.first.second, s2.second.second) && intersection.second <= std::max(s2.first.second, s2.second.second);
+  const double EPS = 1e-4;
+  return intersection.first >= std::min(s1.first.first, s1.second.first) - EPS &&
+          intersection.first <= std::max(s1.first.first, s1.second.first) + EPS &&
+          intersection.first >= std::min(s2.first.first, s2.second.first) - EPS &&
+          intersection.first <= std::max(s2.first.first, s2.second.first) + EPS &&
+          intersection.second >= std::min(s1.first.second, s1.second.second) - EPS &&
+          intersection.second <= std::max(s1.first.second, s1.second.second) + EPS &&
+          intersection.second >= std::min(s2.first.second, s2.second.second) - EPS &&
+          intersection.second <= std::max(s2.first.second, s2.second.second) + EPS;
 }
 //}
 
@@ -146,6 +151,24 @@ int generate_random_number()
   return distribution(generator);
 }
 //}
+
+bool is_point_in_polygon(const point_t &point, const polygon_t &polygon) {
+    if (polygon.size() < 3) {
+        return false;
+    }
+
+    bool inside = false;
+    for (size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+        const auto &p_i = polygon[i];
+        const auto &p_j = polygon[j];
+
+        if (((p_i.second > point.second) != (p_j.second > point.second)) &&
+            (point.first < (p_j.first - p_i.first) * (point.second - p_i.second) / (p_j.second - p_i.second) + p_i.first)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
 
 /* polygon_convex() //{ */
 

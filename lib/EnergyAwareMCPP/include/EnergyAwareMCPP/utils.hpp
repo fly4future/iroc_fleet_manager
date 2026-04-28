@@ -96,6 +96,9 @@ point_t meters_to_gps_coordinates(point_t p, point_t origin);
  */
 int generate_random_number();
 
+
+bool is_point_in_polygon(const point_t &point, const polygon_t &polygon);
+
 /*!
  * @param polygon vector of points representing a polygon borders
  * @return whether the polygon is convex

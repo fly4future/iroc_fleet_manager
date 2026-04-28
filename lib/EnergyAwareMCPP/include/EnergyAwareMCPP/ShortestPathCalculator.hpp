@@ -69,7 +69,7 @@ public:
      * Main and the only constructor of the calculator.
      * @param polygon polygon, bounds of which will define the shortest path
      */
-    explicit ShortestPathCalculator(const MapPolygon &polygon);
+    explicit ShortestPathCalculator(const MapPolygon &polygon, bool ignore_fly_zone = false);
 
     ShortestPathCalculator() = delete;
 

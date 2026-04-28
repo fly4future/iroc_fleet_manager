@@ -27,7 +27,7 @@ T convertFromJson(const json &j) {
     T result;
     result.reserve(j.size());
     for (const auto &item : j) {
-      result.emplace_back(typename T::value_type(item));
+      result.emplace_back(convertFromJson<typename T::value_type>(item));
     }
     return result;
   } else {
@@ -65,6 +65,15 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
 }
 
 bool parseVars(const json &js, std::vector<std::pair<std::string_view, parseable_t>> &&vars) {
+  // for (auto &var : vars) {
+  //   if (!parseVar(js, var)) {
+  //     ROS_WARN("parseVars: Could not load parameter %s", var.first);
+  //     // return false;
+  //     continue;
+  //   }
+  // }
+  // return true;
+
   for (auto &var : vars)
     if (!parseVar(js, var))
       return false;

@@ -28,71 +28,72 @@ namespace
    * @param fly_zone Whether the polygon should be treated as a fly-zone
    * @return Set of polygon vertices between which there is no direct path not leaving the fly-zone
    */
-  std::set<segment_t> no_direct_path(const std::vector<point_t>& polygon, bool fly_zone = true)
-  {
-
-    // Vector of turning angles around each polygon node
-    std::vector<double> angles;
-    angles.push_back(angle_between_vectors(pm(polygon[polygon.size() - 2]), pm(polygon[0]), pm(polygon[1])));
-    for (size_t i = 1; i + 1 < polygon.size(); ++i)
-    {
-      angles.push_back(angle_between_vectors(pm(polygon[i - 1]), pm(polygon[i]), pm(polygon[i + 1])));
-    }
-
-
+  std::set<segment_t> no_direct_path(const std::vector<point_t> &polygon, bool fly_zone = true) {
     std::set<segment_t> no_direct_view;
-    // Iterate through each pair of points in the polygon and if the sum of angles between them is not suitable -
-    // add them to the list of not possible ones
-    for (size_t i = 0; i < angles.size(); ++i)
-    {
-      double angle = 0;
-      for (size_t j = i + 2; j < angles.size(); j++)
-      {
-        angle += M_PI - angles[j - 1];
-        if (((angle < 0 - EPS || angle > 2 * M_PI + EPS) && fly_zone) || ((angle < 2 * M_PI - EPS && angle > 0 + EPS) && !fly_zone))
-        {
+    for (size_t i = 0; i < polygon.size(); ++i) {
+      for (size_t j = i + 2; j < polygon.size(); ++j) {
+        // Skip the edge connecting the first and the last node
+        if (i == 0 && j == polygon.size() - 1) continue;
+        if (i == 0 && j == polygon.size() - 2 && polygon.front() == polygon.back()) continue;
+
+        point_t midpoint = {(polygon[i].first + polygon[j].first) / 2.0,
+                            (polygon[i].second + polygon[j].second) / 2.0};
+        bool inside = is_point_in_polygon(midpoint, polygon);
+        
+        if (fly_zone && !inside) {
+          no_direct_view.insert({polygon[i], polygon[j]});
+        } else if (!fly_zone && inside) {
           no_direct_view.insert({polygon[i], polygon[j]});
         }
       }
-    }
-    // If first and last points were added accidentally, remove them
-    auto pos = no_direct_view.find({polygon.front(), polygon[polygon.size() - 2]});
-    if (pos != no_direct_view.end())
-    {
-      no_direct_view.erase(pos);
     }
     return no_direct_view;
   }
 
   /*!
-   * Calculate the segments, between which there is no direct path definitely.
-   * Needed for the main algorithm while checking if there is a direct path by
-   * "visibility" of the points (no segment between them). But this situation can also
-   * happen when nodes "see" each other through a no-fly zone (e.g. different points of a convex no-fly zone
-   * of when the fly-zone if non-convex, so there always exist a line between
-   * @param polygon Polygon for which segments will be found
-   * @return
-   */
-  std::set<segment_t> no_direct_path(const MapPolygon& polygon)
-  {
-    std::set<segment_t> no_direct_view = no_direct_path(polygon.fly_zone_polygon_points, true);
-    for (const auto& p : polygon.no_fly_zone_polygons)
-    {
+    * Overload of the function above to be able to ignore fly zone
+    */
+  std::set<segment_t> no_direct_path(const MapPolygon &polygon, bool ignore_fly_zone) {
+    std::set<segment_t> no_direct_view;
+    if (!ignore_fly_zone) {
+      no_direct_view = no_direct_path(polygon.fly_zone_polygon_points, true);
+    }
+    for (const auto &p: polygon.no_fly_zone_polygons) {
       auto no_fly_zone_no_view = no_direct_path(p, false);
       no_direct_view.insert(no_fly_zone_no_view.begin(), no_fly_zone_no_view.end());
     }
     return no_direct_view;
   }
+
+  /*!
+    * Calculate the segments, between which there is no direct path definitely.
+    * Needed for the main algorithm while checking if there is a direct path by
+    * "visibility" of the points (no segment between them). But this situation can also
+    * happen when nodes "see" each other through a no-fly zone (e.g. different points of a convex no-fly zone
+    * of when the fly-zone if non-convex, so there always exist a line between
+    * @param polygon Polygon for which segments will be found
+    * @return
+    */
+  std::set<segment_t> no_direct_path(const MapPolygon &polygon) {
+      return no_direct_path(polygon, false);
+  }
 }
-//}  // namespace
 
-/* ShortestPathCalculator() //{ */
-
-ShortestPathCalculator::ShortestPathCalculator(const MapPolygon& polygon)
-{
-  auto points_tmp = polygon.get_all_points();
-  m_polygon_points = std::vector<point_t>{points_tmp.begin(), points_tmp.end()};
-  m_polygon_segments = polygon.get_all_segments();
+ShortestPathCalculator::ShortestPathCalculator(const MapPolygon &polygon, bool ignore_fly_zone) {
+  if (ignore_fly_zone) {
+    std::set<point_t> points_tmp;
+    for (const auto &nfz : polygon.no_fly_zone_polygons) {
+      std::copy(nfz.begin(), nfz.end(), std::inserter(points_tmp, points_tmp.begin()));
+      for (size_t i = 0; i + 1 < nfz.size(); ++i) {
+        m_polygon_segments.emplace_back(nfz[i], nfz[i + 1]);
+      }
+    }
+    m_polygon_points = std::vector<point_t>{points_tmp.begin(), points_tmp.end()};
+  } else {
+    auto points_tmp = polygon.get_all_points();
+    m_polygon_points = std::vector<point_t>{points_tmp.begin(), points_tmp.end()};
+    m_polygon_segments = polygon.get_all_segments();
+  }
 
   // Assign each point a unique identifier to be able to quickly traverse through it
   int index = 0;
@@ -109,7 +110,7 @@ ShortestPathCalculator::ShortestPathCalculator(const MapPolygon& polygon)
   std::for_each(m_floyd_warshall_d.begin(), m_floyd_warshall_d.end(), [&](auto& row) { row = std::vector<double>(m_polygon_points.size(), HUGE_VAL); });
 
   // Get the list of pairs of points, for which there is no direct path even if they can "see" each other
-  auto no_direct_path_pairs = no_direct_path(polygon);
+  auto no_direct_path_pairs = no_direct_path(polygon, ignore_fly_zone);
 
   // O(N^3) building of the matrix. Ok as the algorithm itself runs on O(N^3)
   for (size_t i = 0; i < m_polygon_points.size(); i++)
