@@ -61,6 +61,9 @@ foreach(DEP IN LISTS DEPENDENCIES)
   find_package(${DEP} REQUIRED)
 endforeach()
 
+# ENERGY_AWARE_MCPP dependencies
+find_package(yaml-cpp REQUIRED)
+
 ## --------------------------------------------------------------
 ## |                      Generate Interfaces                   |
 ## --------------------------------------------------------------
@@ -198,6 +201,11 @@ target_include_directories(EnergyAwareMCPP
 )
 
 ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)
+
+target_link_libraries(EnergyAwareMCPP
+  PUBLIC
+    yaml-cpp::yaml-cpp
+)
 
 # ## | ----------- IROCFleetManager_CoveragePlanner ------------ |
 
