@@ -40,10 +40,10 @@ public:
 
   std::string name_;
 
-private:
   // Additional type for coverage planner
   typedef std::vector<std::vector<iroc_mission_handler::Waypoint>> coverage_paths_t;
 
+private:
   bool is_initialized_ = false;
   bool is_active_      = false;
 

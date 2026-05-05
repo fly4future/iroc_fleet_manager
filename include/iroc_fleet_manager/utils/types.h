@@ -17,6 +17,8 @@ struct Point2D
 
   Point2D() : x(0), y(0) {
   }
+  Point2D(double x, double y) : x(x), y(y) {
+  }
   Point2D(const json &j) : x(j.value("x",0.0)), y(j.value("y",0.0)) {
   }
 };

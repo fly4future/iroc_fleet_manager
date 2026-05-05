@@ -226,19 +226,64 @@ algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader 
   return algorithm_config;
 }
 
-// Transit path is a path of a drone which isn't sweeping path. This means a path from start (or end) position to sweeping path or a path between two sweeping paths.
-typedef struct transit_path
+
+struct TransitPath
 {
   double x1, y1, x2, y2;
-  double *z1, *z2;
+  
+  TransitPath(double x1, double y1, double x2, double y2) : x1(x1), y1(y1), x2(x2), y2(y2) {}
+};
+
+class TransitPathGroup
+{
+private:
+  std::vector<std::unique_ptr<TransitPath>> transit_path_group;
+  std::vector<double*> z_ptrs;
+  
+public:
   int level;
   int drone_idx;
-  transit_path(double x1, double y1, double x2, double y2, double* z1, double* z2, int drone_idx) : x1(x1), y1(y1), x2(x2), y2(y2), z1(z1), z2(z2), drone_idx(drone_idx) {
+
+  // double drone_safety_height;
+  // double drone_safety_width;
+  // double drone_height;
+
+  TransitPathGroup(int drone_idx) : drone_idx(drone_idx) {
     level = 1;
   }
-} transit_path;
 
-// Graph stores the information of transit paths overlaping. It it used in resolveTransitHeights function.
+  // transit_path_group should be read only for user
+  const std::vector<std::unique_ptr<TransitPath>>& get() const {
+    return transit_path_group;
+  }
+
+  void writeTransitPathHeights(double sweeping_height, double level_height) {
+    for (double* &z_ptr : z_ptrs) {
+      if (z_ptr) *(z_ptr) = sweeping_height + level * level_height;
+    }
+  }
+
+  void addTransitPath(double x1, double y1, double x2, double y2, double *z1, double *z2) {
+    std::unique_ptr<TransitPath> tp(new TransitPath(x1, y1, x2, y2));
+    transit_path_group.push_back(std::move(tp));
+    for (double* z_ptr : {z1, z2}) {
+      if (count(z_ptrs.begin(), z_ptrs.end(), z_ptr) == 0) {
+        z_ptrs.push_back(z_ptr);
+      }
+    }
+  }
+};
+
+struct TransitPathGroupsStruct
+{
+  std::vector<std::unique_ptr<TransitPathGroup>> transit_path_groups;
+  // Stores the information of which TransiPathGroups should be under which TransitPathGroup
+  std::vector<std::vector<int>> transit_paths_under;
+};
+
+
+
+// Graph stores the information of transit paths overlaping. It is used in resolveTransitHeights function.
 struct Graph {
     int V; // number of vertexes
     std::vector<std::vector<int>> adj; // List of neighbours
@@ -269,10 +314,15 @@ struct NodePriority {
 };
 
 std::vector<int> hungarianAlgorithm(const std::vector<std::vector<double>>& matrix);
-bool checkOverlap(transit_path tp1, transit_path tp2, double min_distance);
-void resolveTransitHeights(std::vector<transit_path>& paths, const Graph& graph, double level_height, double sweeping_height);
+bool pointCloseToLineSegment(const point_t& point, const TransitPath& path, double min_dist);
+int horizontalAndVerticalTPGIntersection(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double drone_distance);
+bool checkForPotentialCycle(std::vector<std::vector<int>> &transit_paths_under, int starting_idx, int search_idx);
+bool checkOverlap2(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double min_distance);
+bool checkOverlap(TransitPath tp1, TransitPath tp2, double min_distance);
+double pointToSegmentDistance(custom_types::Point2D p, custom_types::Point2D s1, custom_types::Point2D s2);
+void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::coverage_paths_t& coverage_paths, const Graph& graph, double level_height, double sweeping_height);
 std::vector<iroc_mission_handler::Waypoint> pointVecToWaypointVec(std::vector<point_t> &points, double transit_path_height);
-double pointsDistance(point_t p1, point_t p2) { return std::sqrt(pow(p1.first - p2.first, 2) + pow(p1.second - p2.second, 2)); }
+
 
 // Calculates the distance between a drone position and start and end of sweeping trajectory
 double droneToSweepingDistance(point_t drone_pos, point_t start, point_t end, ShortestPathCalculator shortest_path_calculator)
@@ -462,8 +512,10 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
   // coverage_paths is used to change order of the paths from coverage_paths_tmp. By changing the order of paths we assign each path to a different drone.
   coverage_paths_t coverage_paths(coverage_paths_tmp.size());
-  std::vector<transit_path> transit_paths;
+  TransitPathGroupsStruct tpgs;
   double drone_distance = 5;  // [m]
+  double drone_width_dist = 5;
+  double drone_height_dist = 5;
   
   
   for (int i = 0; i < drone_num; i++) {
@@ -472,62 +524,131 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     // Calculates the path from the drone's starting position to the start of the sweeping path. If the direct route is obstructed by no-fly zones, shortest_path_calculator() finds a route around them.
     std::vector<point_t> path_from_start = shortest_path_calculator.shortest_path_between_points({drone_positions.at(i).first, drone_positions.at(i).second}, {coverage_paths.at(i).at(1).reference.position.x, coverage_paths.at(i).at(1).reference.position.y});
     path_from_start.pop_back();
-    std::vector<point_t> doubled_path_from_start;
-    doubled_path_from_start.reserve(path_from_start.size() * 2 - 1);
-    for (int it = 0; it < path_from_start.size(); it++) {
-      doubled_path_from_start.push_back(path_from_start.at(it));
-      if (it > 0) doubled_path_from_start.push_back(path_from_start.at(it));
-    }
-    std::vector<iroc_mission_handler::Waypoint> path_from_start_waypoints = pointVecToWaypointVec(doubled_path_from_start, transit_path_height);
+    std::vector<iroc_mission_handler::Waypoint> path_from_start_waypoints = pointVecToWaypointVec(path_from_start, transit_path_height);
     coverage_paths.at(i).insert(coverage_paths.at(i).begin(), path_from_start_waypoints.begin(), path_from_start_waypoints.end());
     
     // Calculates the path from the end of sweeping path to drone's end position. If the direct route is obstructed by no-fly zones, shortest_path_calculator() finds a route around them.
     std::vector<point_t> path_to_end = shortest_path_calculator.shortest_path_between_points({coverage_paths.at(i).back().reference.position.x, coverage_paths.at(i).back().reference.position.y}, {drone_positions.at(i).first, drone_positions.at(i).second});
     path_to_end.erase(path_to_end.begin());
-    std::vector<point_t> doubled_path_to_end;
-    doubled_path_to_end.reserve(path_to_end.size() * 2 - 1);
-    for (int it = 0; it < path_to_end.size(); it++) {
-      doubled_path_to_end.push_back(path_to_end.at(it));
-      if (it < path_to_end.size() - 1) doubled_path_to_end.push_back(path_to_end.at(it));
-    }
-    std::vector<iroc_mission_handler::Waypoint> path_to_end_waypoints = pointVecToWaypointVec(doubled_path_to_end, transit_path_height);
+    std::vector<iroc_mission_handler::Waypoint> path_to_end_waypoints = pointVecToWaypointVec(path_to_end, transit_path_height);
     coverage_paths.at(i).insert(coverage_paths.at(i).end(), path_to_end_waypoints.begin(), path_to_end_waypoints.end());
 
 
-    // Fill the transit_paths
-    // double transit_path_height = mission.robots[i].height + 1.0;
+    // Fill the TransiPathGroupStruct
     for (int j = 1; j < coverage_paths.at(i).size(); j++) {
-      iroc_mission_handler::Waypoint current_point = coverage_paths.at(i).at(j);
-      iroc_mission_handler::Waypoint prev_point = coverage_paths.at(i).at(j-1);
+      custom_types::Point2D current_point = custom_types::Point2D(coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y);
+      custom_types::Point2D prev_point = custom_types::Point2D(coverage_paths.at(i).at(j-1).reference.position.x, coverage_paths.at(i).at(j-1).reference.position.y);
 
-      if (current_point.reference.position.z == transit_path_height && prev_point.reference.position.z == transit_path_height &&
-            (current_point.reference.position.x != prev_point.reference.position.x || current_point.reference.position.y != prev_point.reference.position.y)) {
-        transit_path tp(prev_point.reference.position.x, prev_point.reference.position.y,
-                    current_point.reference.position.x, current_point.reference.position.y, &coverage_paths.at(i).at(j-1).reference.position.z,
-                    &coverage_paths.at(i).at(j).reference.position.z, i);
-        transit_paths.push_back(tp);
+      if (coverage_paths.at(i).at(j).reference.position.z == transit_path_height && coverage_paths.at(i).at(j-1).reference.position.z == transit_path_height &&
+            (current_point.x != prev_point.x || current_point.y != prev_point.y)) {
+
+        // Checking if the current TransitPath (composed of current_point and prev_point) connects to the last added TransitPath.
+        // If it does, the last TransitPathGroup is extended. If not, a new TransitPathGroup is created.
+        if (!tpgs.transit_path_groups.empty() && tpgs.transit_path_groups.back()->drone_idx == i && tpgs.transit_path_groups.back()->get().back()->x2 == prev_point.x && tpgs.transit_path_groups.back()->get().back()->y2 == prev_point.y) {
+          tpgs.transit_path_groups.back()->addTransitPath(prev_point.x, prev_point.y, current_point.x, current_point.y, &coverage_paths.at(i).at(j-1).reference.position.z, &coverage_paths.at(i).at(j).reference.position.z);
+        } else {
+          std::unique_ptr<TransitPathGroup> tpg(new TransitPathGroup(i));
+          tpg->addTransitPath(prev_point.x, prev_point.y, current_point.x, current_point.y, &coverage_paths.at(i).at(j-1).reference.position.z, &coverage_paths.at(i).at(j).reference.position.z);
+          tpgs.transit_path_groups.push_back(std::move(tpg));
+        }
       }
     }
 
-    // Covert coverage_paths to gps coordinates
+    // // Debug: Print transit_path_groups content
+    // ROS_INFO("[CoveragePlanner] transit_path_groups size: %zu", tpgs.transit_path_groups.size());
+    // for (size_t tpg_idx = 0; tpg_idx < tpgs.transit_path_groups.size(); tpg_idx++) {
+    //   const auto& tpg = tpgs.transit_path_groups.at(tpg_idx);
+    //   ROS_INFO("[CoveragePlanner] TPG %zu: drone_idx = %d, size = %zu", 
+    //            tpg_idx, tpg->drone_idx, tpg->get().size());
+    //   const auto& paths = tpg->get();
+    //   for (size_t tp_idx = 0; tp_idx < paths.size(); tp_idx++) {
+    //     const auto& tp = paths[tp_idx];
+    //     ROS_INFO("[CoveragePlanner]   TP %zu: (%.2f, %.2f) -> (%.2f, %.2f), heights: (tezko se k nim dostava)",
+    //              tp_idx, tp->x1, tp->y1, tp->x2, tp->y2);
+    //   }
+    // }
+  }
+  // tpgs.transit_path_groups.clear();
+
+  // std::unique_ptr<TransitPathGroup> tpg1(new TransitPathGroup(0));
+  // tpg1->addTransitPath(-1, 0, 3, 4, NULL, NULL);
+  // // tpg1->addTransitPath(-5, 0, -2, 2, NULL, NULL);
+  // std::unique_ptr<TransitPathGroup> tpg2(new TransitPathGroup(1));
+  // tpg2->addTransitPath(1, 2, 1, -6, NULL, NULL);
+  // std::unique_ptr<TransitPathGroup> tpg3(new TransitPathGroup(2));
+  // tpg3->addTransitPath(1, -2, -3, 2, NULL, NULL);
+
+  // tpgs.transit_path_groups.push_back(std::move(tpg1));
+  // tpgs.transit_path_groups.push_back(std::move(tpg2));
+  // tpgs.transit_path_groups.push_back(std::move(tpg3));
+
+  tpgs.transit_paths_under.insert(tpgs.transit_paths_under.end(), tpgs.transit_path_groups.size(), std::vector<int>());
+
+
+  // Fill the transit_paths_under vector.
+  for (int i = 0; i < tpgs.transit_path_groups.size(); i++) {
+    for (int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
+      if (tpgs.transit_path_groups.at(i)->drone_idx == tpgs.transit_path_groups.at(j)->drone_idx) continue; 
+
+      int r = horizontalAndVerticalTPGIntersection(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), drone_distance);
+      if (r == -1 && !checkForPotentialCycle(tpgs.transit_paths_under, j, i)) {
+        tpgs.transit_paths_under.at(i).push_back(j);
+      } else if (r == 1 && !checkForPotentialCycle(tpgs.transit_paths_under, i, j)) {
+        tpgs.transit_paths_under.at(j).push_back(i);
+      }
+    }
+  }
+
+  ROS_INFO("[CoveragePlanner] Number of transit_paths_under constraints: %zu", tpgs.transit_paths_under.size());
+  for (size_t i = 0; i < tpgs.transit_paths_under.size(); i++) {
+    if (!tpgs.transit_paths_under.at(i).empty()) {
+      std::stringstream ss;
+      ss << "[CoveragePlanner] Group " << i << " must be above groups: ";
+      for (int under : tpgs.transit_paths_under.at(i)) {
+        ss << under << " ";
+      }
+      ROS_INFO("%s", ss.str().c_str());
+    }
+  }
+  ROS_INFO("[CoveragePlanner] ================================");
+  
+  // Graph is created. In this graph vertexes are transit path groups and edges mean that two transit path groups overlap
+  Graph graph = Graph(tpgs.transit_path_groups.size());
+  for (int i = 0; i < tpgs.transit_path_groups.size(); i++) {
+    for (int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
+      if (tpgs.transit_path_groups.at(i)->drone_idx != tpgs.transit_path_groups.at(j)->drone_idx && checkOverlap2(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), drone_distance)) { // drone_distance
+        graph.addEdge(i, j);
+      }
+    }
+  }
+  
+  // DEBUG: Výpis obsahu struktury Graph
+  ROS_INFO("[CoveragePlanner] === DEBUG: OBSAH GRAFU ===");
+  ROS_INFO("[CoveragePlanner] Počet vrcholů (V): %d", graph.V);
+  for (int i = 0; i < graph.V; i++) {
+    std::stringstream ss;
+    ss << "[CoveragePlanner] Vrchol " << i << " je propojen s: ";
+    if (graph.adj[i].empty()) {
+      ss << "(žádné sousedy)";
+    } else {
+      for (int neighbor : graph.adj[i]) {
+        ss << neighbor << " ";
+      }
+    }
+    ROS_INFO("%s", ss.str().c_str());
+  }
+  ROS_INFO("[CoveragePlanner] === KONEC DEBUG ===");
+  
+  resolveTransitHeights(tpgs, coverage_paths, graph, drone_distance, mission.robots[0].height);
+
+  // Covert coverage_paths to gps coordinates
+  for (int i = 0; i < drone_num; i++) {
     for (int j = 0; j < coverage_paths.at(i).size(); j++) {
       point_t d2 = meters_to_gps_coordinates({coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y}, planner_config_.lat_lon_origin);
       coverage_paths.at(i).at(j).reference.position.x = d2.first;
       coverage_paths.at(i).at(j).reference.position.y = d2.second;
     }
   }
-
-  // Graph is created. In this graph vertexes are transit paths and edges mean that two transit paths overlap
-  Graph graph = Graph(transit_paths.size());
-  for (int i = 0; i < transit_paths.size(); i++) {
-    for (int j = i+1; j < transit_paths.size(); j++) {
-      if (transit_paths.at(i).drone_idx != transit_paths.at(j).drone_idx && checkOverlap(transit_paths.at(i), transit_paths.at(j), drone_distance)) {
-        graph.addEdge(i, j);
-      }
-    }
-  }
-  
-  resolveTransitHeights(transit_paths, graph, drone_distance, mission.robots[0].height);
 
   return coverage_paths;
 }
@@ -550,79 +671,158 @@ std::vector<iroc_mission_handler::Waypoint> pointVecToWaypointVec(std::vector<po
   return waypoint_vec;
 }
 
-// This function checks whether two line segments overlap or if they are closer than min_distance.
-bool checkOverlap(transit_path tp1, transit_path tp2, double min_distance)
+bool checkForPotentialCycle(std::vector<std::vector<int>> &transit_paths_under, int starting_idx, int search_idx)
 {
-  // The coefficient q indicates the position of the intersection point with the line extending tp2 on the line extending tp1. If the coefficient is between 0 and 1,
-  // the intersection lies on the line segment tp1.
-  double q = ((tp1.y1 - tp2.y1) * (tp2.x2 - tp2.x1) - (tp2.y2 - tp2.y1) * (tp1.x1 - tp2.x1)) / ((tp2.y2 - tp2.y1) * (tp1.x2 - tp1.x1) - (tp1.y2 - tp1.y1) * (tp2.x2 - tp2.x1));
-  
-  // If line segments are parallel
-  if (q > 100000 || q < -100000) {
-    point_t perp = {-(tp1.y2 - tp1.y1), (tp1.x2 - tp1.x1)}; // perpendicular direction to tp1 direction
-    point_t randd = {(tp2.x1 - tp1.x1), (tp2.y1 - tp1.y1)};  // direction from first point in tp1 to first point in tp2
-
-    // angle between the perp and randd directions
-    double alpha = std::acos((perp.first*randd.first + perp.second*randd.second) / (std::sqrt(pow(perp.first,2) + pow(perp.second,2)) * std::sqrt(pow(randd.first,2) + pow(randd.second,2))));
-    if (alpha > M_PI/2) {
-      alpha = M_PI - alpha;
-    }
-    // check if the parallel line segments tp1 and tp2 are too close to each other
-    if (pointsDistance({tp1.x1, tp1.y1}, {tp2.x1, tp2.y1}) < min_distance / std::cos(alpha)) {
-      return true;
-    } else {
-      return false;
-    }
+  for (int index : transit_paths_under.at(starting_idx)) {
+    if (index == search_idx || checkForPotentialCycle(transit_paths_under, index, search_idx)) return true;
   }
-  // The coefficient p indicates the position of the intersection point with the line extending tp1 on the line extending tp2. If the coefficient is between 0 and 1,
-  // the intersection lies on the line segment tp2.
-  double p = ((tp1.y1 - tp2.y1) * (tp1.x2 - tp1.x1) + (tp2.x1 - tp1.x1) * (tp1.y2 - tp1.y1)) / ((tp2.y2 - tp2.y1) * (tp1.x2 - tp1.x1) - (tp2.x2 - tp2.x1) * (tp1.y2 - tp1.y1));
-  // Calculate intersection of line extending tp2 and line extending tp1
-  double intersec_x = tp1.x1 + q * (tp1.x2 - tp1.x1);
-  double intersec_y = tp1.y1 + q * (tp1.y2 - tp1.y1);
-
-  // The line segments directly go through each other
-  if (p >= 0 && p <= 1 && q >= 0 && q <= 1) {
-    return true;
-  }
-
-  point_t a = {tp1.x1 - tp1.x2, tp1.y1 - tp1.y2};
-  point_t b = {tp2.x1 - tp2.x2, tp2.y1 - tp2.y2};
-  double angle = std::acos((a.first*b.first + a.second*b.second) / (std::sqrt(pow(a.first,2) + pow(a.second,2)) * std::sqrt(pow(b.first,2) + pow(b.second,2))));
-  if (angle > M_PI/2) {
-    angle = M_PI - angle;
-  }
-  double min_angled_distance = min_distance / std::sin(angle);
-
-  // If line segments are close to each other
-  if (((q < 0 || q > 1) && (p >= 0 && p <= 1) && (pointsDistance({tp1.x1, tp1.y1}, {intersec_x, intersec_y}) < min_angled_distance || pointsDistance({tp1.x2, tp1.y2}, {intersec_x, intersec_y}) < min_angled_distance)) ||
-      ((q >= 0 && q <= 1) && (p < 0 || p > 1) && (pointsDistance({tp2.x1, tp2.y1}, {intersec_x, intersec_y}) < min_angled_distance || pointsDistance({tp2.x2, tp2.y2}, {intersec_x, intersec_y}) < min_angled_distance)) ||
-      ((q < 0 || q > 1) && (p < 0 || p > 1) && (pointsDistance({tp1.x1, tp1.y1}, {tp2.x1, tp2.y1}) < min_distance || pointsDistance({tp1.x1, tp1.y1}, {tp2.x2, tp2.y2}) < min_distance || pointsDistance({tp1.x2, tp1.y2}, {tp2.x1, tp2.y1}) < min_distance || pointsDistance({tp1.x2, tp1.y2}, {tp2.x2, tp2.y2}) < min_distance))) {
-    return true;
-  }
-
   return false;
 }
 
+// return -1 => tpg1 should be above tpg2, return 0 => there should not be any constrain, return 1 => tpg2 should be above tpg1
+int horizontalAndVerticalTPGIntersection(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double drone_distance)
+{
+  bool tpg1_above_tpg2 = false;
 
-// This function has an input of transit path and a graph of transit paths overlaps. It assigns each transit path an altitude (z coordinate) so that the transit paths don't overlap
-void resolveTransitHeights(std::vector<transit_path>& paths, const Graph& graph, double level_height, double sweeping_height) {
+  point_t start = {tpg2.get().front()->x1, tpg2.get().front()->y1};
+  point_t end = {tpg2.get().back()->x2, tpg2.get().back()->y2};
+  for (auto &tp : tpg1.get()) {
+    // If the starting point or ending point of tpg2 is close to any of the tpg1 line segments, then tpg1 should be above tpg2
+    custom_types::Point2D start_pt = {start.first, start.second};
+    custom_types::Point2D end_pt = {end.first, end.second};
+    custom_types::Point2D tp_start = {tp->x1, tp->y1};
+    custom_types::Point2D tp_end = {tp->x2, tp->y2};
+    if (pointToSegmentDistance(start_pt, tp_start, tp_end) < drone_distance || pointToSegmentDistance(end_pt, tp_start, tp_end) < drone_distance) {
+      tpg1_above_tpg2 = true;
+      break;
+    }
+  }
+
+  bool tpg2_above_tpg1 = false;
+  start = {tpg1.get().front()->x1, tpg1.get().front()->y1};
+  end = {tpg1.get().back()->x2, tpg1.get().back()->y2};
+  for (auto &tp : tpg2.get()) {
+    // If the starting point or ending point of tpg2 is close to any of the tpg1 line segments, then tpg1 should be above tpg2
+    custom_types::Point2D start_pt = {start.first, start.second};
+    custom_types::Point2D end_pt = {end.first, end.second};
+    custom_types::Point2D tp_start = {tp->x1, tp->y1};
+    custom_types::Point2D tp_end = {tp->x2, tp->y2};
+    if (pointToSegmentDistance(start_pt, tp_start, tp_end) < drone_distance || pointToSegmentDistance(end_pt, tp_start, tp_end) < drone_distance) {
+      tpg2_above_tpg1 = true;
+      break;
+    }
+  }
+
+  if (tpg1_above_tpg2 == tpg2_above_tpg1) {
+    return 0;
+  } else if (tpg1_above_tpg2) {
+    return -1;
+  } else {
+    return 1;
+  }
+}
+
+
+bool checkOverlap3(TransitPathGroup &tpg, TransitPath &tp, double min_distance)
+{
+  for (const std::unique_ptr<TransitPath> &tp_ : tpg.get()) {
+    if (checkOverlap(*tp_, tp, min_distance)) {
+      // std::cout << "Overlap byl nalezen" << std::endl;
+      // std::cout << "drone idx " << tpg.drone_idx << ", souradnice v tpg (" << tp_->x1 << ", " << tp_->y1 << "), (" << tp_->x2 << ", " << tp_->y2 << "), souradnice sweeping path (" << tp.x1 << ", " << tp.y1 << "), (" << tp.x2 << ", " << tp.y2 << ") min distance " << min_distance << std::endl;
+      // ROS_INFO("drone idx %d, souradnice v tpg (%.17f, %.17f), (%.17f, %.17f), souradnice sweeping path (%.17f, %.17f), (%.17f, %.17f) min distance %f", 
+      //     tpg.drone_idx, tp_->x1, tp_->y1, tp_->x2, tp_->y2, tp.x1, tp.y1, tp.x2, tp.y2, min_distance);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool checkOverlap2(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double min_distance)
+{
+  for (const std::unique_ptr<TransitPath> &tp1 : tpg1.get()) {
+    for (const std::unique_ptr<TransitPath> &tp2 : tpg2.get()) {
+      if (checkOverlap(*tp1, *tp2, min_distance)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Helper function to calculate squared distance between two points
+double distSq(custom_types::Point2D p1, custom_types::Point2D p2) {
+    return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y);
+}
+
+// Helper function to find the minimum distance from a point to a line segment
+double pointToSegmentDistance(custom_types::Point2D p, custom_types::Point2D s1, custom_types::Point2D s2) {
+    double l2 = distSq(s1, s2);
+    if (l2 == 0.0) return std::sqrt(distSq(p, s1)); // Segment is just a point
+
+    // Consider the line extending the segment, parameterized as s1 + t (s2 - s1).
+    // We find projection of point p onto the line. 
+    // It falls where t = [(p-s1) . (s2-s1)] / |s2-s1|^2
+    double t = ((p.x - s1.x) * (s2.x - s1.x) + (p.y - s1.y) * (s2.y - s1.y)) / l2;
+    
+    // Clamp t to the range [0, 1] to stay on the segment
+    t = std::max(0.0, std::min(1.0, t));
+    
+    custom_types::Point2D projection = { s1.x + t * (s2.x - s1.x), s1.y + t * (s2.y - s1.y) };
+    return std::sqrt(distSq(p, projection));
+}
+
+// Function to check if two segments intersect
+bool segmentsIntersect(TransitPath tp1, TransitPath tp2) {
+    auto ccw = [](double ax, double ay, double bx, double by, double cx, double cy) {
+        return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax);
+    };
+    
+    bool intersect = (ccw(tp1.x1, tp1.y1, tp2.x1, tp2.y1, tp2.x2, tp2.y2) != ccw(tp1.x2, tp1.y2, tp2.x1, tp2.y1, tp2.x2, tp2.y2)) &&
+                     (ccw(tp1.x1, tp1.y1, tp1.x2, tp1.y2, tp2.x1, tp2.y1) != ccw(tp1.x1, tp1.y1, tp1.x2, tp1.y2, tp2.x2, tp2.y2));
+    return intersect;
+}
+
+// This function checks whether two line segments overlap or if they are closer than min_distance.
+bool checkOverlap(TransitPath tp1, TransitPath tp2, double min_distance)
+{
+    // 1. If segments intersect, the distance is 0, which is always < min_distance
+    if (segmentsIntersect(tp1, tp2)) {
+        return true;
+    }
+
+    // 2. Calculate minimum distance between segments.
+    // The minimum distance between two non-intersecting segments 
+    // is always the distance from one of the endpoints to the other segment.
+    custom_types::Point2D p1_1 = custom_types::Point2D(tp1.x1, tp1.y1);
+    custom_types::Point2D p1_2 = custom_types::Point2D(tp1.x2, tp1.y2);
+    custom_types::Point2D p2_1 = custom_types::Point2D(tp2.x1, tp2.y1);
+    custom_types::Point2D p2_2 = custom_types::Point2D(tp2.x2, tp2.y2);
+
+    double d1 = pointToSegmentDistance(p1_1, p2_1, p2_2);
+    double d2 = pointToSegmentDistance(p1_2, p2_1, p2_2);
+    double d3 = pointToSegmentDistance(p2_1, p1_1, p1_2);
+    double d4 = pointToSegmentDistance(p2_2, p1_1, p1_2);
+
+    double min_actual_dist = std::min({d1, d2, d3, d4});
+
+    return min_actual_dist < min_distance;
+}
+
+// This function assigns each transit path an altitude (z coordinate) so that the transit paths don't overlap
+void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::coverage_paths_t& coverage_paths, const Graph& graph, double level_height, double sweeping_height)
+{
   int n = graph.V;
   if (n == 0) return;
 
-  // 1. Inicialization of path.level
-  for (auto& path : paths) {
-    path.level = 0; // 0 means "not assigned yet"
+  // 1. Inicialization of levels
+  for (auto& transit_path_group : tpgs.transit_path_groups) {
+    transit_path_group->level = -1; // -1 means "not assigned yet"
   }
-  // paths.back().level = 1;
 
-  // 2. Calculation of vertex (= transit path) levels
+  // 2. Calculation of vertex (= transit path group) levels
   // We will be coloring graph vertexes one by one
-  std::vector<int> assigned_levels(n, 0);
+  std::vector<int> assigned_levels(n, -1);
   std::vector<bool> processed(n, false);
-
-  // processed.back() = true;
-  // assigned_levels.back() = 1;
 
   for (int i = 0; i < n; ++i) {
     int best_node = -1;
@@ -632,14 +832,47 @@ void resolveTransitHeights(std::vector<transit_path>& paths, const Graph& graph,
     for (int v = 0; v < n; ++v) {
       if (processed[v]) continue;
 
+      // skip vertex that should be higher than something not processed yet
+      for (int tpg_idxs : tpgs.transit_paths_under[v]) {
+        if (!processed[tpg_idxs]) continue;
+      }
+
+      int possible_level = 0;
+
+      for (int tpg_idxs : tpgs.transit_paths_under[v]) {
+        possible_level = std::max(possible_level, assigned_levels[tpg_idxs] + 1);
+      }
+      // If the transit path group ovelaps sweeping path, then the possible_level is set to 1
+      if (possible_level == 0) {
+        bool level_zero = true;
+        for (int k = 0; k < coverage_paths.size(); k++) {
+          if (k == tpgs.transit_path_groups.at(v)->drone_idx) continue;
+
+          for (int j = 1; j < coverage_paths.at(k).size(); j++) {
+            iroc_mission_handler::Waypoint current_point = coverage_paths.at(k).at(j);
+            iroc_mission_handler::Waypoint prev_point = coverage_paths.at(k).at(j-1);
+
+            if (current_point.reference.position.z == sweeping_height && prev_point.reference.position.z == sweeping_height) {
+              TransitPath tp = TransitPath(current_point.reference.position.x, current_point.reference.position.y, prev_point.reference.position.x, prev_point.reference.position.y);
+              if (checkOverlap3(*tpgs.transit_path_groups.at(v), tp, level_height)) {
+                level_zero = false;
+                break;
+              }
+            }
+          }
+          if (level_zero == false) break; 
+        }
+        if (level_zero == false) possible_level = 1;
+      }
+
       // Picking the lowest possible level that this vertex can get
       std::set<int> neighbor_levels;
       for (int neighbor : graph.adj[v]) {
-        if (assigned_levels[neighbor] != 0) {
+        if (assigned_levels[neighbor] != -1) {
           neighbor_levels.insert(assigned_levels[neighbor]);
         }
       }
-      int possible_level = 1;
+
       while (neighbor_levels.count(possible_level)) {
         possible_level++;
       }
@@ -657,16 +890,10 @@ void resolveTransitHeights(std::vector<transit_path>& paths, const Graph& graph,
     assigned_levels[best_node] = best_priority.best_available_level;
     processed[best_node] = true;
 
-    // Update of transit path
-    transit_path& p = paths[best_node];
-    p.level = best_priority.best_available_level;
-
-    std::cout << "best node " << best_node << ", level " << p.level << std::endl;
+    std::cout << "best node " << best_node << ", level " << assigned_levels[best_node] << ", drone idx " << tpgs.transit_path_groups.at(best_node)->drone_idx << std::endl;
     
-    double final_z = (double)(p.level) * level_height + sweeping_height;
-
-    if (p.z1) *(p.z1) = final_z;
-    if (p.z2) *(p.z2) = final_z;
+    tpgs.transit_path_groups.at(best_node)->level = assigned_levels[best_node];
+    tpgs.transit_path_groups.at(best_node)->writeTransitPathHeights(sweeping_height, level_height);
   }
 }
 
