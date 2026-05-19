@@ -47,6 +47,7 @@ set(DEPENDENCIES
   pluginlib
   rosidl_default_generators
   nlohmann_json
+  yaml-cpp
 )
 
 set(LIBRARIES
@@ -60,9 +61,6 @@ set(LIBRARIES
 foreach(DEP IN LISTS DEPENDENCIES)
   find_package(${DEP} REQUIRED)
 endforeach()
-
-# ENERGY_AWARE_MCPP dependencies
-find_package(yaml-cpp REQUIRED)
 
 ## --------------------------------------------------------------
 ## |                      Generate Interfaces                   |
