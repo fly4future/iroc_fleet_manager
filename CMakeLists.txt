@@ -47,6 +47,7 @@ set(DEPENDENCIES
   pluginlib
   rosidl_default_generators
   nlohmann_json
+  yaml-cpp
 )
 
 set(LIBRARIES
@@ -92,12 +93,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 ## --------------------------------------------------------------
 
 add_library(IrocFleetManager_IrocFleetManager INTERFACE)
-add_library(iroc_fleet_manager::iroc_fleet_manager ALIAS IrocFleetManager_IrocFleetManager) 
+add_library(iroc_fleet_manager::iroc_fleet_manager ALIAS IrocFleetManager_IrocFleetManager)
 
 set_target_properties(IrocFleetManager_IrocFleetManager
   PROPERTIES
-    EXPORT_NAME iroc_fleet_manager 
-    OUTPUT_NAME iroc_fleet_manager 
+    EXPORT_NAME iroc_fleet_manager
+    OUTPUT_NAME iroc_fleet_manager
 )
 
 target_sources(IrocFleetManager_IrocFleetManager
@@ -162,7 +163,7 @@ target_link_libraries(IROCFleetManager_WaypointPlanner
     IROCFleetManager
     iroc_fleet_manager::iroc_fleet_manager
     rclcpp::rclcpp
-    rclcpp_action::rclcpp_action           
+    rclcpp_action::rclcpp_action
     rclcpp_components::component
     pluginlib::pluginlib
     mrs_lib::mrs_lib
@@ -194,10 +195,15 @@ add_library(EnergyAwareMCPP SHARED
 target_include_directories(EnergyAwareMCPP
   PUBLIC
   $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
-    $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
 )
 
 ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)
+
+target_link_libraries(EnergyAwareMCPP
+  PUBLIC
+    yaml-cpp::yaml-cpp
+)
 
 # ## | ----------- IROCFleetManager_CoveragePlanner ------------ |
 
