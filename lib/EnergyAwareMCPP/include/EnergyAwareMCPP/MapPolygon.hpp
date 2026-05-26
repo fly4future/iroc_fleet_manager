@@ -35,6 +35,7 @@ public:
     // TODO: consider making these fields private and accessible only through getters
     polygon_t fly_zone_polygon_points;
     std::vector<polygon_t> no_fly_zone_polygons;
+    std::vector<HeightRestrictedNoFlyZone> height_restricted_no_fly_zone_polygons;
 
     MapPolygon() = default;
 
@@ -46,9 +47,11 @@ public:
      * @param fly_zone Description of a fly zone
      * @param no_fly_zones Vector of descriptions of each no fly zone
      * @param gps_transform_origin GPS coordinates of the point, that will be mapped to (0, 0) after transformation to meters
+     * @param hr_no_fly_zones Vector of pairs of {polygon, max_altitude} for height restricted no-fly zones
      */
     MapPolygon(std::vector<point_t> &fly_zone, const std::vector<std::vector<point_t>> &no_fly_zones,
-               std::pair<double, double> gps_transform_origin) {
+               std::pair<double, double> gps_transform_origin,
+               const std::vector<std::pair<polygon_t, double>> &hr_no_fly_zones = {}) {
         std::for_each(fly_zone.begin(), fly_zone.end(), [&](const auto &p) {
             fly_zone_polygon_points.push_back(gps_coordinates_to_meters({p.first, p.second}, gps_transform_origin));
         });
@@ -61,19 +64,34 @@ public:
             });
             make_polygon_clockwise(no_fly_zone_polygons[no_fly_zone_polygons.size() - 1]);
         }
+        for (const auto &hr_no_fly_zone: hr_no_fly_zones) {
+            polygon_t hr_nfz_points;
+            std::for_each(hr_no_fly_zone.first.begin(), hr_no_fly_zone.first.end(), [&](const auto &p) {
+                hr_nfz_points.push_back(
+                        gps_coordinates_to_meters({p.first, p.second}, gps_transform_origin));
+            });
+            make_polygon_clockwise(hr_nfz_points);
+            height_restricted_no_fly_zone_polygons.push_back({hr_nfz_points, hr_no_fly_zone.second});
+        }
     }
 
     /*!
     * Constructor for creating a MapPolygon from known fly and no-fly zones
     * @param fly_zone Description of a fly zone
     * @param no_fly_zones Vector of descriptions of each no fly zone
+    * @param hr_no_fly_zones Vector of height restricted no-fly zones
     */
-    MapPolygon(std::vector<point_t> &fly_zone, const std::vector<std::vector<point_t>> &no_fly_zones) {
+    MapPolygon(std::vector<point_t> &fly_zone, const std::vector<std::vector<point_t>> &no_fly_zones,
+               const std::vector<HeightRestrictedNoFlyZone> &hr_no_fly_zones = {}) {
         fly_zone_polygon_points = fly_zone;
         make_polygon_clockwise(fly_zone_polygon_points);
         no_fly_zone_polygons = no_fly_zones;
         for (auto &no_fly_zone: no_fly_zone_polygons) {
             make_polygon_clockwise(no_fly_zone);
+        }
+        height_restricted_no_fly_zone_polygons = hr_no_fly_zones;
+        for (auto &hr_nfz: height_restricted_no_fly_zone_polygons) {
+            make_polygon_clockwise(hr_nfz.polygon);
         }
     }
 
@@ -85,6 +103,18 @@ public:
      * @return Set of all the points
      */
     [[nodiscard]] std::set<point_t> get_all_points() const;
+
+    /*!
+     * Get the list of all the polygons point (both fly-zone and non-fly zone), excluding height-restricted no-fly zones
+     * @return Set of all the points
+     */
+    [[nodiscard]] std::set<point_t> get_base_points() const;
+
+    /*!
+     * Get the vector of all segments (of both fly and no-fly zones of the map polygon), excluding height-restricted no-fly zones
+     * @return Vector of all the present segments
+     */
+    [[nodiscard]] std::vector<segment_t> get_base_segments() const;
 
     /*!
      * Get the vector of all segments (of both fly and no-fly zones of the map polygon)

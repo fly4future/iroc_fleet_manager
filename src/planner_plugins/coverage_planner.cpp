@@ -79,9 +79,10 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     return std::make_tuple(result, mission_robots);
   }
 
+  using HRNoFlyZone = std::pair<std::vector<custom_types::Point2D>, double>;
   std::vector<custom_types::Point2D> search_area;
   std::vector<std::vector<custom_types::Point2D>> no_fly_zones;
-  // std::vector<std::vector<point_t>> no_fly_zones;
+  std::vector<HRNoFlyZone> hr_no_fly_zones;
   std::vector<double> min_horizontal_drone_distances;
   std::vector<double> min_vertical_drone_distances;
   json robots;
@@ -106,8 +107,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
       return std::make_tuple(result, mission_robots);
   }
 
-  // parsing optional parameter
+  // parsing optional parameters
   success = utils::parseVars(json_msg, {{"no_fly_zones", &no_fly_zones}});
+  success = utils::parseVars(json_msg, {{"hr_no_fly_zones", &hr_no_fly_zones}});
   
   search_area_msg = toRosMsg<mrs_msgs::Point2D>(search_area);
 
@@ -155,7 +157,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   mission.search_area   = search_area_msg;
   mission.latlon_origin = latlon_origin_msg;
 
-  auto paths = getCoveragePaths(mission, no_fly_zones);
+  auto paths = getCoveragePaths(mission, no_fly_zones, hr_no_fly_zones);
 
   // Filling the mission_robots vector with the generated paths
   for (int it = 0; it < mission.robots.size(); it++) {
@@ -249,12 +251,20 @@ public:
   // double drone_height;
 
   TransitPathGroup(int drone_idx) : drone_idx(drone_idx) {
-    level = 1;
+    level = -1;
   }
 
   // transit_path_group should be read only for user
   const std::vector<std::unique_ptr<TransitPath>>& get() const {
     return transit_path_group;
+  }
+
+  void setLevelFromHeight(double height, double sweeping_height, double transit_height, double level_height) {
+    if (height == transit_height) {
+      level = 0;
+    } else {
+      level = std::ceil((height - sweeping_height) / level_height);
+    }
   }
 
   void writeTransitPathHeights(double sweeping_height, double level_height) {
@@ -315,6 +325,7 @@ struct NodePriority {
 
 std::vector<int> hungarianAlgorithm(const std::vector<std::vector<double>>& matrix);
 bool pointCloseToLineSegment(const point_t& point, const TransitPath& path, double min_dist);
+bool segmentsIntersect(TransitPath tp1, TransitPath tp2);
 int horizontalAndVerticalTPGIntersection(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double drone_distance);
 bool checkForPotentialCycle(std::vector<std::vector<int>> &transit_paths_under, int starting_idx, int search_idx);
 bool checkOverlap2(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double min_distance);
@@ -328,11 +339,11 @@ std::vector<iroc_mission_handler::Waypoint> pointVecToWaypointVec(std::vector<po
 double droneToSweepingDistance(point_t drone_pos, point_t start, point_t end, ShortestPathCalculator shortest_path_calculator)
 {
   double distance = 0;
-  std::vector<point_t> path_to_start = shortest_path_calculator.shortest_path_between_points({drone_pos.first, drone_pos.second}, {start.first, start.second});
+  std::vector<point_t> path_to_start = shortest_path_calculator.shortest_path_between_points({drone_pos.first, drone_pos.second}, {start.first, start.second}).first;
   for (int i = 1; i < path_to_start.size(); i++) {
     distance += std::sqrt(pow(path_to_start.at(i-1).first - path_to_start.at(i).first, 2) + pow(path_to_start.at(i-1).second - path_to_start.at(i).second, 2));
   }
-  std::vector<point_t> path_to_end = shortest_path_calculator.shortest_path_between_points({drone_pos.first, drone_pos.second}, {end.first, end.second});
+  std::vector<point_t> path_to_end = shortest_path_calculator.shortest_path_between_points({drone_pos.first, drone_pos.second}, {end.first, end.second}).first;
   for (int i = 1; i < path_to_end.size(); i++) {
     distance += std::sqrt(pow(path_to_end.at(i-1).first - path_to_end.at(i).first, 2) + pow(path_to_end.at(i-1).second - path_to_end.at(i).second, 2));
   }
@@ -360,10 +371,11 @@ bool is_inside(const point_t& p, const std::vector<point_t>& polygon) {
     return (intersections % 2) == 1;
 }
 
-CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2D>> &no_fly_zones_arg) const {
+CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2D>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2D>, double>> &hr_no_fly_zones_arg) const {
 
   std::vector<point_t> fly_zone;
   std::vector<polygon_t> no_fly_zones;
+  std::vector<std::pair<polygon_t, double>> hr_no_fly_zones;
 
   // Fill the search area
   for (const auto &point : mission.search_area)
@@ -385,38 +397,68 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     no_fly_zones.push_back(no_fly_zone);
   }
 
-  planner_config_.lat_lon_origin.first  = mission.latlon_origin.x;
-  planner_config_.lat_lon_origin.second = mission.latlon_origin.y;
+  // Fill the height restricted no-fly zones
+  hr_no_fly_zones.reserve(hr_no_fly_zones_arg.size());
+  for (const auto &zone : hr_no_fly_zones_arg) {
+    polygon_t hr_no_fly_zone;
+    hr_no_fly_zone.reserve(zone.first.size() + 1);
+    for (const auto &point : zone.first) {
+      hr_no_fly_zone.emplace_back(point.x, point.y);
+    }
+    // Add the first point to close the polygon
+    if (!hr_no_fly_zone.empty()) {
+      hr_no_fly_zone.emplace_back(zone.first[0].x, zone.first[0].y);
+    }
+    hr_no_fly_zones.emplace_back(std::move(hr_no_fly_zone), zone.second);
+  }
 
-  planner_config_.number_of_drones = mission.robots.size();
+  // Validate: all zones must be either fully disjoint or fully contained.
+  coverage_paths_t coverage_paths_empty;
+  std::vector<polygon_t> all_polygons;
+  all_polygons.push_back(fly_zone);
+  for (const auto &nfz : no_fly_zones) all_polygons.push_back(nfz);
+  for (const auto &hr : hr_no_fly_zones) all_polygons.push_back(hr.first);
 
-  // No-fly-zones must not overlap with fly-zones 
-  for (auto &no_fly_zone : no_fly_zones) {
-    int position = -1;  // 0 = outside, 1 = inside
-    for (auto &point : no_fly_zone) {
-      int r = is_inside(point, fly_zone) ? 1 : 0;
-      if (r == position || position == -1) {
-        position = r;
-      } else {
-        ROS_ERROR("Invalid definition of the fly-zone or no-fly-zones. The sides or vertices of the fly-zone polygon must not overlap with those of the no-fly-zone polygons.");
-        coverage_paths_t coverage_paths_empty;
+  for (size_t i = 0; i < all_polygons.size(); ++i) {
+    for (size_t j = i + 1; j < all_polygons.size(); ++j) {
+      bool overlap = false;
+
+      int inside_i_j = 0;
+      for (size_t a = 0; a + 1 < all_polygons[i].size(); ++a) {
+        if (is_inside(all_polygons[i][a], all_polygons[j])) inside_i_j++;
+      }
+
+      int inside_j_i = 0;
+      for (size_t b = 0; b + 1 < all_polygons[j].size(); ++b) {
+        if (is_inside(all_polygons[j][b], all_polygons[i])) inside_j_i++;
+      }
+
+      // If some but not all vertices are inside, this is a partial overlap.
+      if ((inside_i_j > 0 && inside_i_j < static_cast<int>(all_polygons[i].size() - 1)) ||
+          (inside_j_i > 0 && inside_j_i < static_cast<int>(all_polygons[j].size() - 1))) {
+        overlap = true;
+      }
+
+      // edge intersection check (covers crossings without vertex containment)
+      for (size_t a = 0; a + 1 < all_polygons[i].size() && !overlap; ++a) {
+        TransitPath s1(all_polygons[i][a].first, all_polygons[i][a].second, all_polygons[i][a+1].first, all_polygons[i][a+1].second);
+        for (size_t b = 0; b + 1 < all_polygons[j].size() && !overlap; ++b) {
+          TransitPath s2(all_polygons[j][b].first, all_polygons[j][b].second, all_polygons[j][b+1].first, all_polygons[j][b+1].second);
+          if (segmentsIntersect(s1, s2)) overlap = true;
+        }
+      }
+
+      if (overlap) {
+        ROS_ERROR("Polygon edges of Fly zones, No-fly zones and Height restricted no-fly zones must not overlap.");
         return coverage_paths_empty;
       }
     }
   }
 
-  // No-fly-zones must not overlap with each other
-  for (int i = 0; i < no_fly_zones.size(); i++) {
-    for (int j = i + 1; j < no_fly_zones.size(); j++) {
-      for (auto point : no_fly_zones.at(i)) {  // procházení jednotlivých bodů no-fly-zony i
-        if (is_inside(point, no_fly_zones.at(j))) {
-          ROS_ERROR("Invalid definition of the no-fly-zones. No-fly-zones must not overlap each other.");
-          coverage_paths_t coverage_paths_empty;
-          return coverage_paths_empty;
-        }
-      }
-    }
-  }
+  planner_config_.lat_lon_origin.first  = mission.latlon_origin.x;
+  planner_config_.lat_lon_origin.second = mission.latlon_origin.y;
+  planner_config_.number_of_drones = mission.robots.size();
+  planner_config_.sweeping_alt = mission.robots[0].height;
 
   // Create a logger to log everything directly into stdout
   auto shared_logger = std::make_shared<loggers::SimpleLogger>();
@@ -424,10 +466,10 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   std::cout << "Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed() << std::endl;
 
   // Initialize polygon and transform all the point into meters
-  MapPolygon polygon = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin);
+  MapPolygon polygon = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin, hr_no_fly_zones);
 
   // Decompose the polygon
-  ShortestPathCalculator shortest_path_calculator(polygon, true);
+  ShortestPathCalculator shortest_path_calculator(polygon, true, mission.robots[0].height);
 
   // Remove outer no-fly zones before decomposition and sweeping path generation. EnergyAware library can not work with outer no fly zones.
   std::vector<polygon_t> internal_nfz;
@@ -440,6 +482,19 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   }
   polygon.no_fly_zone_polygons = internal_nfz;
 
+  // Remove outer height restricted no-fly zones
+  int c = 0;
+  std::vector<int> indices;
+  for (HeightRestrictedNoFlyZone& hr_nfz : polygon.height_restricted_no_fly_zone_polygons) {
+    if (hr_nfz.polygon.empty() || !is_point_in_polygon(hr_nfz.polygon[0], polygon.fly_zone_polygon_points)) {
+      indices.push_back(c);
+      ROS_WARN("A height restricted no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
+    }
+    c++;
+  }
+  for (int i = indices.size()-1; i >= 0; i--) {
+    polygon.height_restricted_no_fly_zone_polygons.erase(polygon.height_restricted_no_fly_zone_polygons.begin() + indices.at(i));
+  }
 
   // For saving the paths for each UAV
   coverage_paths_t coverage_paths_tmp;
@@ -464,6 +519,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   }
 
   double transit_path_height = mission.robots[0].height + 1.0;
+  double sweeping_height = mission.robots[0].height;
 
   // Save genrated path to coverage_paths_tmp excluding some points
   // for (auto &drone_path : best_solution.paths) {
@@ -479,7 +535,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       // Fill the reference point
       point.position.x = p.x;
       point.position.y = p.y;
-      point.position.z = mission.robots[d].height + p.z;  // Points not included in sweeping path will be 1 m higher. This is done only to distinguish the transition path (any path that isn't the sweeping path) from the sweepin path
+      point.position.z = p.z;
       point.heading    = 0.0;
 
       iroc_mission_handler::Waypoint waypoint;
@@ -516,31 +572,38 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   double drone_distance = 5;  // [m]
   double drone_width_dist = 5;
   double drone_height_dist = 5;
-  
-  
+
   for (int i = 0; i < drone_num; i++) {
+    // Saving coverage_paths_tmp into coverage_paths in different order. This way the path is assigned to a specific drone. We do this because we want to assign a coverage path to the nearest drone.
     coverage_paths.at(i) = coverage_paths_tmp.at(assignment[i]);
-
-    // Calculates the path from the drone's starting position to the start of the sweeping path. If the direct route is obstructed by no-fly zones, shortest_path_calculator() finds a route around them.
-    std::vector<point_t> path_from_start = shortest_path_calculator.shortest_path_between_points({drone_positions.at(i).first, drone_positions.at(i).second}, {coverage_paths.at(i).at(1).reference.position.x, coverage_paths.at(i).at(1).reference.position.y});
-    path_from_start.pop_back();
-    std::vector<iroc_mission_handler::Waypoint> path_from_start_waypoints = pointVecToWaypointVec(path_from_start, transit_path_height);
-    coverage_paths.at(i).insert(coverage_paths.at(i).begin(), path_from_start_waypoints.begin(), path_from_start_waypoints.end());
     
-    // Calculates the path from the end of sweeping path to drone's end position. If the direct route is obstructed by no-fly zones, shortest_path_calculator() finds a route around them.
-    std::vector<point_t> path_to_end = shortest_path_calculator.shortest_path_between_points({coverage_paths.at(i).back().reference.position.x, coverage_paths.at(i).back().reference.position.y}, {drone_positions.at(i).first, drone_positions.at(i).second});
-    path_to_end.erase(path_to_end.begin());
-    std::vector<iroc_mission_handler::Waypoint> path_to_end_waypoints = pointVecToWaypointVec(path_to_end, transit_path_height);
-    coverage_paths.at(i).insert(coverage_paths.at(i).end(), path_to_end_waypoints.begin(), path_to_end_waypoints.end());
+    // Calculates the path from the drone's starting position to the start of the sweeping path. If the direct route is obstructed by no-fly zones, shortest_path_calculator() finds a route around them.
+    // std::vector<point_t> path_from_start = shortest_path_calculator.shortest_path_between_points({drone_positions.at(i).first, drone_positions.at(i).second}, {coverage_paths.at(i).at(1).reference.position.x, coverage_paths.at(i).at(1).reference.position.y});
+    auto path_res = shortest_path_calculator.shortest_path_between_points({drone_positions.at(i).first, drone_positions.at(i).second}, {coverage_paths.at(i).at(1).reference.position.x, coverage_paths.at(i).at(1).reference.position.y});
+    std::vector<point_t> path_from_start = path_res.first;
+    double current_transit_path_height = path_res.second;
+    path_from_start.pop_back();
 
+    std::vector<iroc_mission_handler::Waypoint> path_from_start_waypoints = pointVecToWaypointVec(path_from_start, current_transit_path_height);
+    coverage_paths.at(i).insert(coverage_paths.at(i).begin(), path_from_start_waypoints.begin(), path_from_start_waypoints.end());    
+
+    // Calculates the path from the end of sweeping path to drone's end position. If the direct route is obstructed by no-fly zones, shortest_path_calculator() finds a route around them.
+    // std::vector<point_t> path_to_end = shortest_path_calculator.shortest_path_between_points({coverage_paths.at(i).back().reference.position.x, coverage_paths.at(i).back().reference.position.y}, {drone_positions.at(i).first, drone_positions.at(i).second});
+    path_res = shortest_path_calculator.shortest_path_between_points({coverage_paths.at(i).back().reference.position.x, coverage_paths.at(i).back().reference.position.y}, {drone_positions.at(i).first, drone_positions.at(i).second});
+    std::vector<point_t> path_to_end = path_res.first;
+    current_transit_path_height = path_res.second;
+    path_to_end.erase(path_to_end.begin());
+    std::vector<iroc_mission_handler::Waypoint> path_to_end_waypoints = pointVecToWaypointVec(path_to_end, current_transit_path_height);
+    coverage_paths.at(i).insert(coverage_paths.at(i).end(), path_to_end_waypoints.begin(), path_to_end_waypoints.end());
+    
 
     // Fill the TransiPathGroupStruct
     for (int j = 1; j < coverage_paths.at(i).size(); j++) {
       custom_types::Point2D current_point = custom_types::Point2D(coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y);
       custom_types::Point2D prev_point = custom_types::Point2D(coverage_paths.at(i).at(j-1).reference.position.x, coverage_paths.at(i).at(j-1).reference.position.y);
 
-      if (coverage_paths.at(i).at(j).reference.position.z == transit_path_height && coverage_paths.at(i).at(j-1).reference.position.z == transit_path_height &&
-            (current_point.x != prev_point.x || current_point.y != prev_point.y)) {
+      if (coverage_paths.at(i).at(j).reference.position.z > sweeping_height && coverage_paths.at(i).at(j-1).reference.position.z > sweeping_height &&
+            (current_point.x != prev_point.x || current_point.y != prev_point.y)) { // TODO: this last condition probably isn't needed
 
         // Checking if the current TransitPath (composed of current_point and prev_point) connects to the last added TransitPath.
         // If it does, the last TransitPathGroup is extended. If not, a new TransitPathGroup is created.
@@ -549,43 +612,15 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
         } else {
           std::unique_ptr<TransitPathGroup> tpg(new TransitPathGroup(i));
           tpg->addTransitPath(prev_point.x, prev_point.y, current_point.x, current_point.y, &coverage_paths.at(i).at(j-1).reference.position.z, &coverage_paths.at(i).at(j).reference.position.z);
+          tpg->setLevelFromHeight(coverage_paths.at(i).at(j).reference.position.z, sweeping_height, transit_path_height, drone_distance);
           tpgs.transit_path_groups.push_back(std::move(tpg));
         }
       }
     }
-
-    // // Debug: Print transit_path_groups content
-    // ROS_INFO("[CoveragePlanner] transit_path_groups size: %zu", tpgs.transit_path_groups.size());
-    // for (size_t tpg_idx = 0; tpg_idx < tpgs.transit_path_groups.size(); tpg_idx++) {
-    //   const auto& tpg = tpgs.transit_path_groups.at(tpg_idx);
-    //   ROS_INFO("[CoveragePlanner] TPG %zu: drone_idx = %d, size = %zu", 
-    //            tpg_idx, tpg->drone_idx, tpg->get().size());
-    //   const auto& paths = tpg->get();
-    //   for (size_t tp_idx = 0; tp_idx < paths.size(); tp_idx++) {
-    //     const auto& tp = paths[tp_idx];
-    //     ROS_INFO("[CoveragePlanner]   TP %zu: (%.2f, %.2f) -> (%.2f, %.2f), heights: (tezko se k nim dostava)",
-    //              tp_idx, tp->x1, tp->y1, tp->x2, tp->y2);
-    //   }
-    // }
   }
-  // tpgs.transit_path_groups.clear();
-
-  // std::unique_ptr<TransitPathGroup> tpg1(new TransitPathGroup(0));
-  // tpg1->addTransitPath(-1, 0, 3, 4, NULL, NULL);
-  // // tpg1->addTransitPath(-5, 0, -2, 2, NULL, NULL);
-  // std::unique_ptr<TransitPathGroup> tpg2(new TransitPathGroup(1));
-  // tpg2->addTransitPath(1, 2, 1, -6, NULL, NULL);
-  // std::unique_ptr<TransitPathGroup> tpg3(new TransitPathGroup(2));
-  // tpg3->addTransitPath(1, -2, -3, 2, NULL, NULL);
-
-  // tpgs.transit_path_groups.push_back(std::move(tpg1));
-  // tpgs.transit_path_groups.push_back(std::move(tpg2));
-  // tpgs.transit_path_groups.push_back(std::move(tpg3));
-
-  tpgs.transit_paths_under.insert(tpgs.transit_paths_under.end(), tpgs.transit_path_groups.size(), std::vector<int>());
-
 
   // Fill the transit_paths_under vector.
+  tpgs.transit_paths_under.insert(tpgs.transit_paths_under.end(), tpgs.transit_path_groups.size(), std::vector<int>());
   for (int i = 0; i < tpgs.transit_path_groups.size(); i++) {
     for (int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
       if (tpgs.transit_path_groups.at(i)->drone_idx == tpgs.transit_path_groups.at(j)->drone_idx) continue; 
@@ -598,19 +633,6 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       }
     }
   }
-
-  ROS_INFO("[CoveragePlanner] Number of transit_paths_under constraints: %zu", tpgs.transit_paths_under.size());
-  for (size_t i = 0; i < tpgs.transit_paths_under.size(); i++) {
-    if (!tpgs.transit_paths_under.at(i).empty()) {
-      std::stringstream ss;
-      ss << "[CoveragePlanner] Group " << i << " must be above groups: ";
-      for (int under : tpgs.transit_paths_under.at(i)) {
-        ss << under << " ";
-      }
-      ROS_INFO("%s", ss.str().c_str());
-    }
-  }
-  ROS_INFO("[CoveragePlanner] ================================");
   
   // Graph is created. In this graph vertexes are transit path groups and edges mean that two transit path groups overlap
   Graph graph = Graph(tpgs.transit_path_groups.size());
@@ -621,23 +643,6 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       }
     }
   }
-  
-  // DEBUG: Výpis obsahu struktury Graph
-  ROS_INFO("[CoveragePlanner] === DEBUG: OBSAH GRAFU ===");
-  ROS_INFO("[CoveragePlanner] Počet vrcholů (V): %d", graph.V);
-  for (int i = 0; i < graph.V; i++) {
-    std::stringstream ss;
-    ss << "[CoveragePlanner] Vrchol " << i << " je propojen s: ";
-    if (graph.adj[i].empty()) {
-      ss << "(žádné sousedy)";
-    } else {
-      for (int neighbor : graph.adj[i]) {
-        ss << neighbor << " ";
-      }
-    }
-    ROS_INFO("%s", ss.str().c_str());
-  }
-  ROS_INFO("[CoveragePlanner] === KONEC DEBUG ===");
   
   resolveTransitHeights(tpgs, coverage_paths, graph, drone_distance, mission.robots[0].height);
 
@@ -722,33 +727,6 @@ int horizontalAndVerticalTPGIntersection(TransitPathGroup &tpg1, TransitPathGrou
   }
 }
 
-
-bool checkOverlap3(TransitPathGroup &tpg, TransitPath &tp, double min_distance)
-{
-  for (const std::unique_ptr<TransitPath> &tp_ : tpg.get()) {
-    if (checkOverlap(*tp_, tp, min_distance)) {
-      // std::cout << "Overlap byl nalezen" << std::endl;
-      // std::cout << "drone idx " << tpg.drone_idx << ", souradnice v tpg (" << tp_->x1 << ", " << tp_->y1 << "), (" << tp_->x2 << ", " << tp_->y2 << "), souradnice sweeping path (" << tp.x1 << ", " << tp.y1 << "), (" << tp.x2 << ", " << tp.y2 << ") min distance " << min_distance << std::endl;
-      // ROS_INFO("drone idx %d, souradnice v tpg (%.17f, %.17f), (%.17f, %.17f), souradnice sweeping path (%.17f, %.17f), (%.17f, %.17f) min distance %f", 
-      //     tpg.drone_idx, tp_->x1, tp_->y1, tp_->x2, tp_->y2, tp.x1, tp.y1, tp.x2, tp.y2, min_distance);
-      return true;
-    }
-  }
-  return false;
-}
-
-bool checkOverlap2(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double min_distance)
-{
-  for (const std::unique_ptr<TransitPath> &tp1 : tpg1.get()) {
-    for (const std::unique_ptr<TransitPath> &tp2 : tpg2.get()) {
-      if (checkOverlap(*tp1, *tp2, min_distance)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // Helper function to calculate squared distance between two points
 double distSq(custom_types::Point2D p1, custom_types::Point2D p2) {
     return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y);
@@ -808,16 +786,33 @@ bool checkOverlap(TransitPath tp1, TransitPath tp2, double min_distance)
     return min_actual_dist < min_distance;
 }
 
+bool checkOverlap2(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double min_distance)
+{
+  for (const std::unique_ptr<TransitPath> &tp1 : tpg1.get()) {
+    for (const std::unique_ptr<TransitPath> &tp2 : tpg2.get()) {
+      if (checkOverlap(*tp1, *tp2, min_distance)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool checkOverlap3(TransitPathGroup &tpg, TransitPath &tp, double min_distance)
+{
+  for (const std::unique_ptr<TransitPath> &tp_ : tpg.get()) {
+    if (checkOverlap(*tp_, tp, min_distance)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // This function assigns each transit path an altitude (z coordinate) so that the transit paths don't overlap
 void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::coverage_paths_t& coverage_paths, const Graph& graph, double level_height, double sweeping_height)
 {
   int n = graph.V;
   if (n == 0) return;
-
-  // 1. Inicialization of levels
-  for (auto& transit_path_group : tpgs.transit_path_groups) {
-    transit_path_group->level = -1; // -1 means "not assigned yet"
-  }
 
   // 2. Calculation of vertex (= transit path group) levels
   // We will be coloring graph vertexes one by one
@@ -837,7 +832,7 @@ void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::cover
         if (!processed[tpg_idxs]) continue;
       }
 
-      int possible_level = 0;
+      int possible_level = std::max(0, tpgs.transit_path_groups.at(v)->level);
 
       for (int tpg_idxs : tpgs.transit_paths_under[v]) {
         possible_level = std::max(possible_level, assigned_levels[tpg_idxs] + 1);

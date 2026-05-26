@@ -46,12 +46,8 @@ namespace
 MapPolygon::MapPolygon(const MapPolygon& p)
 {
   fly_zone_polygon_points = p.fly_zone_polygon_points;
-  // // Print the fly zone points
-  // for (const auto& p : fly_zone_polygon_points)
-  // {
-  //   std::cout << "[MapPolygon] Fly zone point: " << p.first << " " << p.second << std::endl;
-  // }
   no_fly_zone_polygons = p.no_fly_zone_polygons;
+  height_restricted_no_fly_zone_polygons = p.height_restricted_no_fly_zone_polygons;
 }
 //}
 
@@ -77,21 +73,52 @@ MapPolygon MapPolygon::rotated(double angle) const
                                   [angle](const auto& p) { return rotate_point(p, angle); });
                    return no_fly_new_polygon;
                  });
+
+  // Rotate each point in each of the polygons describing height restricted non-fly zone
+  std::transform(height_restricted_no_fly_zone_polygons.begin(),
+                  height_restricted_no_fly_zone_polygons.end(),
+                  std::inserter(new_polygon.height_restricted_no_fly_zone_polygons, new_polygon.height_restricted_no_fly_zone_polygons.begin()),
+                  [angle](const auto &hr_nfz) {
+                      polygon_t hr_nfz_new_polygon;
+                      std::transform(hr_nfz.polygon.begin(),
+                                    hr_nfz.polygon.end(),
+                                    std::inserter(hr_nfz_new_polygon, hr_nfz_new_polygon.begin()),
+                                    [angle](const auto &p) { return rotate_point(p, angle); });
+                      return HeightRestrictedNoFlyZone{hr_nfz_new_polygon, hr_nfz.max_altitude};
+                  });
   return new_polygon;
 }
 //}
 
-/* get_all_points() //{ */
 
-std::set<point_t> MapPolygon::get_all_points() const
-{
-  std::set<point_t> points;
-  std::copy(fly_zone_polygon_points.begin(), fly_zone_polygon_points.end(), std::inserter(points, points.begin()));
-  std::for_each(no_fly_zone_polygons.begin(), no_fly_zone_polygons.end(),
-                [&](const auto& p) { std::copy(p.begin(), p.end(), std::inserter(points, points.begin())); });
-  return points;
+std::set<point_t> MapPolygon::get_all_points() const {
+    std::set<point_t> points;
+    std::copy(fly_zone_polygon_points.begin(), fly_zone_polygon_points.end(),
+              std::inserter(points, points.begin()));
+    std::for_each(no_fly_zone_polygons.begin(), no_fly_zone_polygons.end(),
+                  [&](const auto &p) {
+                      std::copy(p.begin(), p.end(), std::inserter(points, points.begin()));
+                  });
+    std::for_each(height_restricted_no_fly_zone_polygons.begin(), height_restricted_no_fly_zone_polygons.end(),
+                  [&](const auto &p) {
+                      std::copy(p.polygon.begin(), p.polygon.end(), std::inserter(points, points.begin()));
+                  });
+    return points;
 }
-//}
+
+std::set<point_t> MapPolygon::get_base_points() const {
+    std::set<point_t> points;
+    std::copy(fly_zone_polygon_points.begin(), fly_zone_polygon_points.end(),
+              std::inserter(points, points.begin()));
+    std::for_each(no_fly_zone_polygons.begin(), no_fly_zone_polygons.end(),
+                  [&](const auto &p) {
+                      std::copy(p.begin(), p.end(), std::inserter(points, points.begin()));
+                  });
+    return points;
+}
+
+
+
 
 namespace
 {
@@ -141,6 +168,11 @@ std::pair<point_t, point_t> MapPolygon::point_neighbors(point_t point) const
       return res;
     }
   }
+  for (auto &p: height_restricted_no_fly_zone_polygons) {
+      if (find_point_neighbours(point, res, p.polygon)) {
+          return res;
+      }
+  }
   throw non_existing_point_error("Point is not in the polygon");
 }
 //}
@@ -165,25 +197,36 @@ std::pair<point_t, point_t> MapPolygon::point_neighbors(point_t point) const
 }
 //}
 
-/* get_all_segments() //{ */
-
-std::vector<segment_t> MapPolygon::get_all_segments() const
-{
-  std::vector<segment_t> segments;
-  for (size_t i = 0; i + 1 < fly_zone_polygon_points.size(); ++i)
-  {
-    segments.emplace_back(fly_zone_polygon_points[i], fly_zone_polygon_points[i + 1]);
-  }
-  for (const auto& pol : no_fly_zone_polygons)
-  {
-    for (size_t i = 0; i + 1 < pol.size(); ++i)
-    {
-      segments.emplace_back(pol[i], pol[i + 1]);
+std::vector<segment_t> MapPolygon::get_all_segments() const {
+    std::vector<segment_t> segments;
+    for (size_t i = 0; i + 1 < fly_zone_polygon_points.size(); ++i) {
+        segments.emplace_back(fly_zone_polygon_points[i], fly_zone_polygon_points[i + 1]);
     }
-  }
-  return segments;
+    for (const auto &pol: no_fly_zone_polygons) {
+        for (size_t i = 0; i + 1 < pol.size(); ++i) {
+            segments.emplace_back(pol[i], pol[i + 1]);
+        }
+    }
+    for (const auto &pol: height_restricted_no_fly_zone_polygons) {
+        for (size_t i = 0; i + 1 < pol.polygon.size(); ++i) {
+            segments.emplace_back(pol.polygon[i], pol.polygon[i + 1]);
+        }
+    }
+    return segments;
 }
-//}
+
+std::vector<segment_t> MapPolygon::get_base_segments() const {
+    std::vector<segment_t> segments;
+    for (size_t i = 0; i + 1 < fly_zone_polygon_points.size(); ++i) {
+        segments.emplace_back(fly_zone_polygon_points[i], fly_zone_polygon_points[i + 1]);
+    }
+    for (const auto &pol: no_fly_zone_polygons) {
+        for (size_t i = 0; i + 1 < pol.size(); ++i) {
+            segments.emplace_back(pol[i], pol[i + 1]);
+        }
+    }
+    return segments;
+}
 
 /* get_n_longest_edges_rotation_angles() //{ */
 

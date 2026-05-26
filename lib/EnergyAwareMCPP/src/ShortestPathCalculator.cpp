@@ -3,343 +3,332 @@
 #include "utils.hpp"
 #include <cmath>
 
-/* namespace //{ */
-
 namespace
 {
-  const double EPS = 1e-5;
+    const double EPS = 1e-5;
 
-  point_t pm(point_t point)
-  {
-    return {point.first * 1000, point.second * 1000};
-  }
 
-  /*!
-   * Calculate the sets of polygon point pairs for which there is no direct path in a straight line.
-   *
-   * The set will include the pairs that can "see" each other through the center of the polygon for no-fly-zones
-   * e.g. all possible pairs for a convex polygon except of neighbouring ones
-   *
-   * For a fly-zone, the set will include points that can "see" each other from outside of the polygon
-   * e.g. if the polygon is concave, there is always a pair of points that can "see" each other without
-   * any segments between them, but the direct path goes outside of the fly-zone
-   *
-   * @param polygon Polygon as a set of vertices
-   * @param fly_zone Whether the polygon should be treated as a fly-zone
-   * @return Set of polygon vertices between which there is no direct path not leaving the fly-zone
-   */
-  std::set<segment_t> no_direct_path(const std::vector<point_t> &polygon, bool fly_zone = true) {
-    std::set<segment_t> no_direct_view;
-    for (size_t i = 0; i < polygon.size(); ++i) {
-      for (size_t j = i + 2; j < polygon.size(); ++j) {
-        // Skip the edge connecting the first and the last node
-        if (i == 0 && j == polygon.size() - 1) continue;
-        if (i == 0 && j == polygon.size() - 2 && polygon.front() == polygon.back()) continue;
-
-        point_t midpoint = {(polygon[i].first + polygon[j].first) / 2.0,
-                            (polygon[i].second + polygon[j].second) / 2.0};
-        bool inside = is_point_in_polygon(midpoint, polygon);
-        
-        if (fly_zone && !inside) {
-          no_direct_view.insert({polygon[i], polygon[j]});
-        } else if (!fly_zone && inside) {
-          no_direct_view.insert({polygon[i], polygon[j]});
+    /*!
+     * Calculate the sets of polygon point pairs for which there is no direct path in a straight line.
+     *
+     * The set will include the pairs that can "see" each other through the center of the polygon for no-fly-zones
+     * e.g. all possible pairs for a convex polygon except of neighbouring ones
+     *
+     * For a fly-zone, the set will include points that can "see" each other from outside of the polygon
+     * e.g. if the polygon is concave, there is always a pair of points that can "see" each other without
+     * any segments between them, but the direct path goes outside of the fly-zone
+     *
+     * @param polygon Polygon as a set of vertices
+     * @param fly_zone Whether the polygon should be treated as a fly-zone
+     * @return Set of polygon vertices between which there is no direct path not leaving the fly-zone
+     */
+    std::set<segment_t> calculate_no_direct_path_pairs(const std::vector<point_t> &polygon_points, bool is_fly_zone = true) {
+        std::set<segment_t> no_direct_view;
+        if (polygon_points.size() < 3) {
+            return no_direct_view;
         }
-      }
-    }
-    return no_direct_view;
-  }
 
-  /*!
-    * Overload of the function above to be able to ignore fly zone
-    */
-  std::set<segment_t> no_direct_path(const MapPolygon &polygon, bool ignore_fly_zone) {
-    std::set<segment_t> no_direct_view;
-    if (!ignore_fly_zone) {
-      no_direct_view = no_direct_path(polygon.fly_zone_polygon_points, true);
-    }
-    for (const auto &p: polygon.no_fly_zone_polygons) {
-      auto no_fly_zone_no_view = no_direct_path(p, false);
-      no_direct_view.insert(no_fly_zone_no_view.begin(), no_fly_zone_no_view.end());
-    }
-    return no_direct_view;
-  }
+        size_t n_points = polygon_points.size();
+        if (polygon_points.front() == polygon_points.back()) {
+            n_points--;
+        }
 
-  /*!
-    * Calculate the segments, between which there is no direct path definitely.
-    * Needed for the main algorithm while checking if there is a direct path by
-    * "visibility" of the points (no segment between them). But this situation can also
-    * happen when nodes "see" each other through a no-fly zone (e.g. different points of a convex no-fly zone
-    * of when the fly-zone if non-convex, so there always exist a line between
-    * @param polygon Polygon for which segments will be found
-    * @return
-    */
-  std::set<segment_t> no_direct_path(const MapPolygon &polygon) {
-      return no_direct_path(polygon, false);
-  }
+        for (size_t i = 0; i < n_points; ++i) {
+            for (size_t j = i + 2; j < n_points; ++j) {
+                // Skip the edge connecting the first and the last node
+                if (i == 0 && j == n_points - 1) continue;
+
+                point_t midpoint = {(polygon_points[i].first + polygon_points[j].first) / 2.0,
+                                    (polygon_points[i].second + polygon_points[j].second) / 2.0};
+                bool inside = is_point_in_polygon(midpoint, polygon_points);
+                
+                if (is_fly_zone && !inside) {
+                    no_direct_view.insert({polygon_points[i], polygon_points[j]});
+                } else if (!is_fly_zone && inside) {
+                    no_direct_view.insert({polygon_points[i], polygon_points[j]});
+                }
+            }
+        }
+        return no_direct_view;
+    }
+
+    /*!
+     * Calculate the segments, between which there is no direct path definitely.
+     * This version considers the base fly zone and regular no-fly zones.
+     * Height-restricted no-fly zones are *not* included here.
+     * @param map_polygon MapPolygon for which segments will be found
+     * @param ignore_fly_zone If true, only no-fly zones are considered. If false, fly-zone and no-fly zones are considered.
+     * @return Set of segment pairs that cannot be directly traversed.
+     */
+    std::set<segment_t> get_base_no_direct_path_pairs(const MapPolygon &map_polygon, bool ignore_fly_zone) {
+        std::set<segment_t> no_direct_view;
+        if (!ignore_fly_zone) {
+            no_direct_view = calculate_no_direct_path_pairs(map_polygon.fly_zone_polygon_points, true);
+        }
+        for (const auto &p: map_polygon.no_fly_zone_polygons) {
+            auto no_fly_zone_no_view = calculate_no_direct_path_pairs(p, false);
+            no_direct_view.insert(no_fly_zone_no_view.begin(), no_fly_zone_no_view.end());
+        }
+        return no_direct_view;
+    }
 }
 
-ShortestPathCalculator::ShortestPathCalculator(const MapPolygon &polygon, bool ignore_fly_zone) {
+ShortestPathCalculator::ShortestPathCalculator(const MapPolygon &polygon, bool ignore_fly_zone, double sweeping_height) : m_base_map_polygon(polygon), sweeping_height(sweeping_height) {
+  m_hr_no_fly_zone_polygons = polygon.height_restricted_no_fly_zone_polygons;
   if (ignore_fly_zone) {
     std::set<point_t> points_tmp;
     for (const auto &nfz : polygon.no_fly_zone_polygons) {
       std::copy(nfz.begin(), nfz.end(), std::inserter(points_tmp, points_tmp.begin()));
       for (size_t i = 0; i + 1 < nfz.size(); ++i) {
-        m_polygon_segments.emplace_back(nfz[i], nfz[i + 1]);
+        m_polygon_segments.emplace_back(nfz[i], nfz[i + 1]); // These are regular no-fly zones, so they are part of the base segments
       }
     }
     m_polygon_points = std::vector<point_t>{points_tmp.begin(), points_tmp.end()};
   } else {
-    auto points_tmp = polygon.get_all_points();
-    m_polygon_points = std::vector<point_t>{points_tmp.begin(), points_tmp.end()};
-    m_polygon_segments = polygon.get_all_segments();
+    m_polygon_points = std::vector<point_t>{m_base_map_polygon.get_base_points().begin(), m_base_map_polygon.get_base_points().end()};
+    m_polygon_segments = m_base_map_polygon.get_base_segments();
   }
 
-  // Assign each point a unique identifier to be able to quickly traverse through it
-  int index = 0;
-  for (const auto& p : m_polygon_points)
-  {
-    m_point_index[p] = index++;
-  }
+  transit_height = sweeping_height + 1.0;
+}
 
-  // Create a 2-d matrix that will contain paths for the shortest path between each of perimeter point
-  // And 2-d matrix for the Floyd-Warshall algorithm
-  m_next_vertex_in_path = std::vector<std::vector<size_t>>(m_polygon_points.size());
-  std::for_each(m_next_vertex_in_path.begin(), m_next_vertex_in_path.end(), [&](auto& row) { row = std::vector<size_t>(m_polygon_points.size(), -1); });
-  m_floyd_warshall_d = std::vector<std::vector<double>>(m_polygon_points.size());
-  std::for_each(m_floyd_warshall_d.begin(), m_floyd_warshall_d.end(), [&](auto& row) { row = std::vector<double>(m_polygon_points.size(), HUGE_VAL); });
 
-  // Get the list of pairs of points, for which there is no direct path even if they can "see" each other
-  auto no_direct_path_pairs = no_direct_path(polygon, ignore_fly_zone);
+// This algorithm uses a dynamic Dijkstra's algorithm to find the path.
+// This correctly incorporates additional obstacles (both their boundaries for avoidance and their vertices for tight detours).
+std::vector<point_t> ShortestPathCalculator::find_path_around_obstacles(point_t p1, point_t p2, const std::vector<polygon_t>& additional_obstacle_polygons) const {
 
-  // O(N^3) building of the matrix. Ok as the algorithm itself runs on O(N^3)
-  for (size_t i = 0; i < m_polygon_points.size(); i++)
-  {
-    m_floyd_warshall_d[i][i] = 0;
-    for (size_t j = i + 1; j < m_polygon_points.size(); j++)
-    {
-      segment_t segment_between_point = {m_polygon_points[i], m_polygon_points[j]};
-      if (m_polygon_points[i] == m_polygon_points[j])
-      {
-        continue;
-      }
+    // Check direct visibility with all obstacles (base + additional)
+    if (point_can_see_point(p1, p2, additional_obstacle_polygons)) {
+        return {p1, p2}; // Direct path is possible
+    }
 
-      // If there is no direct path by previously calculated algorithm, omit this pair
-      if (no_direct_path_pairs.find(segment_between_point) != no_direct_path_pairs.end()
-          || no_direct_path_pairs.find({segment_between_point.second, segment_between_point.first}) != no_direct_path_pairs.end())
-      {
-        continue;
-      }
+    // Prepare all graph nodes: base points + vertices of additional obstacles + start and end points
+    std::vector<point_t> all_nodes = m_polygon_points;
+    for (const auto& poly : additional_obstacle_polygons) {
+        for (const auto& pt : poly) {
+            all_nodes.push_back(pt);
+        }
+    }
+    all_nodes.push_back(p1);
+    all_nodes.push_back(p2);
+    
+    size_t start_idx = all_nodes.size() - 2;
+    size_t end_idx = all_nodes.size() - 1;
 
-      bool segment_intersects = false;
-      for (const auto& segment : m_polygon_segments)
-      {
-        // If there is an exact edge between these two points -- break as there won't be any intersections anymore
-        if ((segment.first == segment_between_point.first && segment.second == segment_between_point.second)
-            || (segment.second == segment_between_point.first && segment.first == segment_between_point.second))
-        {
-          segment_intersects = false;
-          break;
+    // To avoid connecting through the interior (diagonals) of forbidden zones, 
+    // we get all forbidden direct connections.
+    std::set<segment_t> all_no_direct_paths = get_base_no_direct_path_pairs(m_base_map_polygon, false);
+    for (const auto& poly : additional_obstacle_polygons) {
+        auto ndp = calculate_no_direct_path_pairs(poly, false); // Additional obstacles are "no-fly zones"
+        all_no_direct_paths.insert(ndp.begin(), ndp.end());
+    }
+
+    // Dijkstra's algorithm on a graph constructed on-the-fly
+    size_t N = all_nodes.size();
+    std::vector<double> dist(N, std::numeric_limits<double>::max());
+    std::vector<size_t> parent(N, SIZE_MAX);
+    std::vector<bool> visited(N, false);
+
+    dist[start_idx] = 0.0;
+
+    for (size_t i = 0; i < N; ++i) {
+        // Select an unvisited node with the smallest distance
+        double min_dist = std::numeric_limits<double>::max();
+        size_t u = SIZE_MAX;
+        for (size_t j = 0; j < N; ++j) {
+            if (!visited[j] && dist[j] < min_dist) {
+                min_dist = dist[j];
+                u = j;
+            }
         }
 
-        // If the segment starts in point - don't check it for intersection as it will intersect in that point
-        if (segment.first == segment_between_point.first || segment.second == segment_between_point.first || segment.first == segment_between_point.second
-            || segment.second == segment_between_point.second)
-        {
-          continue;
+        // We are at the destination or the rest of the graph is unreachable
+        if (u == SIZE_MAX || u == end_idx) break;
+        visited[u] = true;
+
+        // Update the distances of neighbors
+        for (size_t v = 0; v < N; ++v) {
+            if (!visited[v]) {
+                double weight = distance_between_points(all_nodes[u], all_nodes[v]);
+                // Optimization: perform the expensive visibility check only if the edge can improve the distance
+                if (dist[u] + weight < dist[v]) {
+                    segment_t seg{all_nodes[u], all_nodes[v]};
+                    segment_t rev_seg{all_nodes[v], all_nodes[u]};
+                    
+                    // Check for disallowed lines from the interior of polygons and for visibility across edges
+                    if (!all_no_direct_paths.count(seg) && !all_no_direct_paths.count(rev_seg)) {
+                        if (point_can_see_point(all_nodes[u], all_nodes[v], additional_obstacle_polygons)) {
+                            dist[v] = dist[u] + weight;
+                            parent[v] = u;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If a path could not be found (fallback)
+    if (parent[end_idx] == SIZE_MAX) {
+        return {p1, p2};
+    }
+
+    // Reconstruct the shortest found path
+    std::vector<point_t> path;
+    size_t curr = end_idx;
+    while (curr != SIZE_MAX) {
+        path.push_back(all_nodes[curr]);
+        curr = parent[curr];
+    }
+    std::reverse(path.begin(), path.end());
+
+    // Clean up any immediately adjacent duplicate points
+    std::vector<point_t> clean_path;
+    for (const auto& pt : path) {
+        if (clean_path.empty() || distance_between_points(clean_path.back(), pt) > 1e-5) {
+            clean_path.push_back(pt);
+        }
+    }
+
+    return clean_path;
+}
+
+// Helper function to check if a path segment intersects any of the given polygons
+bool path_segment_intersects_polygons(const segment_t& path_segment, const std::vector<polygon_t>& polygons) {
+    for (const auto& poly : polygons) {
+        for (size_t i = 0; i + 1 < poly.size(); ++i) {
+            segment_t poly_segment = {poly[i], poly[i+1]};
+            if (segments_intersect(path_segment, poly_segment)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+std::pair<std::vector<point_t>, double> ShortestPathCalculator::shortest_path_between_points(point_t p1, point_t p2) const {
+    // If path is saved to cache - return it from there
+    auto path_in_cache = paths_cache.find({p1, p2});
+    if (path_in_cache != paths_cache.end()) {
+        return path_in_cache->second;
+    }
+    
+    struct Candidate {
+        double total_cost;
+        std::vector<point_t> path;
+        double transit_altitude;
+    };
+    std::vector<Candidate> candidate_paths;
+    std::vector<polygon_t> current_hard_hr_nfzs; // HR-NFZs that are currently treated as hard obstacles
+
+    // Loop to iteratively add HR-NFZs as hard obstacles
+    while (true) {
+        // Calculate the shortest path around the current set of hard obstacles
+        // This uses the base visibility graph (m_polygon_points, m_floyd_warshall_d)
+        // but checks visibility from p1/p2 to polygon points against ALL obstacles.
+        std::vector<point_t> current_path = find_path_around_obstacles(p1, p2, current_hard_hr_nfzs);
+
+        // Check for intersections with *remaining* HR-NFZs (those not yet added to current_hard_hr_nfzs)
+        double max_intersected_hr_nfz_altitude = 0.0;
+        const HeightRestrictedNoFlyZone* highest_hr_nfz_intersected = nullptr;
+        
+        std::vector<segment_t> path_segments;
+        for (size_t i = 0; i + 1 < current_path.size(); ++i) {
+            path_segments.push_back({current_path[i], current_path[i+1]});
         }
 
-        if (segments_intersect(segment, segment_between_point))
-        {
-          segment_intersects = true;
-          break;
+        bool intersects_any_remaining_hr_nfz = false;
+        for (const auto& hr_nfz : m_hr_no_fly_zone_polygons) {
+            // Check if this HR-NFZ is already a hard obstacle
+            bool already_hard = false;
+            for (const auto& hard_poly : current_hard_hr_nfzs) {
+                if (hr_nfz.polygon == hard_poly) { // Simple comparison, might need more robust check
+                    already_hard = true;
+                    break;
+                }
+            }
+            if (already_hard) continue; // Skip if already a hard obstacle
+
+            // Check if current path intersects this HR-NFZ
+            bool intersects_this_hr_nfz = false;
+            for (const auto& path_seg : path_segments) {
+                if (path_segment_intersects_polygons(path_seg, {hr_nfz.polygon})) {
+                    intersects_this_hr_nfz = true;
+                    break;
+                }
+            }
+
+            if (intersects_this_hr_nfz) {
+                intersects_any_remaining_hr_nfz = true;
+                if (hr_nfz.max_altitude > max_intersected_hr_nfz_altitude) {
+                    max_intersected_hr_nfz_altitude = hr_nfz.max_altitude;
+                    highest_hr_nfz_intersected = &hr_nfz;
+                }
+            }
         }
-      }
-      if (!segment_intersects)
-      {
-        // Update Floyd Warshall algorithm matrix
-        m_floyd_warshall_d[i][j] = m_floyd_warshall_d[j][i] = segment_length(segment_between_point);
-        m_next_vertex_in_path[i][j] = j;
-        m_next_vertex_in_path[j][i] = i;
-      }
-    }
-  }
-  run_floyd_warshall();
-}
-//}
 
-/* run_floyd_warshall() //{ */
-
-void ShortestPathCalculator::run_floyd_warshall()
-{
-  const size_t N = m_floyd_warshall_d.size();
-  for (size_t k = 0; k < N; ++k)
-  {
-    for (size_t i = 0; i < N; ++i)
-    {
-      for (size_t j = 0; j < N; ++j)
-      {
-        if (m_floyd_warshall_d[i][j] > m_floyd_warshall_d[i][k] + m_floyd_warshall_d[k][j])
-        {
-          m_floyd_warshall_d[i][j] = m_floyd_warshall_d[i][k] + m_floyd_warshall_d[k][j];
-          m_floyd_warshall_d[j][i] = m_floyd_warshall_d[i][j];
-          // Now, to get to j from i, we should in direction to k (to next vertex in path to k)
-          m_next_vertex_in_path[i][j] = m_next_vertex_in_path[i][k];
-          m_next_vertex_in_path[j][i] = m_next_vertex_in_path[j][k];
+        // Calculate path cost (distance + penalty)
+        double path_distance = 0.0;
+        for (size_t i = 0; i + 1 < current_path.size(); ++i) {
+            path_distance += distance_between_points(current_path[i], current_path[i+1]);
         }
-      }
+        double total_cost = path_distance;
+        double current_transit_alt = transit_height;
+        if (intersects_any_remaining_hr_nfz) {
+            total_cost += 2 * std::max(max_intersected_hr_nfz_altitude - sweeping_height, 0.0); // Add penalty for overflying the highest intersected HR-NFZ
+            current_transit_alt = std::max(transit_height, max_intersected_hr_nfz_altitude);
+        }
+        candidate_paths.push_back({total_cost, current_path, current_transit_alt});
+
+        if (!intersects_any_remaining_hr_nfz) {
+            break; // No more HR-NFZs intersected, we are done
+        } else {
+            // Add the highest intersected HR-NFZ to hard obstacles for the next iteration
+            current_hard_hr_nfzs.push_back(highest_hr_nfz_intersected->polygon);
+        }
     }
-  }
-}
-//}
 
-/* get_approximate_shortest_path() //{ */
-
-std::vector<point_t> ShortestPathCalculator::get_approximate_shortest_path(point_t p1, point_t p2) const
-{
-  if (point_can_see_point(p1, p2))
-  {
-    return std::vector<point_t>{p1, p2};
-  }
-
-  point_t closest_to_start = closest_polygon_point(p1);
-  point_t closest_to_end = closest_polygon_point(p2);
-
-  auto path_between_closest = shortest_path_between_polygon_nodes(m_point_index[closest_to_start], m_point_index[closest_to_end]);
-  // TODO: can check if the second path point can be reached directly from p1 to make path feasible
-
-  path_between_closest.insert(path_between_closest.begin(), p1);
-  path_between_closest.push_back(p2);
-  return path_between_closest;
-}
-//}
-
-/* closest_polygon_point() //{ */
-
-point_t ShortestPathCalculator::closest_polygon_point(point_t p) const
-{
-  if (m_polygon_points.empty())
-  {
-    throw shortest_path_calculation_error("No point in the polygon found");
-  }
-  point_t closest_point = m_point_index.begin()->first;
-  double closest_distance = distance_between_points(closest_point, p);
-  for (const auto& point : m_polygon_points)
-  {
-    double new_distance = distance_between_points(point, p);
-    if (new_distance < closest_distance)
-    {
-      closest_distance = new_distance;
-      closest_point = point;
+    // Find the path with the minimum total cost among all candidates
+    double min_total_cost = std::numeric_limits<double>::max();
+    std::pair<std::vector<point_t>, double> best_path;
+    for (const auto& candidate : candidate_paths) {
+        if (candidate.total_cost < min_total_cost) {
+            min_total_cost = candidate.total_cost;
+            best_path = {candidate.path, candidate.transit_altitude};
+        }
     }
-  }
-  return closest_point;
+
+    paths_cache[{p1, p2}] = best_path;
+    return best_path;
 }
-//}
 
-/* shortest_path_between_polygon_nodes() //{ */
-
-std::vector<point_t> ShortestPathCalculator::shortest_path_between_polygon_nodes(size_t i, size_t j) const
-{
-  // Use the matrix, built using Floyd Warshall to traverse through the shortest path
-  std::vector<point_t> res;
-  while (i != j)
-  {
-    res.push_back(m_polygon_points[i]);
-    i = m_next_vertex_in_path[i][j];
-  }
-  res.push_back(m_polygon_points[j]);
-  return res;
+// This point_can_see_point checks against the base m_polygon_segments only.
+bool ShortestPathCalculator::point_can_see_point(point_t p1, point_t p2) const {
+    segment_t segment{p1, p2};
+    for (const auto &border_segment: m_polygon_segments) {
+        if (segments_intersect(segment, border_segment)) {
+            return false;
+        }
+    }
+    return true;
 }
-//}
 
-/* shortest_path_between_points()  //{ */
-
-std::vector<point_t> ShortestPathCalculator::shortest_path_between_points(point_t p1, point_t p2) const
-{
-  // If path is saved to cache - return it from there
-  auto path_in_cache = paths_cache.find({p1, p2});
-  if (path_in_cache != paths_cache.end())
-  {
-    return path_in_cache->second;
-  }
-  if (point_can_see_point(p1, p2))
-  {
-    return {p1, p2};
-  }
-
-  std::vector<size_t> seen_from_p1, seen_from_p2;
-  for (const auto& p : m_polygon_points)
-  {
-    if (point_can_see_point(p1, p))
-    {
-      seen_from_p1.push_back(m_point_index[p]);
+// This point_can_see_point checks against base m_polygon_segments AND additional_obstacle_polygons.
+bool ShortestPathCalculator::point_can_see_point(point_t p1, point_t p2, const std::vector<polygon_t>& additional_obstacle_polygons) const {
+    segment_t segment{p1, p2};
+    // Check against base polygon segments
+    for (const auto &border_segment: m_polygon_segments) {
+        if (segments_intersect(segment, border_segment)) {
+            return false;
+        }
     }
-    if (point_can_see_point(p2, p))
-    {
-      seen_from_p2.push_back(m_point_index[p]);
+    // Check against additional obstacle polygons
+    for (const auto& poly : additional_obstacle_polygons) {
+        for (size_t i = 0; i + 1 < poly.size(); ++i) {
+            segment_t poly_segment = {poly[i], poly[i+1]};
+            if (segments_intersect(segment, poly_segment)) {
+                return false;
+            }
+        }
     }
-  }
-  if (seen_from_p2.empty() || seen_from_p1.empty())
-  {
-    // Should never get here. Just return a value to not throw exceptions
-    return {p1, p2};
-  }
-
-  size_t best_i_neighbor = seen_from_p1[0];
-  size_t best_j_neighbor = seen_from_p2[0];
-  double best_path_cost = std::numeric_limits<double>::max();
-  for (auto from_p1 : seen_from_p1)
-  {
-    for (auto from_p2 : seen_from_p2)
-    {
-      double path_cost = distance_between_points(p1, m_polygon_points[from_p1]) + distance_between_points(p2, m_polygon_points[from_p2])
-                         + m_floyd_warshall_d[from_p1][from_p2];
-      if (path_cost < best_path_cost)
-      {
-        best_path_cost = path_cost;
-        best_i_neighbor = from_p1;
-        best_j_neighbor = from_p2;
-      }
-    }
-  }
-  auto res = shortest_path_between_polygon_nodes(best_i_neighbor, best_j_neighbor);
-  res.insert(res.begin(), p1);
-  res.insert(res.end(), p2);
-  paths_cache[{p1, p2}] = res;
-  return res;
+    return true;
 }
-//}
-
-/* farthest_point_seen_in_path() //{ */
-
-size_t ShortestPathCalculator::farthest_point_seen_in_path(point_t source_point, const std::vector<point_t>& path) const
-{
-  size_t res = 0;
-  for (size_t i = 0; i < path.size(); ++i)
-  {
-    if (point_can_see_point(source_point, path[i]))
-    {
-      res = i;
-    }
-  }
-  return res;
-}
-//}
-
-/* point_can_see_point() //{ */
-
-bool ShortestPathCalculator::point_can_see_point(point_t p1, point_t p2) const
-{
-  segment_t segment{p1, p2};
-  for (const auto& border_segment : m_polygon_segments)
-  {
-    if (segments_intersect(segment, border_segment))
-    {
-      return false;
-    }
-  }
-  return true;
-}
-//}
-

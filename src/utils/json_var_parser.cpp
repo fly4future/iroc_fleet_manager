@@ -22,8 +22,25 @@ constexpr bool is_vector_v = is_vector<T>::value;
 
 // Updated convertFromJson function
 template <typename T>
+struct is_pair : std::false_type
+{
+};
+
+template <typename U, typename V>
+struct is_pair<std::pair<U, V>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool is_pair_v = is_pair<T>::value;
+
+template <typename T>
 T convertFromJson(const json &j) {
-  if constexpr (is_vector_v<T>) {
+  if constexpr (is_pair_v<T>) {
+    using first_t  = typename T::first_type;
+    using second_t = typename T::second_type;
+    return {convertFromJson<first_t>(j.at("polygon")), convertFromJson<second_t>(j.at("max_altitude"))};
+  } else if constexpr (is_vector_v<T>) {
     T result;
     result.reserve(j.size());
     for (const auto &item : j) {

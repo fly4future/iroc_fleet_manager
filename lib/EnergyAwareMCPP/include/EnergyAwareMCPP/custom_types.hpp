@@ -12,4 +12,12 @@ using point_t = std::pair<double, double>;
 using segment_t = std::pair<point_t, point_t>;
 using polygon_t = std::vector<std::pair<double, double>>;
 
+/*!
+ * Structure for representation of a no-fly zone with a maximum altitude
+ */
+struct HeightRestrictedNoFlyZone {
+    polygon_t polygon;
+    double max_altitude;
+};
+
 #endif //THESIS_TRAJECTORY_GENERATOR_CUSTOM_TYPES_HPP

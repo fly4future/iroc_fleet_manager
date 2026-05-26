@@ -25,6 +25,7 @@ struct algorithm_config_t
   std::vector<std::string> no_fly_zone_points_files;
   int number_of_drones;
   double sweeping_step;
+  double sweeping_alt = 0.0;
   decomposition_type_t decomposition_type;
   int min_sub_polygons_per_uav;
   std::pair<double, double> start_pos;

@@ -413,7 +413,7 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
                                              algorithm_config.sweeping_step,
                                              starting_point,
                                              static_cast<size_t>(n_uavs),
-                                             0,
+                                             algorithm_config.sweeping_alt,
                                              0,
                                              algorithm_config.no_improvement_cycles_before_stop};
     solver_config.wall_distance = algorithm_config.sweeping_step / 2;
