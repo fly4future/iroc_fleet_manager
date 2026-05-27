@@ -71,7 +71,8 @@ template <typename F>
 }
 //}
 
-mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config_t& algorithm_config, MapPolygon polygon,
+mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config_t& algorithm_config,
+                                              const std::vector<MapPolygon> &search_areas,
                                               const EnergyCalculator& energy_calculator, const ShortestPathCalculator& shortest_path_calculator,
                                               std::shared_ptr<loggers::SimpleLogger>& logger);
 

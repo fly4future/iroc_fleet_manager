@@ -80,7 +80,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   }
 
   using HRNoFlyZone = std::pair<std::vector<custom_types::Point2D>, double>;
-  std::vector<custom_types::Point2D> search_area;
+  std::vector<std::vector<custom_types::Point2D>> search_areas;
   std::vector<std::vector<custom_types::Point2D>> no_fly_zones;
   std::vector<HRNoFlyZone> hr_no_fly_zones;
   std::vector<double> min_horizontal_drone_distances;
@@ -93,7 +93,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   
 
   bool success = utils::parseVars(json_msg, {
-                                                {"search_area", &search_area},
+                                                {"search_areas", &search_areas},
                                                 {"min_horizontal_drone_distances", &min_horizontal_drone_distances},
                                                 {"min_vertical_drone_distances", &min_vertical_drone_distances},
                                                 {"robots", &robots},
@@ -111,8 +111,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   success = utils::parseVars(json_msg, {{"no_fly_zones", &no_fly_zones}});
   success = utils::parseVars(json_msg, {{"hr_no_fly_zones", &hr_no_fly_zones}});
   
-  search_area_msg = toRosMsg<mrs_msgs::Point2D>(search_area);
-
   // Extract robots
   robots_msg.reserve(robots.size());
   for (const auto &robot : robots) {
@@ -154,10 +152,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
 
   iroc_fleet_manager::CoverageMission mission;
   mission.robots        = robots_msg;
-  mission.search_area   = search_area_msg;
   mission.latlon_origin = latlon_origin_msg;
 
-  auto paths = getCoveragePaths(mission, no_fly_zones, hr_no_fly_zones);
+  auto paths = getCoveragePaths(mission, search_areas, no_fly_zones, hr_no_fly_zones);
 
   // Filling the mission_robots vector with the generated paths
   for (int it = 0; it < mission.robots.size(); it++) {
@@ -371,17 +368,25 @@ bool is_inside(const point_t& p, const std::vector<point_t>& polygon) {
     return (intersections % 2) == 1;
 }
 
-CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2D>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2D>, double>> &hr_no_fly_zones_arg) const {
+CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2D>> &search_areas_arg, const std::vector<std::vector<custom_types::Point2D>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2D>, double>> &hr_no_fly_zones_arg) const {
 
-  std::vector<point_t> fly_zone;
+  std::vector<polygon_t> fly_zones;
   std::vector<polygon_t> no_fly_zones;
   std::vector<std::pair<polygon_t, double>> hr_no_fly_zones;
 
-  // Fill the search area
-  for (const auto &point : mission.search_area)
-    fly_zone.emplace_back(point.x, point.y);
-  // Add the first point to close the polygon
-  fly_zone.emplace_back(mission.search_area[0].x, mission.search_area[0].y);
+  // Fill the fly zones
+  fly_zones.reserve(search_areas_arg.size());
+  for (const auto &search_area : search_areas_arg) {
+    std::vector<point_t> fly_zone;
+    for (const auto &point : search_area) {
+      fly_zone.emplace_back(point.x, point.y);
+    }
+    // Add the first point to close the polygon
+    if (!fly_zone.empty()) {
+      fly_zone.emplace_back(search_area[0].x, search_area[0].y);
+    }
+    fly_zones.push_back(fly_zone);
+  }
 
   // Fill the no-fly zones
   no_fly_zones.reserve(no_fly_zones_arg.size());
@@ -415,7 +420,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   // Validate: all zones must be either fully disjoint or fully contained.
   coverage_paths_t coverage_paths_empty;
   std::vector<polygon_t> all_polygons;
-  all_polygons.push_back(fly_zone);
+  for (const auto &fz : fly_zones) all_polygons.push_back(fz);
   for (const auto &nfz : no_fly_zones) all_polygons.push_back(nfz);
   for (const auto &hr : hr_no_fly_zones) all_polygons.push_back(hr.first);
 
@@ -455,45 +460,62 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     }
   }
 
+  double transit_path_height = mission.robots[0].height + 1.0;
+  double sweeping_height = mission.robots[0].height;
+
   planner_config_.lat_lon_origin.first  = mission.latlon_origin.x;
   planner_config_.lat_lon_origin.second = mission.latlon_origin.y;
   planner_config_.number_of_drones = mission.robots.size();
-  planner_config_.sweeping_alt = mission.robots[0].height;
+  planner_config_.sweeping_alt = sweeping_height;
 
   // Create a logger to log everything directly into stdout
   auto shared_logger = std::make_shared<loggers::SimpleLogger>();
   EnergyCalculator energy_calculator{planner_config_.energy_calculator_config, shared_logger};
   std::cout << "Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed() << std::endl;
 
-  // Initialize polygon and transform all the point into meters
-  MapPolygon polygon = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin, hr_no_fly_zones);
 
-  // Decompose the polygon
-  ShortestPathCalculator shortest_path_calculator(polygon, true, mission.robots[0].height);
+  // Create one master polygon that contains ALL obstacles. This will be used for pathfinding between areas.
+  // The fly-zone part is left empty, as the ShortestPathCalculator will ignore it anyway.
+  MapPolygon master_obstacle_polygon;
+  polygon_t empty_fly_zone;
+  master_obstacle_polygon = MapPolygon(empty_fly_zone, no_fly_zones, planner_config_.lat_lon_origin, hr_no_fly_zones);
 
-  // Remove outer no-fly zones before decomposition and sweeping path generation. EnergyAware library can not work with outer no fly zones.
-  std::vector<polygon_t> internal_nfz;
-  for (const auto& nfz : polygon.no_fly_zone_polygons) {
-    if (!nfz.empty() && is_point_in_polygon(nfz[0], polygon.fly_zone_polygon_points)) {
-      internal_nfz.push_back(nfz);
-    } else {
-      ROS_WARN("A no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
+  ShortestPathCalculator shortest_path_calculator(master_obstacle_polygon, true, sweeping_height);
+
+  // Now, create a vector of MapPolygon objects, one for each search area.
+  // Each of these will contain its own fly zone boundary, but also ALL no-fly zones.
+  // The trapezoidal decomposition will correctly handle only the NFZs inside the FZ.
+  std::vector<MapPolygon> search_areas;
+  
+  for (polygon_t fly_zone : fly_zones) {
+
+    MapPolygon area;
+    area = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin, hr_no_fly_zones);    
+
+    // Odstranění vnějších no-fly zón pouze pro potřeby dekompozice a sweepování pro TUTO konkrétní oblast.
+    // ShortestPathCalculator si již načetl původní polygon se všemi zónami pro bezpečné přelety.
+    std::vector<polygon_t> internal_nfz;
+    for (const auto& nfz : area.no_fly_zone_polygons) {
+      if (!nfz.empty() && is_point_in_polygon(nfz[0], area.fly_zone_polygon_points)) {
+        internal_nfz.push_back(nfz);
+      } else {
+        ROS_WARN("A no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
+      }
     }
-  }
-  polygon.no_fly_zone_polygons = internal_nfz;
+    area.no_fly_zone_polygons = internal_nfz;
 
-  // Remove outer height restricted no-fly zones
-  int c = 0;
-  std::vector<int> indices;
-  for (HeightRestrictedNoFlyZone& hr_nfz : polygon.height_restricted_no_fly_zone_polygons) {
-    if (hr_nfz.polygon.empty() || !is_point_in_polygon(hr_nfz.polygon[0], polygon.fly_zone_polygon_points)) {
-      indices.push_back(c);
-      ROS_WARN("A height restricted no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
+    // To samé pro HR NFZ - pro dekompozici ponecháme jen ty vnitřní.
+    std::vector<HeightRestrictedNoFlyZone> internal_hr_nfz;
+    for (const auto& hr_nfz : area.height_restricted_no_fly_zone_polygons) {
+      if (!hr_nfz.polygon.empty() && is_point_in_polygon(hr_nfz.polygon[0], area.fly_zone_polygon_points)) {
+        internal_hr_nfz.push_back(hr_nfz);
+      } else {
+        ROS_WARN("A height restricted no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
+      }
     }
-    c++;
-  }
-  for (int i = indices.size()-1; i >= 0; i--) {
-    polygon.height_restricted_no_fly_zone_polygons.erase(polygon.height_restricted_no_fly_zone_polygons.begin() + indices.at(i));
+    area.height_restricted_no_fly_zone_polygons = internal_hr_nfz;
+
+    search_areas.push_back(area);
   }
 
   // For saving the paths for each UAV
@@ -504,7 +526,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     planner_config_.start_pos.first  = mission.robots.at(0).global_position.x;
     planner_config_.start_pos.second = mission.robots.at(0).global_position.y;
     auto f = [&](int n) {
-      return solve_for_uavs(n, planner_config_, polygon, energy_calculator, shortest_path_calculator,
+      return solve_for_uavs(n, planner_config_, search_areas, energy_calculator, shortest_path_calculator,
                             shared_logger);
     };
     best_solution = generate_with_constraints(planner_config_.max_single_path_energy * 3600,
@@ -518,8 +540,6 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     return coverage_paths_tmp;
   }
 
-  double transit_path_height = mission.robots[0].height + 1.0;
-  double sweeping_height = mission.robots[0].height;
 
   // Save genrated path to coverage_paths_tmp excluding some points
   // for (auto &drone_path : best_solution.paths) {
@@ -814,7 +834,7 @@ void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::cover
   int n = graph.V;
   if (n == 0) return;
 
-  // 2. Calculation of vertex (= transit path group) levels
+  // 1. Calculation of vertex (= transit path group) levels
   // We will be coloring graph vertexes one by one
   std::vector<int> assigned_levels(n, -1);
   std::vector<bool> processed(n, false);
@@ -828,10 +848,13 @@ void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::cover
       if (processed[v]) continue;
 
       // skip vertex that should be higher than something not processed yet
+      bool skip = false;
       for (int tpg_idxs : tpgs.transit_paths_under[v]) {
-        if (!processed[tpg_idxs]) continue;
+        if (!processed[tpg_idxs]) { skip = true; break; }
       }
+      if (skip) continue; 
 
+      // if vertex (transit path group) is going above some height restricted no-fly zone, then possible_level should be high enough to go above the hr no-fly zone
       int possible_level = std::max(0, tpgs.transit_path_groups.at(v)->level);
 
       for (int tpg_idxs : tpgs.transit_paths_under[v]) {
@@ -881,7 +904,7 @@ void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::cover
 
     if (best_node == -1) break;
 
-    // 3. Assigning level to a vertex
+    // 2. Assigning level to a vertex
     assigned_levels[best_node] = best_priority.best_available_level;
     processed[best_node] = true;
 
