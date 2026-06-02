@@ -52,7 +52,7 @@ private:
 
   algorithm_config_t parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const;
 
-  coverage_paths_t getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2D>> &search_areas, const std::vector<std::vector<custom_types::Point2D>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2D>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const;
+  coverage_paths_t getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2DLatLon>> &search_areas, const std::vector<std::vector<custom_types::Point2DLatLon>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2DLatLon>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const;
 };
 
 } // namespace coverage_planner

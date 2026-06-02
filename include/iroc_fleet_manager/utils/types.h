@@ -23,6 +23,20 @@ struct Point2D
   }
 };
 
+struct Point2DLatLon
+{
+  double lat, lon;
+
+  Point2DLatLon() : lat(0), lon(0) {
+  }
+  Point2DLatLon(double lat, double lon) : lat(lat), lon(lon) {
+  }
+  Point2DLatLon(const json &j)
+      : lat(j.value("lat", j.value("lat", 0.0))),
+        lon(j.value("lon", j.value("lon", 0.0))) {
+  }
+};
+
 struct Point3D
 {
   double x, y, z;

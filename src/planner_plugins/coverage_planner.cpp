@@ -79,9 +79,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     return std::make_tuple(result, mission_robots);
   }
 
-  using HRNoFlyZone = std::pair<std::vector<custom_types::Point2D>, double>;
-  std::vector<std::vector<custom_types::Point2D>> search_areas;
-  std::vector<std::vector<custom_types::Point2D>> no_fly_zones;
+  using HRNoFlyZone = std::pair<std::vector<custom_types::Point2DLatLon>, double>;
+  std::vector<std::vector<custom_types::Point2DLatLon>> search_areas;
+  std::vector<std::vector<custom_types::Point2DLatLon>> no_fly_zones;
   std::vector<HRNoFlyZone> hr_no_fly_zones;
   std::vector<double> min_horizontal_distances;
   std::vector<double> min_vertical_distances;
@@ -382,7 +382,7 @@ bool is_inside(const point_t& p, const std::vector<point_t>& polygon) {
     return (intersections % 2) == 1;
 }
 
-CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2D>> &search_areas_arg, const std::vector<std::vector<custom_types::Point2D>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2D>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const {
+CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2DLatLon>> &search_areas_arg, const std::vector<std::vector<custom_types::Point2DLatLon>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2DLatLon>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const {
 
   std::vector<polygon_t> fly_zones;
   std::vector<polygon_t> no_fly_zones;
@@ -393,11 +393,11 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   for (const auto &search_area : search_areas_arg) {
     std::vector<point_t> fly_zone;
     for (const auto &point : search_area) {
-      fly_zone.emplace_back(point.x, point.y);
+      fly_zone.emplace_back(point.lat, point.lon);
     }
     // Add the first point to close the polygon
     if (!fly_zone.empty()) {
-      fly_zone.emplace_back(search_area[0].x, search_area[0].y);
+      fly_zone.emplace_back(search_area[0].lat, search_area[0].lon);
     }
     fly_zones.push_back(fly_zone);
   }
@@ -407,11 +407,11 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   for (const auto &zone : no_fly_zones_arg) {
     std::vector<point_t> no_fly_zone;
     for (const auto &point : zone) {
-      no_fly_zone.emplace_back(point.x, point.y);
+      no_fly_zone.emplace_back(point.lat, point.lon);
     }
     // Add the first point to close the polygon
     if (!no_fly_zone.empty()) {
-      no_fly_zone.emplace_back(zone[0].x, zone[0].y);
+      no_fly_zone.emplace_back(zone[0].lat, zone[0].lon);
     }
     no_fly_zones.push_back(no_fly_zone);
   }
@@ -422,11 +422,11 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     polygon_t hr_no_fly_zone;
     hr_no_fly_zone.reserve(zone.first.size() + 1);
     for (const auto &point : zone.first) {
-      hr_no_fly_zone.emplace_back(point.x, point.y);
+      hr_no_fly_zone.emplace_back(point.lat, point.lon);
     }
     // Add the first point to close the polygon
     if (!hr_no_fly_zone.empty()) {
-      hr_no_fly_zone.emplace_back(zone.first[0].x, zone.first[0].y);
+      hr_no_fly_zone.emplace_back(zone.first[0].lat, zone.first[0].lon);
     }
     hr_no_fly_zones.emplace_back(std::move(hr_no_fly_zone), zone.second);
   }
@@ -875,6 +875,7 @@ void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::cover
       // if vertex (transit path group) is going above some height restricted no-fly zone, then possible_level should be high enough to go above the hr no-fly zone
       double possible_height = std::max(sweeping_height, tpgs.transit_path_groups.at(v)->drone_height);
 
+      // possible height is set above transit paths that should be under current transit path
       for (int tpg_idxs : tpgs.transit_paths_under[v]) {
         possible_height = std::max(possible_height, assigned_heights[tpg_idxs] + std::max(tpgs.transit_path_groups.at(v)->min_vertical_distance, tpgs.transit_path_groups.at(tpg_idxs)->min_vertical_distance));
       }
