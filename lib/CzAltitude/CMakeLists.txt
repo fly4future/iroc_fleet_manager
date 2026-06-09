@@ -33,8 +33,8 @@ endif()
 
 add_executable(${PROJECT_NAME} 
     src/main.cpp 
-    src/DMR5GElevationGrid.cpp 
-    include/CzAltitude/DMR5GElevationGrid.hpp
+    src/DMPOKElevationGrid.cpp 
+    include/CzAltitude/DMPOKElevationGrid.hpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE 

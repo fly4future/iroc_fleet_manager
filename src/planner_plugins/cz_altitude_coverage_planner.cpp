@@ -151,8 +151,8 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CzAltitudeC
   // Here the path is extended. Every 15 m is added a new waypoint. Also the altitude of each waypoint is added.
   coverage_paths_t new_paths;
   try {
-    DMR5GElevationGrid elev_grid("/home/f4f/iroc_ws/src/IROC_core/ros_packages/iroc_fleet_manager/lib/CzAltitude/data/dmr5g_index.csv",
-      "/home/f4f/iroc_ws/src/IROC_core/ros_packages/iroc_fleet_manager/lib/CzAltitude/data/dmr5g_unzipped");
+    DMPOKElevationGrid elev_grid("/home/f4f/iroc_ws/src/IROC_core/ros_packages/iroc_fleet_manager/lib/CzAltitude/data/dmp_ok_index.csv",
+      "/home/f4f/iroc_ws/src/IROC_core/ros_packages/iroc_fleet_manager/lib/CzAltitude/data/dmp_ok_unzipped");
 
     for (std::vector<iroc_mission_handler::Waypoint> drone_path : paths) {
       std::vector<iroc_mission_handler::Waypoint> new_drone_path;
@@ -410,7 +410,7 @@ CzAltitudeCoveragePlanner::coverage_paths_t CzAltitudeCoveragePlanner::getCovera
   coverage_paths_t coverage_paths;
   // For accessing the robots information from mission goal
   int uav_index = 0;
-  for (const auto &polygon : decomposed_polygon) {
+  for (const auto &polygon : assigned_polygons) {
     mstsp_solver::final_solution_t best_solution;
     try {
 

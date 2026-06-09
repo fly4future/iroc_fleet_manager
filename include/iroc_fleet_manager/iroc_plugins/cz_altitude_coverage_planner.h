@@ -18,7 +18,7 @@
 #include <EnergyAwareMCPP/mstsp_solver/SolverConfig.h>
 #include <EnergyAwareMCPP/utils.hpp>
 
-#include <CzAltitude/DMR5GElevationGrid.hpp>
+#include <CzAltitude/DMPOKElevationGrid.hpp>
 
 #include <iroc_fleet_manager/CoverageMission.h>
 #include <iroc_fleet_manager/CoverageMissionRobot.h>

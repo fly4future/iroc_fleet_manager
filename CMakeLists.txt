@@ -141,7 +141,7 @@ add_library(EnergyAwareMCPP
 )
 
 add_library(CzAltitude
-  ${CZ_ALTITUDE_SRC_DIR}/src/DMR5GElevationGrid.cpp
+  ${CZ_ALTITUDE_SRC_DIR}/src/DMPOKElevationGrid.cpp
 )
 
 # find_package(yaml-cpp REQUIRED)

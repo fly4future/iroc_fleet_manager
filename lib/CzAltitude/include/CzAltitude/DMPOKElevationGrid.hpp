@@ -1,11 +1,10 @@
-#ifndef DMR5G_ELEVATION_GRID_H
-#define DMR5G_ELEVATION_GRID_H
+#ifndef DMPOK_ELEVATION_GRID_H
+#define DMPOK_ELEVATION_GRID_H
 
 #include <string>
 #include <vector>
 #include <memory>
 #include <proj.h>
-#include "../nanoflann.hpp"
 
 /**
  * OVERVIEW OF COORDINATE SYSTEMS USED IN THIS PROGRAM:
@@ -17,13 +16,13 @@
  *  
  * 2. S-JTSK (EPSG:5514) - "Křovák"
  * - The Czech national grid system used for land surveying and official mapping.
- * - The raw DMR5G data (LAZ point clouds) are stored in this system.
+ * - The raw DMPOK data (LAZ point clouds) are stored in this system.
  *
  * 3. EGM96 / AMSL / Bpv - "Mean Sea Level Height"
  * - AMSL (Above Mean Sea Level): Altitude relative to the sea level.
  * - EGM96: The geoid model used to determine where "sea level" is globally.
  * - Bpv (Baltic After Adjustment): The specific vertical datum used in the Czech Republic.
- * - Raw data from DMR5G files return heights in this AMSL/Bpv system.
+ * - Raw data from DMPOK files return heights in this AMSL/Bpv system.
  *
  * NOTE: "SHIFT" BETWEEN WGS84 AND MAPS (Difference ~45 meters)
  * - Standard web maps (like Mapy.cz or Google Maps) display AMSL (orthometric) height.
@@ -51,11 +50,6 @@
  * - A specialized C/C++ library for reading and writing compressed LiDAR data.
  * - Used to parse and read .laz (compressed LiDAR) files efficiently and extract 
  * the precise X, Y, and Z spatial coordinates.
- *
- * 5. nanoflann (nanoflann.hpp)
- * - A high-performance, header-only library for Nearest Neighbor (NN) searches.
- * - It builds a KD-tree from the point cloud data, allowing for 
- * fast lookups of elevation points near specific coordinates.
  */
 
 
@@ -77,30 +71,17 @@ struct Tile {
     bool contains(double x, double y) const;
 };
 
-// Adaptor structure for the nanoflann KD-Tree to interface with the point cloud data.
-struct PointCloud {
-    std::vector<Point3D> pts;
-    inline size_t kdtree_get_point_count() const { return pts.size(); }
-    inline double kdtree_get_pt(const size_t idx, const size_t dim) const {
-        if (dim == 0) return pts[idx].x;
-        return pts[idx].y;
-    }
-    template <class BBOX> bool kdtree_get_bbox(BBOX&) const { return false; }
-};
-
-// Type definition for a 2D KD-Tree using the nanoflann library.
-using KDTree = nanoflann::KDTreeSingleIndexAdaptor<
-    nanoflann::L2_Simple_Adaptor<double, PointCloud>, PointCloud, 2>;
-
-class DMR5GElevationGrid {
+class DMPOKElevationGrid {
 public:
-    DMR5GElevationGrid(std::string csv_index = "dmr5g_index.csv", 
-                       std::string laz_dir = "dmr5g_unzipped");
-    ~DMR5GElevationGrid();
+    DMPOKElevationGrid(std::string csv_index = "dmpok_index.csv", std::string laz_dir = "dmpok_unzipped");
+
+    ~DMPOKElevationGrid();
 
     std::pair<double, std::string> getEllipsoidElevation(double lat, double lon);
 
 private:
+    const size_t MAX_RASTER_CACHE_TILES = 50;
+
     std::string csv_index_path;
     std::string laz_directory;      // Directory where downloaded LAZ/ZIP files are stored.
 
@@ -113,18 +94,23 @@ private:
 
     std::vector<Tile> tiles;
     
-    struct LoadedLaz {
+    struct LoadedRaster {
         std::string path;
-        PointCloud cloud;
-        std::unique_ptr<KDTree> tree;
+        double min_x, min_y, max_x, max_y;
+        double res;
+        int cols, rows;
+        std::vector<float> data;
     };
-    // Cache containing previously loaded point clouds and their KD-trees to avoid redundant disk I/O.
-    std::vector<std::unique_ptr<LoadedLaz>> loaded_cache;
+
+    double raster_resolution = 1;   // [m]
+    std::vector<std::unique_ptr<LoadedRaster>> raster_cache;
+
+    double getElevationFromRaster(const std::string& laz_path, double x, double y, bool laz_already_existed, const Tile& tile);
+
 
     void loadIndex();
-    std::string findTileForGps(double x, double y);
+    std::vector<const Tile*> findTilesForGps(double x, double y);
     std::string downloadAndUnzipTile(const std::string& tile_name, const std::string& url);
-    double getElevationFromLaz(const std::string& laz_path, double x, double y);
     
     // 2D spatial grid for fast point-in-polygon tile lookups.
     std::vector<std::vector<std::vector<size_t>>> spatial_grid;
