@@ -246,7 +246,6 @@ private:
   std::vector<double*> z_ptrs;
   
 public:
-  int level;
   int drone_idx;
 
   double min_horizontal_distance;
@@ -254,7 +253,6 @@ public:
   double drone_height;  // this variable has value of sweeping height if TPG is not going above height restricted no-fly-zone. If it is going above hr no-fly zone, then it has value of the height the drone needs to travel
 
   TransitPathGroup(int drone_idx, double min_horizontal_distance, double min_vertical_distance) : drone_idx(drone_idx), min_horizontal_distance(min_horizontal_distance), min_vertical_distance(min_vertical_distance) {
-    level = -1;
   }
 
   // transit_path_group should be read only for user
@@ -267,14 +265,6 @@ public:
       drone_height = sweeping_height;
     } else {
       drone_height = height + min_vertical_distance;
-    }
-  }
-
-  void setLevelFromHeight(double height, double sweeping_height, double transit_height, double level_height) {
-    if (height == transit_height) {
-      level = 0;
-    } else {
-      level = std::ceil((height - sweeping_height) / level_height);
     }
   }
 
@@ -556,7 +546,6 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
 
   // Save genrated path to coverage_paths_tmp excluding some points
-  // for (auto &drone_path : best_solution.paths) {
   for (int d = 0; d < best_solution.paths.size(); d++) {
 
     best_solution.paths.at(d).erase(best_solution.paths.at(d).begin());
@@ -632,7 +621,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     coverage_paths.at(i).insert(coverage_paths.at(i).end(), path_to_end_waypoints.begin(), path_to_end_waypoints.end());
     
 
-    // Fill the TransiPathGroupStruct
+    // Fill the TransitPathGroupStruct
     for (int j = 1; j < coverage_paths.at(i).size(); j++) {
       custom_types::Point2D current_point = custom_types::Point2D(coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y);
       custom_types::Point2D prev_point = custom_types::Point2D(coverage_paths.at(i).at(j-1).reference.position.x, coverage_paths.at(i).at(j-1).reference.position.y);
