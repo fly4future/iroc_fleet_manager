@@ -496,8 +496,8 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     MapPolygon area;
     area = MapPolygon(fly_zone, no_fly_zones, planner_config_.lat_lon_origin, hr_no_fly_zones);    
 
-    // Odstranění vnějších no-fly zón pouze pro potřeby dekompozice a sweepování pro TUTO konkrétní oblast.
-    // ShortestPathCalculator si již načetl původní polygon se všemi zónami pro bezpečné přelety.
+    // Remove outer no-fly zones only for decomposition and sweeping purposes for this specific area.
+    // ShortestPathCalculator already loaded the original polygon with all zones for safe transit paths.
     std::vector<polygon_t> internal_nfz;
     for (const auto& nfz : area.no_fly_zone_polygons) {
       if (!nfz.empty() && is_point_in_polygon(nfz[0], area.fly_zone_polygon_points)) {
@@ -508,7 +508,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     }
     area.no_fly_zone_polygons = internal_nfz;
 
-    // To samé pro HR NFZ - pro dekompozici ponecháme jen ty vnitřní.
+    // Do the same for HR NFZs - for decomposition, keep only the internal ones.
     std::vector<HeightRestrictedNoFlyZone> internal_hr_nfz;
     for (const auto& hr_nfz : area.height_restricted_no_fly_zone_polygons) {
       if (!hr_nfz.polygon.empty() && is_point_in_polygon(hr_nfz.polygon[0], area.fly_zone_polygon_points)) {
