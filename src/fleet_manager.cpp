@@ -4,7 +4,7 @@
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/param_loader.h>
 #include <mrs_msgs/srv/string.hpp>
-#include <mrs_robot_diagnostics/enums/robot_type.h>
+#include <mrs_robot_diagnostics/enums/robot_type.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 
 #include <iroc_common/call_service.h>
