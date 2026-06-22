@@ -4,7 +4,7 @@
 
 #include <utility>
 #include <vector>
-#include "SimpleLogger.h"
+#include "EnergyAwareMCPP/SimpleLogger.h"
 #include <memory>
 
 struct battery_model_t {

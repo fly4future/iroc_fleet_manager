@@ -15,7 +15,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_executable(${PROJECT_NAME} src/main.cpp src/MapPolygon.cpp include/MapPolygon.hpp src/utils.cpp src/algorithms.cpp src/EnergyCalculator.cpp src/ShortestPathCalculator.cpp include/ShortestPathCalculator.hpp include/custom_types.hpp include/mstsp_solver/Target.h src/mstsp_solver/TargetSet.cpp include/mstsp_solver/TargetSet.h include/mstsp_solver/SolverConfig.h src/mstsp_solver/MstspSolver.cpp include/mstsp_solver/MstspSolver.h include/mstsp_solver/Insertion.h include/SimpleLogger.h include/LoggerRos.h)
+add_executable(${PROJECT_NAME} src/coverage_planner.cpp src/MapPolygon.cpp include/EnergyAwareMCPP/MapPolygon.hpp src/utils.cpp src/algorithms.cpp src/EnergyCalculator.cpp src/ShortestPathCalculator.cpp include/EnergyAwareMCPP/ShortestPathCalculator.hpp include/EnergyAwareMCPP/custom_types.hpp include/EnergyAwareMCPP/mstsp_solver/Target.h src/mstsp_solver/TargetSet.cpp include/EnergyAwareMCPP/mstsp_solver/TargetSet.h include/EnergyAwareMCPP/mstsp_solver/SolverConfig.h src/mstsp_solver/MstspSolver.cpp include/EnergyAwareMCPP/mstsp_solver/MstspSolver.h include/EnergyAwareMCPP/mstsp_solver/Insertion.h include/EnergyAwareMCPP/SimpleLogger.h include/EnergyAwareMCPP/LoggerRos.h)
 
 find_package(yaml-cpp)
 

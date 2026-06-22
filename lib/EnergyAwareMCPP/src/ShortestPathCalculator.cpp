@@ -1,6 +1,6 @@
-#include "ShortestPathCalculator.hpp"
+#include "EnergyAwareMCPP/ShortestPathCalculator.hpp"
 #include <algorithm>
-#include "utils.hpp"
+#include "EnergyAwareMCPP/utils.hpp"
 #include <cmath>
 
 namespace

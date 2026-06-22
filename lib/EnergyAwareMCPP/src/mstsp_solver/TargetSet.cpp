@@ -1,5 +1,5 @@
-#include "mstsp_solver/TargetSet.h"
-#include "algorithms.hpp"
+#include "EnergyAwareMCPP/mstsp_solver/TargetSet.h"
+#include "EnergyAwareMCPP/algorithms.hpp"
 #include <iostream>
 #include <algorithm>
 #include <utility>

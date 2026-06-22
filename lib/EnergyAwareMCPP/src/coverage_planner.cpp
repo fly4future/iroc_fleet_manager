@@ -1,18 +1,18 @@
 /* include and declarations //{ */
 
-#include "MapPolygon.hpp"
-#include "EnergyCalculator.h"
-#include "algorithms.hpp"
-#include "ShortestPathCalculator.hpp"
-#include "mstsp_solver/SolverConfig.h"
-#include "mstsp_solver/MstspSolver.h"
+#include "EnergyAwareMCPP/MapPolygon.hpp"
+#include "EnergyAwareMCPP/EnergyCalculator.h"
+#include "EnergyAwareMCPP/algorithms.hpp"
+#include "EnergyAwareMCPP/ShortestPathCalculator.hpp"
+#include "EnergyAwareMCPP/mstsp_solver/SolverConfig.h"
+#include "EnergyAwareMCPP/mstsp_solver/MstspSolver.h"
 #include <yaml-cpp/yaml.h>
 #include <iostream>
 #include <fstream>
-#include "SimpleLogger.h"
-#include "utils.hpp"
+#include "EnergyAwareMCPP/SimpleLogger.h"
+#include "EnergyAwareMCPP/utils.hpp"
 #include <iomanip>
-#include <coverage_planner.hpp>
+#include <EnergyAwareMCPP/coverage_planner.hpp>
 
 
 /*!
@@ -56,114 +56,151 @@ void write_polygon_into_csv(const std::vector<point_heading_t<double>>& path, co
  */
 //}
 
-// THIS PART OF CODE IS COMMENTED BECAUSE IT IS NOT USED ...
-
-// int main(int argc, char* argv[])
-// {
-//   if (argc != 2)
-//   {
-//     std::cerr << "Error. Usage: coverage_mission_planner <algorithm_configuration>.yaml" << std::endl;
-//     return -1;
-//   }
-//   YAML::Node algorithm_config_node = YAML::LoadFile(argv[1]);
-//   if (!algorithm_config_is_valid(algorithm_config_node))
-//   {
-//     std::cerr << "Algorithm config is not complete. Exiting..." << std::endl;
-//     return -1;
-//   }
-//   algorithm_config_t algorithm_config;
-//   try
-//   {
-//     algorithm_config = parse_algorithm_config(algorithm_config_node);
-//   }
-//   catch (const YAML::Exception& e)
-//   {
-//     std::cout << "Error while parsing YAML configuration file: " << e.what() << std::endl;
-//     return -1;
-//   }
-//   auto fly_zone = read_points_from_csv(algorithm_config.fly_zone_points_file);
-//   if (fly_zone.empty())
-//   {
-//     std::cout << "Error: fly zone points file is either empty or of wrong format" << std::endl;
-//     return -1;
-//   }
-//   std::cout << "Fly zone: " << std::endl;
-//   for (const auto& p : fly_zone)
-//   {
-//     std::cout << p.first << ", " << p.second << std::endl;
-//   }
-
-//   std::vector<std::vector<point_t>> no_fly_zones;
-//   for (const auto& s : algorithm_config.no_fly_zone_points_files)
-//   {
-//     auto no_fly_zone = read_points_from_csv(s);
-//     if (no_fly_zone.empty())
-//     {
-//       std::cout << "Error: no fly zone file " << s << " is either empty or of a wrong format" << std::endl;
-//       return -1;
-//     }
-//     no_fly_zones.push_back(no_fly_zone);
-//   }
-
-//   // Create a logger to log everything directly into stdout
-//   auto shared_logger = std::make_shared<loggers::SimpleLogger>();
-//   EnergyCalculator energy_calculator{algorithm_config.energy_calculator_config, shared_logger};
-//   std::cout << "Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed() << std::endl;
-
-//   // Initialize polygon and transform all the point into meters
-//   MapPolygon polygon;
-//   if (algorithm_config.points_in_lat_lon)
-//   {
-//     polygon = MapPolygon(fly_zone, no_fly_zones, algorithm_config.lat_lon_origin);
-//   } else
-//   {
-//     polygon = MapPolygon(fly_zone, no_fly_zones);
-//   }
-//   // Decompose the polygon
-//   ShortestPathCalculator shortest_path_calculator(polygon);
-
-//   mstsp_solver::final_solution_t best_solution;
-//   try
-//   {
-//     auto f = [&](int n) { return solve_for_uavs(n, algorithm_config, polygon, energy_calculator, shortest_path_calculator, shared_logger); };
-//     best_solution = generate_with_constraints(algorithm_config.max_single_path_energy * 3600, algorithm_config.number_of_drones, f);
-//   }
-//   catch (const polygon_decomposition_error& e)
-//   {
-//     std::cout << "Error while decomposing the polygon" << std::endl;
-//     return -1;
-//   }
-//   catch (const std::runtime_error& e)
-//   {
-//     std::cout << "Error while solving for polygons: " << e.what();
-//     return -1;
-//   }
-
-//   std::cout << "Writing output paths into files" << std::endl;
-//   auto best_paths = best_solution.paths;
-
-//   // If initial paths were read in lat_lon coordinates, write the output paths in the same way
-//   if (algorithm_config.points_in_lat_lon)
-//   {
-//     for (auto& path : best_paths)
-//     {
-//       for (auto& p : path)
-//       {
-//         auto lat_lon_p = meters_to_gps_coordinates({p.x, p.y}, algorithm_config.lat_lon_origin);
-//         p.x = lat_lon_p.first;
-//         p.y = lat_lon_p.second;
-//       }
-//     }
-//   }
-
-//   for (size_t i = 0; i < best_paths.size(); ++i)
-//   {
-//     write_polygon_into_csv(best_paths[i], "path_" + std::to_string(i) + ".csv");
-//   }
 
 
-//   return 0;
-// }
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        std::cerr << "Error. Usage: coverage_mission_planner <algorithm_configuration>.yaml" << std::endl;
+        return -1;
+    }
+    YAML::Node algorithm_config_node = YAML::LoadFile(argv[1]);
+    if (!algorithm_config_is_valid(algorithm_config_node)) {
+        std::cerr << "Algorithm config is not complete. Exiting..." << std::endl;
+        return -1;
+    }
+    algorithm_config_t algorithm_config;
+    try {
+        algorithm_config = parse_algorithm_config(algorithm_config_node);
+    } catch (const YAML::Exception &e) {
+        std::cout << "Error while parsing YAML configuration file: " << e.what() << std::endl;
+        return -1;
+    }
+
+    std::vector<std::vector<point_t>> no_fly_zones;
+    for (const auto &s: algorithm_config.no_fly_zone_points_files) {
+        auto no_fly_zone = read_points_from_csv(s);
+        if (no_fly_zone.empty()) {
+            std::cout << "Error: no fly zone file " << s << " is either empty or of a wrong format" << std::endl;
+            return -1;
+        }
+        no_fly_zones.push_back(no_fly_zone);
+    }
+
+    std::vector<std::pair<polygon_t, double>> hr_no_fly_zones_data;
+    for (const auto &s: algorithm_config.hr_no_fly_zone_files) {
+        auto hr_no_fly_zone_points = read_points_from_csv(s.filename);
+        if (hr_no_fly_zone_points.empty()) {
+            std::cout << "Error: height restricted no fly zone file " << s.filename << " is empty or of a wrong format" << std::endl;
+            return -1;
+        }
+        hr_no_fly_zones_data.push_back({hr_no_fly_zone_points, s.max_altitude});
+    }
+
+    // Create a logger to log everything directly into stdout
+    auto shared_logger = std::make_shared<loggers::SimpleLogger>();
+    EnergyCalculator energy_calculator{algorithm_config.energy_calculator_config, shared_logger};
+    std::cout << "Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed() << std::endl;
+
+    // Create one master polygon that contains ALL obstacles. This will be used for pathfinding between areas.
+    // The fly-zone part is left empty, as the ShortestPathCalculator will ignore it anyway.
+    MapPolygon master_obstacle_polygon;
+    if (algorithm_config.points_in_lat_lon) {
+        polygon_t empty_fly_zone;
+        master_obstacle_polygon = MapPolygon(empty_fly_zone, no_fly_zones, algorithm_config.lat_lon_origin, hr_no_fly_zones_data);
+    } else {
+        std::vector<HeightRestrictedNoFlyZone> hr_nfz_structs;
+        for(const auto& data : hr_no_fly_zones_data) {
+            hr_nfz_structs.push_back({data.first, data.second});
+        }
+        polygon_t empty_fly_zone;
+        master_obstacle_polygon = MapPolygon(empty_fly_zone, no_fly_zones, hr_nfz_structs);
+    }
+    ShortestPathCalculator shortest_path_calculator(master_obstacle_polygon, true, 0);
+
+    // Now, create a vector of MapPolygon objects, one for each search area.
+    // Each of these will contain its own fly zone boundary, but also ALL no-fly zones.
+    // The trapezoidal decomposition will correctly handle only the NFZs inside the FZ.
+    std::vector<MapPolygon> search_areas;
+    for (const auto& fz_filename : algorithm_config.fly_zone_points_files) {
+        auto fly_zone_points = read_points_from_csv(fz_filename);
+        if (fly_zone_points.empty()) {
+            std::cout << "Error: fly zone points file '" << fz_filename << "' is either empty or of wrong format" << std::endl;
+            return -1;
+        }
+
+        MapPolygon area;
+        if (algorithm_config.points_in_lat_lon) {
+            area = MapPolygon(fly_zone_points, no_fly_zones, algorithm_config.lat_lon_origin, hr_no_fly_zones_data);
+        } else {
+            std::vector<HeightRestrictedNoFlyZone> hr_nfz_structs;
+            for(const auto& data : hr_no_fly_zones_data) {
+                hr_nfz_structs.push_back({data.first, data.second});
+            }
+            area = MapPolygon(fly_zone_points, no_fly_zones, hr_nfz_structs);
+        }
+
+        // Odstranění vnějších no-fly zón pouze pro potřeby dekompozice a sweepování pro TUTO konkrétní oblast.
+        // ShortestPathCalculator si již načetl původní polygon se všemi zónami pro bezpečné přelety.
+        std::vector<polygon_t> internal_nfz;
+        for (const auto& nfz : area.no_fly_zone_polygons) {
+            if (!nfz.empty() && is_point_in_polygon(nfz[0], area.fly_zone_polygon_points)) {
+                internal_nfz.push_back(nfz);
+            }
+        }
+        area.no_fly_zone_polygons = internal_nfz;
+
+        // To samé pro HR NFZ - pro dekompozici ponecháme jen ty vnitřní.
+        std::vector<HeightRestrictedNoFlyZone> internal_hr_nfz;
+        for (const auto& hr_nfz : area.height_restricted_no_fly_zone_polygons) {
+             if (!hr_nfz.polygon.empty() && is_point_in_polygon(hr_nfz.polygon[0], area.fly_zone_polygon_points)) {
+                internal_hr_nfz.push_back(hr_nfz);
+            }
+        }
+        area.height_restricted_no_fly_zone_polygons = internal_hr_nfz;
+
+        search_areas.push_back(area);
+    }
+
+    mstsp_solver::final_solution_t best_solution;
+    try {
+        auto f = [&](int n) {
+            return solve_for_uavs(n, algorithm_config, search_areas, energy_calculator, shortest_path_calculator,
+                                  shared_logger);
+        };
+        best_solution = generate_with_constraints(algorithm_config.max_single_path_energy * 3600,
+                                                  algorithm_config.number_of_drones, f);
+    } catch (const polygon_decomposition_error &e) {
+        std::cout << "Error while decomposing the polygon" << std::endl;
+        return -1;
+    } catch (const std::runtime_error &e) {
+        std::cout << "Error while solving for polygons: " << e.what();
+        return -1;
+    }
+
+    if (best_solution.paths.empty()) {
+        std::cout << "Failed to find any valid solution." << std::endl;
+        return 0;
+    }
+
+    std::cout << "Writing output paths into files" << std::endl;
+    auto best_paths = best_solution.paths;
+
+    // If initial paths were read in lat_lon coordinates, write the output paths in the same way
+    if (algorithm_config.points_in_lat_lon) {
+        for (auto &path: best_paths) {
+            for (auto &p: path) {
+                auto lat_lon_p = meters_to_gps_coordinates({p.x, p.y}, algorithm_config.lat_lon_origin);
+                p.x = lat_lon_p.first;
+                p.y = lat_lon_p.second;
+            }}
+    }
+
+    for (size_t i = 0; i < best_paths.size(); ++i) {
+        write_polygon_into_csv(best_paths[i], "path_" + std::to_string(i) + ".csv");
+    }
+
+    return 0;
+}
 
 
 
@@ -217,7 +254,7 @@ void write_polygon_into_csv(const std::vector<point_heading_t<double>>& path, co
   of << std::setprecision(10);
   for (const auto& p : path)
   {
-    of << p.x << ", " << p.y << std::endl;
+    of << p.x << ", " << p.y << ", " << p.z << std::endl;
   }
   of.close();
 }
@@ -225,71 +262,71 @@ void write_polygon_into_csv(const std::vector<point_heading_t<double>>& path, co
 
 /* algorithm_config_is_valid() //{ */
 
-bool algorithm_config_is_valid(const YAML::Node& config)
-{
-  static const char* required_fields[] = {"battery_model",
-                                          "best_speed_model",
-                                          "drone_mass",
-                                          "drone_area",
-                                          "average_acceleration",
-                                          "propeller_radius",
-                                          "number_of_propellers",
-                                          "allowed_path_deviation",
-                                          "number_of_rotations",
-                                          "points_in_lat_lon",
-                                          "fly_zone_filenames",
-                                          "number_of_drones",
-                                          "sweeping_step",
-                                          "decomposition_method",
-                                          "min_sub_polygons_per_uav",
-                                          "start_x",
-                                          "start_y",
-                                          "rotations_per_cell",
-                                          "no_improvement_cycles_before_stop",
-                                          "max_single_path_energy"};
-  for (const auto field : required_fields)
-  {
-    if (!config[field])
+bool algorithm_config_is_valid(const YAML::Node &config) {
+    static const char *required_fields[] = {"battery_model",
+                                            "best_speed_model",
+                                            "drone_mass",
+                                            "drone_area",
+                                            "average_acceleration",
+                                            "propeller_radius",
+                                            "number_of_propellers",
+                                            "allowed_path_deviation",
+                                            "number_of_rotations",
+                                            "points_in_lat_lon",
+                                            "fly_zone_filenames",
+                                            "number_of_drones",
+                                            "sweeping_step",
+                                            "decomposition_method",
+                                            "min_sub_polygons_per_uav",
+                                            "start_x",
+                                            "start_y",
+                                            "rotations_per_cell",
+                                            "no_improvement_cycles_before_stop",
+                                            "max_single_path_energy"};
+    for (const auto field: required_fields)
     {
-      std::cerr << "Error: not all the required fields are present in the config file. Check the example configuration to see what you may have missed"
-                << std::endl;
-      return false;
+        if (!config[field]) {
+            std::cerr << "Error: missing required field '" << field << "' in the config file. Check the example configuration to see what you may have missed."
+                    << std::endl;
+            return false;
+        }
     }
-  }
 
-  auto battery_model_config = config["battery_model"];
-  if (!battery_model_config["cell_capacity"] || !battery_model_config["number_of_cells"] || !battery_model_config["d0"] || !battery_model_config["d1"]
-      || !battery_model_config["d2"] || !battery_model_config["d2"])
-  {
+    auto battery_model_config = config["battery_model"];
+    if (!battery_model_config["cell_capacity"] ||
+        !battery_model_config["number_of_cells"] ||
+        !battery_model_config["d0"] ||
+        !battery_model_config["d1"] ||
+        !battery_model_config["d2"] ||
+        !battery_model_config["d3"]) {
 
-    std::cerr << "Error: battery_model node does not contain all the required parameters" << std::endl;
-    return false;
-  }
-
-  auto best_speed_model_config = config["best_speed_model"];
-  if (!best_speed_model_config["c0"] || !best_speed_model_config["c1"] || !best_speed_model_config["c2"])
-  {
-
-    std::cerr << "Error: best_speed_model node does not contain all the required parameters" << std::endl;
-    return false;
-  }
-
-  if (config["points_in_lat_lon"].as<bool>())
-  {
-    if (!config["latitude_origin"] || !config["longitude_origin"])
-    {
-      std::cerr << "Error: points_in_lat_lon is set to True, but no latitude and longitude origins are specified" << std::endl;
-      return false;
+        std::cerr << "Error: battery_model node does not contain all the required parameters" << std::endl;
+        return false;
     }
-  }
 
-  if (config["decomposition_method"].as<int>() >= decomposition_type_t::DECOMPOSITION_TYPES_NUMBER)
-  {
-    std::cerr << "Error: invalid decomposition type" << std::endl;
-    return false;
-  }
+    auto best_speed_model_config = config["best_speed_model"];
+    if (!best_speed_model_config["c0"] ||
+        !best_speed_model_config["c1"] ||
+        !best_speed_model_config["c2"]) {
 
-  return true;
+        std::cerr << "Error: best_speed_model node does not contain all the required parameters" << std::endl;
+        return false;
+    }
+
+    if (config["points_in_lat_lon"].as<bool>()) {
+        if (!config["latitude_origin"] || !config["longitude_origin"]) {
+            std::cerr << "Error: points_in_lat_lon is set to True, but no latitude and longitude origins are specified"
+                      << std::endl;
+            return false;
+        }
+    }
+
+    if (config["decomposition_method"].as<int>() >= decomposition_type_t::DECOMPOSITION_TYPES_NUMBER) {
+        std::cerr << "Error: invalid decomposition type" << std::endl;
+        return false;
+    }
+
+    return true;
 }
 //}
 
@@ -333,7 +370,18 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
     };
   }
 
-  algorithm_config.fly_zone_points_file = config["fly_zone_filenames"].as<std::string>();
+  if (config["height_restricted_no_fly_zones"]) {
+        for (const auto &node: config["height_restricted_no_fly_zones"]) {
+            algorithm_config.hr_no_fly_zone_files.push_back({
+                                                                    node["filename"].as<std::string>(),
+                                                                    node["max_altitude"].as<double>()
+                                                            });
+        };
+    }
+
+    if (config["fly_zone_filenames"]) {
+        algorithm_config.fly_zone_points_files = config["fly_zone_filenames"].as<std::vector<std::string>>();
+    }
 
   algorithm_config.number_of_drones = config["number_of_drones"].as<int>();
   algorithm_config.sweeping_step = config["sweeping_step"].as<int>();
@@ -352,11 +400,16 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
 /* solve_for_uavs() //{ */
 
 [[maybe_unused]] mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config_t& algorithm_config,
-                                                               const std::vector<MapPolygon> &search_areas,
-                                                               const EnergyCalculator& energy_calculator,
-                                                               const ShortestPathCalculator& shortest_path_calculator,
-                                                               std::shared_ptr<loggers::SimpleLogger>& logger)
+                                                        const std::vector<MapPolygon> &search_areas,
+                                                        const EnergyCalculator& energy_calculator,
+                                                        const ShortestPathCalculator& shortest_path_calculator,
+                                                        std::shared_ptr<loggers::SimpleLogger>& logger)
 {
+  if (search_areas.empty()) {
+    logger->log_err("solve_for_uavs called with no search areas.");
+    return {};
+  }
+
   // Find the largest search area to use as a representative for finding best decomposition angles
   const MapPolygon& representative_polygon = *std::max_element(search_areas.begin(), search_areas.end(),
       [](const auto& a, const auto& b){ return a.area() < b.area(); });
@@ -379,14 +432,14 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
 
     // Decompose each search area using the current rotation and collect all resulting cells
     for (const auto& area : search_areas) {
-      MapPolygon rotated_area = area.rotated(rotation);
-      auto decomposed_cells = trapezoidal_decomposition(rotated_area, static_cast<decomposition_type_t>(algorithm_config.decomposition_type));
-      all_decomposed_cells.insert(all_decomposed_cells.end(), decomposed_cells.begin(), decomposed_cells.end());
+        MapPolygon rotated_area = area.rotated(rotation);
+        auto decomposed_cells = trapezoidal_decomposition(rotated_area, static_cast<decomposition_type_t>(algorithm_config.decomposition_type));
+        all_decomposed_cells.insert(all_decomposed_cells.end(), decomposed_cells.begin(), decomposed_cells.end());
     }
 
     std::cout << "All areas decomposed for rotation " << rotation << ". Total cells: " << all_decomposed_cells.size() << std::endl;
     for (const auto &p: all_decomposed_cells) {
-      std::cout << "  - Decomposed sub polygon area: " << p.area() << std::endl;
+        std::cout << "  - Decomposed sub polygon area: " << p.area() << std::endl;
     }
 
     // Divide large polygons into smaller ones to meet the constraint on the lowest number of sub polygons
@@ -413,11 +466,11 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
                                                              : algorithm_config.start_pos;
     mstsp_solver::SolverConfig solver_config{algorithm_config.rotations_per_cell,
                                              algorithm_config.sweeping_step,
-                                             starting_point,
+                                              starting_point,
                                              static_cast<size_t>(n_uavs),
                                              algorithm_config.sweeping_alt,
-                                             0,
-                                             algorithm_config.no_improvement_cycles_before_stop};
+                                              0,
+                                              algorithm_config.no_improvement_cycles_before_stop};
     solver_config.wall_distance = algorithm_config.sweeping_step / 2;
     mstsp_solver::MstspSolver solver(solver_config, polygons_divided, energy_calculator, shortest_path_calculator);
     solver.set_logger(logger);
@@ -427,14 +480,13 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
     // Change the best solution if the current one is better
     if (solver_res.max_path_energy < best_solution_cost)
     {
-      best_solution_cost = solver_res.max_path_energy;
-      best_solution = solver_res;
-      std::cout << "Best solution rotation: " << rotation / M_PI * 180 << std::endl;
+        best_solution_cost = solver_res.max_path_energy;
+        best_solution = solver_res;
+        std::cout << "Best solution rotation: " << rotation / M_PI * 180 << std::endl;
     }
   }
   return best_solution;
 }
-//}
 
 /* decompose_polygon() //{ */
 
@@ -453,7 +505,7 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
   std::vector<MapPolygon> polygons_decomposed;
 
   // Run algorithm for each rotation and save the best result
-  double best_solution_cost = std::numeric_limits<double>::max();
+  // double best_solution_cost = std::numeric_limits<double>::max();
   mstsp_solver::final_solution_t best_solution;
   for (const auto& rotation : best_initial_rotations)
   {

@@ -1,7 +1,7 @@
-#include "mstsp_solver/MstspSolver.h"
+#include "EnergyAwareMCPP/mstsp_solver/MstspSolver.h"
 #include <utility>
-#include "mstsp_solver/Insertion.h"
-#include "algorithms.hpp"
+#include "EnergyAwareMCPP/mstsp_solver/Insertion.h"
+#include "EnergyAwareMCPP/algorithms.hpp"
 #include <algorithm>
 #include <list>
 
@@ -189,10 +189,9 @@ namespace mstsp_solver
   std::vector<std::vector<point_heading_t<double>>> MstspSolver::get_drones_paths(const _instance_solution_t& solution) const
   {
     std::vector<std::vector<point_heading_t<double>>> res;
-    int unique_altitude_id = 0;
     for (const auto& i : solution)
     {
-      res.push_back(path_with_heading(i, unique_altitude_id++));
+      res.push_back(path_with_heading(i));
     }
     return res;
   }
@@ -202,13 +201,13 @@ namespace mstsp_solver
   
   std::vector<point_t> MstspSolver::get_path_from_targets(const std::vector<Target>& targets) const
   {
-    return remove_path_heading(path_with_heading(targets, 10));
+    return remove_path_heading(path_with_heading(targets));
   }
   //}
 
 
 
-  std::vector<point_heading_t<double>> MstspSolver::path_with_heading(const std::vector<Target> &targets, int unique_alt_id) const
+  std::vector<point_heading_t<double>> MstspSolver::path_with_heading(const std::vector<Target> &targets) const
   {
     double transit_alt = m_config.sweeping_alt + 1.0; // Pevná výška pro přeletové trasy
     double sweep_alt = m_config.sweeping_alt;    // Pevná výška pro sweepovací vzory

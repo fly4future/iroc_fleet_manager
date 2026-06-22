@@ -634,7 +634,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
         if (!tpgs.transit_path_groups.empty() && tpgs.transit_path_groups.back()->drone_idx == i && tpgs.transit_path_groups.back()->get().back()->x2 == prev_point.x && tpgs.transit_path_groups.back()->get().back()->y2 == prev_point.y) {
           tpgs.transit_path_groups.back()->addTransitPath(prev_point.x, prev_point.y, current_point.x, current_point.y, &coverage_paths.at(i).at(j-1).reference.position.z, &coverage_paths.at(i).at(j).reference.position.z);
         } else {
-          std::unique_ptr<TransitPathGroup> tpg(new TransitPathGroup(i, min_horizontal_distances_tmp[i], min_vertical_distances_tmp[i]));
+          std::unique_ptr<TransitPathGroup> tpg(new TransitPathGroup(i, min_horizontal_distances_tmp.at(i), min_vertical_distances_tmp.at(i)));
           tpg->addTransitPath(prev_point.x, prev_point.y, current_point.x, current_point.y, &coverage_paths.at(i).at(j-1).reference.position.z, &coverage_paths.at(i).at(j).reference.position.z);
           tpg->setHeight(coverage_paths.at(i).at(j).reference.position.z, sweeping_height, transit_path_height);
           tpgs.transit_path_groups.push_back(std::move(tpg));
@@ -652,7 +652,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     for (int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
       if (tpgs.transit_path_groups.at(i)->drone_idx == tpgs.transit_path_groups.at(j)->drone_idx) continue; 
 
-      int r = horizontalAndVerticalTPGIntersection(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), std::max(min_horizontal_distances[i], min_horizontal_distances[j]));
+      int r = horizontalAndVerticalTPGIntersection(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), std::max(min_horizontal_distances.at(tpgs.transit_path_groups.at(i)->drone_idx), min_horizontal_distances.at(tpgs.transit_path_groups.at(j)->drone_idx)));
       if (r == -1 && !checkForPotentialCycle(tpgs.transit_paths_under, j, i)) {
         tpgs.transit_paths_under.at(i).push_back(j);
       } else if (r == 1 && !checkForPotentialCycle(tpgs.transit_paths_under, i, j)) {
@@ -665,7 +665,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   Graph graph = Graph(tpgs.transit_path_groups.size());
   for (int i = 0; i < tpgs.transit_path_groups.size(); i++) {
     for (int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
-      if (tpgs.transit_path_groups.at(i)->drone_idx != tpgs.transit_path_groups.at(j)->drone_idx && checkOverlap2(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), std::max(min_horizontal_distances[i], min_horizontal_distances[j]))) {
+      if (tpgs.transit_path_groups.at(i)->drone_idx != tpgs.transit_path_groups.at(j)->drone_idx && checkOverlap2(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), std::max(min_horizontal_distances.at(tpgs.transit_path_groups.at(i)->drone_idx), min_horizontal_distances.at(tpgs.transit_path_groups.at(j)->drone_idx)))) {
         graph.addEdge(i, j);
       }
     }
@@ -880,8 +880,8 @@ void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::cover
 
             if (current_point.reference.position.z == sweeping_height && prev_point.reference.position.z == sweeping_height) {
               TransitPath tp = TransitPath(current_point.reference.position.x, current_point.reference.position.y, prev_point.reference.position.x, prev_point.reference.position.y);
-              if (checkOverlap3(*tpgs.transit_path_groups.at(v), tp, std::max(tpgs.transit_path_groups.at(v)->min_horizontal_distance, min_horizontal_distances[k]))) {
-                possible_height = std::max(possible_height, sweeping_height + std::max(tpgs.transit_path_groups.at(v)->min_vertical_distance, min_vertical_distances[k]));
+              if (checkOverlap3(*tpgs.transit_path_groups.at(v), tp, std::max(tpgs.transit_path_groups.at(v)->min_horizontal_distance, min_horizontal_distances.at(k)))) {
+                possible_height = std::max(possible_height, sweeping_height + std::max(tpgs.transit_path_groups.at(v)->min_vertical_distance, min_vertical_distances.at(k)));
               }
             }
           }

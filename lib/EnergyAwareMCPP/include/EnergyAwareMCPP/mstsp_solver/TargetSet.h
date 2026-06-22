@@ -5,12 +5,12 @@
 #ifndef THESIS_TRAJECTORY_GENERATOR_TARGETSET_H
 #define THESIS_TRAJECTORY_GENERATOR_TARGETSET_H
 
-#include "utils.hpp"
+#include "EnergyAwareMCPP/utils.hpp"
 #include <vector>
 #include "Target.h"
 #include <cmath>
-#include "MapPolygon.hpp"
-#include "EnergyCalculator.h"
+#include "EnergyAwareMCPP/MapPolygon.hpp"
+#include "EnergyAwareMCPP/EnergyCalculator.h"
 
 namespace mstsp_solver {
 

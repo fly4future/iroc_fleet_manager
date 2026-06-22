@@ -52,12 +52,21 @@ def main():
         lat_lon_origin = None
 
     # Read all the needed files
-    fly_zone_points = read_csv(configuration["fly_zone_filename"], lat_lon_origin)
+    # fly_zone_points = read_csv(configuration["fly_zone_filename"], lat_lon_origin)
+    fly_zones_points = []
+    if "fly_zone_filenames" in configuration:
+        for filename in configuration["fly_zone_filenames"]:
+            fly_zones_points.append(read_csv(filename, lat_lon_origin))
     no_fly_zones_points = []
     paths_points = []
     if "no_fly_zones_filenames" in configuration:
         for filename in configuration["no_fly_zones_filenames"]:
             no_fly_zones_points.append(read_csv(filename, lat_lon_origin))
+            
+    hr_no_fly_zones_points = []
+    if "height_restricted_no_fly_zones" in configuration:
+        for hr_nfz in configuration["height_restricted_no_fly_zones"]:
+            hr_no_fly_zones_points.append(read_csv(hr_nfz["filename"], lat_lon_origin))
 
     for path_filename in sys.argv[2:]:
         paths_points.append(read_csv(path_filename, lat_lon_origin))
@@ -65,12 +74,19 @@ def main():
     # Plot the AOI and paths
     plt.figure()
 
-    fly_zone_points = np.vstack([fly_zone_points, fly_zone_points[0]])
-    plt.plot(fly_zone_points[:, 0], fly_zone_points[:, 1], color='green')
+    # fly_zone_points = np.vstack([fly_zone_points, fly_zone_points[0]])
+    # plt.plot(fly_zone_points[:, 0], fly_zone_points[:, 1], color='green')
+    for fly_zone in fly_zones_points:
+        fly_zone = np.vstack([fly_zone, fly_zone[0]])
+        plt.plot(fly_zone[:, 0], fly_zone[:, 1], color='green')
 
     for no_fly_zone in no_fly_zones_points:
         no_fly_zone = np.vstack([no_fly_zone, no_fly_zone[0]])
         plt.plot(no_fly_zone[:, 0], no_fly_zone[:, 1], color='red')
+
+    for hr_no_fly_zone in hr_no_fly_zones_points:
+        hr_no_fly_zone = np.vstack([hr_no_fly_zone, hr_no_fly_zone[0]])
+        plt.plot(hr_no_fly_zone[:, 0], hr_no_fly_zone[:, 1], color='purple')
 
     for i in range(len(paths_points)):
         # Plot each path using a distinct color

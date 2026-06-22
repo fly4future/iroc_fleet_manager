@@ -1,10 +1,10 @@
-#include "MapPolygon.hpp"
+#include "EnergyAwareMCPP/MapPolygon.hpp"
 #include <iostream>
-#include "utils.hpp"
+#include "EnergyAwareMCPP/utils.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <cmath>
-#include "algorithms.hpp"
+#include "EnergyAwareMCPP/algorithms.hpp"
 
 // TODO: make most of methods external functions (maybe, working on not MapPolygons but just on vector<pair<double, double>>
 // TODO: make use of some external polygons library like

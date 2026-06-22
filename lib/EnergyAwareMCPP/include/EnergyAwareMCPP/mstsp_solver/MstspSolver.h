@@ -4,11 +4,11 @@
 #include "SolverConfig.h"
 #include "TargetSet.h"
 #include <vector>
-#include "MapPolygon.hpp"
+#include "EnergyAwareMCPP/MapPolygon.hpp"
 #include "Target.h"
-#include "ShortestPathCalculator.hpp"
-#include "custom_types.hpp"
-#include <SimpleLogger.h>
+#include "EnergyAwareMCPP/ShortestPathCalculator.hpp"
+#include "EnergyAwareMCPP/custom_types.hpp"
+#include <EnergyAwareMCPP/SimpleLogger.h>
 
 struct metaheuristic_application_error : public std::runtime_error {
     using runtime_error::runtime_error;
@@ -153,8 +153,7 @@ namespace mstsp_solver {
          * @return Path with the right heading
          */
         std::vector<point_heading_t < double>> path_with_heading(
-        const std::vector<Target> &targets,
-        int unique_alt_id
+        const std::vector<Target> &targets
         ) const;
 
         /*!
