@@ -6,6 +6,7 @@
 #include <vector>
 #include "EnergyAwareMCPP/SimpleLogger.h"
 #include <memory>
+#include "PathCostCalculator.hpp"
 
 struct battery_model_t {
     double cell_capacity;
@@ -55,7 +56,7 @@ struct energy_calculator_config_t {
 };
 
 
-class EnergyCalculator {
+class EnergyCalculator : public PathCostCalculator {
 private:
     std::shared_ptr<loggers::SimpleLogger> m_logger;
 
@@ -157,6 +158,10 @@ public:
      */
     [[nodiscard]] double calculate_path_energy_consumption(const std::vector<std::pair<double, double>> &path) const;
 
+    double calculate_path_cost(const std::vector<point_heading_t<double>>& path) const override;
+
+    double calculate_segment_cost(double v_in, double a_in, double v_out, double a_out, double s) const override;
+
     /*!
      * @return average acceleration from the config
      */
@@ -169,6 +174,13 @@ public:
      */
     [[nodiscard]] double get_optimal_speed() const { return v_r; }
 
+    double get_max_speed() const override {
+        return get_optimal_speed();
+    }
+
+    double get_acceleration() const override {
+        return get_average_acceleration();
+    }
 
     /*!
      * Calculate the energy spent to accelerate UAV from velocity v_in tp v_out in time time

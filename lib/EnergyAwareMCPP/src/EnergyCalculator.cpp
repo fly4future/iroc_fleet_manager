@@ -262,6 +262,26 @@ double EnergyCalculator::calculate_path_energy_consumption(const std::vector<std
 }
 //}
 
+/* calculate_path_cost() //{ */
+
+double EnergyCalculator::calculate_path_cost(const std::vector<point_heading_t<double>>& path) const {
+    std::vector<std::pair<double, double>> path_2d;
+    path_2d.reserve(path.size());
+    for (const auto& p : path) {
+        path_2d.emplace_back(p.x, p.y);
+    }
+    return calculate_path_energy_consumption(path_2d);
+}
+
+//}
+
+/* calculate_segment_cost() //{ */
+
+double EnergyCalculator::calculate_segment_cost(double v_in, double a_in, double v_out, double a_out, double s) const {
+    return calculate_straight_line_energy(v_in, a_in, v_out, a_out, s);
+}
+//}
+
 /* calculate_acceleration_energy() //{ */
 
 double EnergyCalculator::calculate_acceleration_energy([[maybe_unused]] double v_in, [[maybe_unused]] double v_out, double time) const

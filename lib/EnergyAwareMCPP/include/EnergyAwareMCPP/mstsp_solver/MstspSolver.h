@@ -14,20 +14,6 @@ struct metaheuristic_application_error : public std::runtime_error {
     using runtime_error::runtime_error;
 };
 
-// Use a custom struct.
-// The Reference3D from ROS is not used to make some modules completely independent of ROS
-template<typename T=double>
-struct point_heading_t {
-    point_heading_t() = default;
-
-    point_heading_t(T x, T y) : x{x}, y{y}, z{0}, heading{0} {};
-
-    explicit point_heading_t(std::pair<T, T> p) : x{p.first}, y{p.second}, z{0}, heading{0} {};
-    T x;
-    T y;
-    T z;
-    T heading;
-};
 
 struct solution_cost_t {
     /*!

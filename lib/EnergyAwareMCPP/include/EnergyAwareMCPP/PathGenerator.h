@@ -106,9 +106,9 @@ namespace path_generation {
          * @param f Function that generates the specified number of paths
          * @return Solution to the problem
          */
-        template<typename F>
-        [[maybe_unused]] mstsp_solver::final_solution_t
-        generate_with_constraints(double max_energy_bound, unsigned int n_uavs, F f) {
+        template<typename F> [[maybe_unused]] mstsp_solver::final_solution_t
+        generate_with_constraints(double max_energy_bound, unsigned int n_uavs, F f)
+        {
             // Generate the initial solution that can be optimized after
             mstsp_solver::final_solution_t solution = f(n_uavs);
             if (solution.max_path_energy < max_energy_bound) {
@@ -120,8 +120,7 @@ namespace path_generation {
             while (solution.max_path_energy > max_energy_bound) {
                 // Stop if too many iterations are already done. TODO: remove the hardcoded value from here
                 if (++iteration > 10) {
-                    ROS_WARN(
-                            "[PathGenerator]: could not generate paths to satisfy the upper bound on energy consumption...");
+                    ROS_WARN("[PathGenerator]: could not generate paths to satisfy the upper bound on energy consumption...");
                     return solution;
                 }
                 // if the energy consumption is divided well, this should be enough
