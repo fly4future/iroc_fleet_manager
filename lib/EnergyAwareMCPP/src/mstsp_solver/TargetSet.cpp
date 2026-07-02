@@ -3,24 +3,26 @@
 #include <iostream>
 #include <algorithm>
 #include <utility>
+#include "EnergyAwareMCPP/PathCostCalculator.hpp"
 
 namespace mstsp_solver
 {
   /* TargetSet Constructor //{ */
-  
-  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, EnergyCalculator energy_calculator,
+
+
+  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, std::shared_ptr<PathCostCalculator> cost_calculator,
                        const std::vector<double>& rotation_angles)
-      : index(index), polygon(polygon), energy_calculator(std::move(energy_calculator)), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
+      : index(index), polygon(polygon), cost_calculator(std::move(cost_calculator)), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
   {
-    set_rotation_angles(rotation_angles);
+    set_rotation_angles(rotation_angles); // Note: sweep_alt is not available here, assuming 0. This might need adjustment.
   }
   //}
 
   /* TargetSet Constructor //{ */
-  
-  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, EnergyCalculator energy_calculator,
+
+  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, std::shared_ptr<PathCostCalculator> cost_calculator,
                        size_t number_of_edges_rotations)
-      : index(index), polygon(polygon), energy_calculator(std::move(energy_calculator)), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
+      : index(index), polygon(polygon), cost_calculator(std::move(cost_calculator)), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
   {
 
     auto thin_coverage = thin_polygon_coverage(polygon, sweeping_step, 4);
@@ -41,13 +43,17 @@ namespace mstsp_solver
   {
     auto sweeping_path = sweeping(polygon, angle, sweeping_step, m_wall_distance, up);
     // If sweeping failed (e.g. because of the polygon splitting with such a rotation angle)
-    if (sweeping_path.empty())
-    {
-      return;
-    }
-    double path_energy = energy_calculator.calculate_path_energy_consumption(sweeping_path);
+    if (sweeping_path.empty()) { return; }
 
-    targets.push_back(Target{up, angle, path_energy, sweeping_path[0], sweeping_path[sweeping_path.size() - 1], index, targets.size()});
+    std::vector<point_heading_t<double>> path_with_z;
+    path_with_z.reserve(sweeping_path.size());
+    for(const auto& p : sweeping_path) {
+        point_heading_t<double> p_3d(p);
+        path_with_z.push_back(p_3d);
+    }
+    double path_cost = cost_calculator->calculate_path_cost(path_with_z);
+
+    targets.push_back(Target{up, angle, path_cost, sweeping_path[0], sweeping_path[sweeping_path.size() - 1], index, targets.size()});
   }
   //}
 

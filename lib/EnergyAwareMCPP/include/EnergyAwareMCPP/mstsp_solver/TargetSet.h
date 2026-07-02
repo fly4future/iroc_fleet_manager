@@ -10,7 +10,7 @@
 #include "Target.h"
 #include <cmath>
 #include "EnergyAwareMCPP/MapPolygon.hpp"
-#include "EnergyAwareMCPP/EnergyCalculator.h"
+#include "EnergyAwareMCPP/PathCostCalculator.hpp"
 
 namespace mstsp_solver {
 
@@ -18,19 +18,20 @@ namespace mstsp_solver {
         size_t index;
         MapPolygon polygon;
         std::vector<Target> targets;
-        EnergyCalculator energy_calculator;
+        std::shared_ptr<PathCostCalculator> cost_calculator;
         double sweeping_step;
         double m_wall_distance;
 
         TargetSet(size_t index, const MapPolygon &polygon, double sweeping_step, double wall_distance,
-                  const EnergyCalculator &energy_calculator) :
-                TargetSet(index, polygon, sweeping_step, wall_distance, energy_calculator, std::vector<double>{0, M_PI}) {};
+            const std::shared_ptr<PathCostCalculator>& cost_calculator) :
+                TargetSet(index, polygon, sweeping_step, wall_distance, cost_calculator, std::vector<double>{0, M_PI}) {};
 
         TargetSet(size_t index, const MapPolygon &polygon, double sweeping_step, double wall_distance,
-                  EnergyCalculator energy_calculator, const std::vector<double> &rotation_angles);
+                  std::shared_ptr<PathCostCalculator> cost_calculator, const std::vector<double> &rotation_angles);
+
 
         TargetSet(size_t index, const MapPolygon &polygon, double sweeping_step, double wall_distance,
-                  EnergyCalculator energy_calculator, size_t number_of_edges_rotations);
+                  std::shared_ptr<PathCostCalculator> cost_calculator, size_t number_of_edges_rotations);
 
     private:
         /*!

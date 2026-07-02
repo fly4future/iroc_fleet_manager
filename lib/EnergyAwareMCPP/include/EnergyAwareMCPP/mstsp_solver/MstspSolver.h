@@ -8,6 +8,7 @@
 #include "Target.h"
 #include "EnergyAwareMCPP/ShortestPathCalculator.hpp"
 #include "EnergyAwareMCPP/custom_types.hpp"
+#include "EnergyAwareMCPP/PathCostCalculator.hpp"
 #include <EnergyAwareMCPP/SimpleLogger.h>
 
 struct metaheuristic_application_error : public std::runtime_error {
@@ -65,8 +66,8 @@ namespace mstsp_solver {
 
     public:
         MstspSolver(SolverConfig config,
-                    const std::vector<MapPolygon> &decomposed_polygons,
-                    EnergyCalculator energy_calculator,
+                    const std::vector<MapPolygon>& decomposed_polygons,
+                    std::shared_ptr<PathCostCalculator> cost_calculator,
                     ShortestPathCalculator shortest_path_calculator);
 
         /*!
@@ -84,7 +85,7 @@ namespace mstsp_solver {
         std::shared_ptr<loggers::SimpleLogger> m_logger;
         std::vector<TargetSet> m_target_sets;
         const SolverConfig m_config;
-        const EnergyCalculator m_energy_calculator;
+        std::shared_ptr<PathCostCalculator> m_cost_calculator;
         ShortestPathCalculator m_shortest_path_calculator;
         double m_cost_constant = 0.0001;
 
@@ -95,14 +96,7 @@ namespace mstsp_solver {
         _instance_solution_t greedy_random() const;
 
         /*!
-         * Get the estimated energy consumption of the path
-         * @param path Sequence of targets, energy for which should be calculated
-         * @return Energy consumption in [W}
-         */
-        double get_path_energy(const std::vector<Target> &path) const;
-
-        /*!
-         * Calculate the cost of one path
+         * Get the estimated cost of the path
          * @param path Sequence of targets, cost for which should be calculated
          * @return Path cost
          */

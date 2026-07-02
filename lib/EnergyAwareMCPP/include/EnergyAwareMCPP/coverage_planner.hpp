@@ -2,6 +2,7 @@
 #define COVERAGE_PLANNER_HPP
 
 #include "MapPolygon.hpp"
+#include "EnergyAwareMCPP/TimeCalculator.hpp"
 #include "EnergyAwareMCPP/EnergyCalculator.h"
 #include "algorithms.hpp"
 #include "ShortestPathCalculator.hpp"
@@ -23,6 +24,8 @@ struct hr_nfz_file_t {
 struct algorithm_config_t
 {
     energy_calculator_config_t energy_calculator_config;
+    time_calculator_config_t time_calculator_config;
+    std::string optimization_type;
     int number_of_rotations;
     bool points_in_lat_lon;
     std::pair<double, double> lat_lon_origin;
@@ -88,8 +91,7 @@ template <typename F>
  */
 mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config_t& algorithm_config,
                                               const std::vector<MapPolygon> &search_areas,
-                                              const EnergyCalculator& energy_calculator, const ShortestPathCalculator& shortest_path_calculator,
+                                              std::shared_ptr<PathCostCalculator> cost_calculator, const ShortestPathCalculator& shortest_path_calculator,
                                               std::shared_ptr<loggers::SimpleLogger>& logger);
 
 #endif //COVERAGE_PLANNER_HPP
-

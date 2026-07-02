@@ -98,9 +98,20 @@ int main(int argc, char *argv[]) {
 
     // Create a logger to log everything directly into stdout
     auto shared_logger = std::make_shared<loggers::SimpleLogger>();
-    EnergyCalculator energy_calculator{algorithm_config.energy_calculator_config, shared_logger};
-    std::cout << "Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed() << std::endl;
-
+    
+    std::shared_ptr<PathCostCalculator> cost_calculator;
+    if (algorithm_config.optimization_type == "time") {
+        cost_calculator = std::make_shared<TimeCalculator>(algorithm_config.time_calculator_config);
+        std::cout << "Time calculator created. Max horizontal speed: " << cost_calculator->get_max_speed() << std::endl;
+    } else if (algorithm_config.optimization_type == "energy") {
+        auto energy_calc = std::make_shared<EnergyCalculator>(algorithm_config.energy_calculator_config, shared_logger);
+        cost_calculator = energy_calc;
+        std::cout << "Energy calculator created. Optimal speed: " << energy_calc->get_optimal_speed() << std::endl;
+    } else {
+        std::cerr << "Error: Unknown optimization_type: '" << algorithm_config.optimization_type << "'. Use 'energy' or 'time'." << std::endl;
+        return -1;
+    }
+    
     // Create one master polygon that contains ALL obstacles. This will be used for pathfinding between areas.
     // The fly-zone part is left empty, as the ShortestPathCalculator will ignore it anyway.
     MapPolygon master_obstacle_polygon;
@@ -164,7 +175,7 @@ int main(int argc, char *argv[]) {
     mstsp_solver::final_solution_t best_solution;
     try {
         auto f = [&](int n) {
-            return solve_for_uavs(n, algorithm_config, search_areas, energy_calculator, shortest_path_calculator,
+            return solve_for_uavs(n, algorithm_config, search_areas, cost_calculator, shortest_path_calculator,
                                   shared_logger);
         };
         best_solution = generate_with_constraints(algorithm_config.max_single_path_energy * 3600,
@@ -263,14 +274,7 @@ void write_polygon_into_csv(const std::vector<point_heading_t<double>>& path, co
 /* algorithm_config_is_valid() //{ */
 
 bool algorithm_config_is_valid(const YAML::Node &config) {
-    static const char *required_fields[] = {"battery_model",
-                                            "best_speed_model",
-                                            "drone_mass",
-                                            "drone_area",
-                                            "average_acceleration",
-                                            "propeller_radius",
-                                            "number_of_propellers",
-                                            "allowed_path_deviation",
+    static const char *required_fields[] = {"allowed_path_deviation",
                                             "number_of_rotations",
                                             "points_in_lat_lon",
                                             "fly_zone_filenames",
@@ -282,7 +286,8 @@ bool algorithm_config_is_valid(const YAML::Node &config) {
                                             "start_y",
                                             "rotations_per_cell",
                                             "no_improvement_cycles_before_stop",
-                                            "max_single_path_energy"};
+                                            "max_single_path_energy",
+                                            "optimization_type"};
     for (const auto field: required_fields)
     {
         if (!config[field]) {
@@ -292,27 +297,65 @@ bool algorithm_config_is_valid(const YAML::Node &config) {
         }
     }
 
-    auto battery_model_config = config["battery_model"];
-    if (!battery_model_config["cell_capacity"] ||
-        !battery_model_config["number_of_cells"] ||
-        !battery_model_config["d0"] ||
-        !battery_model_config["d1"] ||
-        !battery_model_config["d2"] ||
-        !battery_model_config["d3"]) {
+    std::string optimization_type = config["optimization_type"].as<std::string>();
+    if (optimization_type == "energy") {
+        static const char *energy_fields[] = {"battery_model",
+                                              "best_speed_model",
+                                              "drone_mass",
+                                              "drone_area",
+                                              "average_acceleration",
+                                              "propeller_radius",
+                                              "number_of_propellers"};
+        for (const auto field: energy_fields) {
+            if (!config[field]) {
+                std::cerr << "Error: missing required field '" << field << "' for energy optimization." << std::endl;
+                return false;
+            }
+        }
 
-        std::cerr << "Error: battery_model node does not contain all the required parameters" << std::endl;
+        auto battery_model_config = config["battery_model"];
+        if (!battery_model_config || !battery_model_config["cell_capacity"] ||
+            !battery_model_config["number_of_cells"] ||
+            !battery_model_config["d0"] ||
+            !battery_model_config["d1"] ||
+            !battery_model_config["d2"] ||
+            !battery_model_config["d3"]) {
+
+            std::cerr << "Error: battery_model node does not contain all the required parameters for energy optimization" << std::endl;
+            return false;
+        }
+
+        auto best_speed_model_config = config["best_speed_model"];
+        if (!best_speed_model_config || !best_speed_model_config["c0"] ||
+            !best_speed_model_config["c1"] ||
+            !best_speed_model_config["c2"]) {
+
+            std::cerr << "Error: best_speed_model node does not contain all the required parameters for energy optimization" << std::endl;
+            return false;
+        }
+    } else if (optimization_type == "time") {
+        static const char *time_fields[] = {"time_model"};
+        for (const auto field: time_fields) {
+            if (!config[field]) {
+                std::cerr << "Error: missing required field '" << field << "' for time optimization." << std::endl;
+                return false;
+            }
+        }
+
+        auto time_model_config = config["time_model"];
+        if (!time_model_config || !time_model_config["max_horizontal_speed"] ||
+            !time_model_config["max_vertical_speed"] ||
+            !time_model_config["horizontal_acceleration"] ||
+            !time_model_config["vertical_acceleration"]) {
+            
+            std::cerr << "Error: time_model node does not contain all the required parameters for time optimization" << std::endl;
+            return false;
+        }
+    } else {
+        std::cerr << "Error: Invalid optimization_type '" << optimization_type << "'. Must be 'energy' or 'time'." << std::endl;
         return false;
     }
-
-    auto best_speed_model_config = config["best_speed_model"];
-    if (!best_speed_model_config["c0"] ||
-        !best_speed_model_config["c1"] ||
-        !best_speed_model_config["c2"]) {
-
-        std::cerr << "Error: best_speed_model node does not contain all the required parameters" << std::endl;
-        return false;
-    }
-
+    
     if (config["points_in_lat_lon"].as<bool>()) {
         if (!config["latitude_origin"] || !config["longitude_origin"]) {
             std::cerr << "Error: points_in_lat_lon is set to True, but no latitude and longitude origins are specified"
@@ -335,26 +378,39 @@ bool algorithm_config_is_valid(const YAML::Node &config) {
 algorithm_config_t parse_algorithm_config(const YAML::Node& config)
 {
   algorithm_config_t algorithm_config;
-  algorithm_config.energy_calculator_config.drone_mass = config["drone_mass"].as<double>();
-  algorithm_config.energy_calculator_config.drone_area = config["drone_area"].as<double>();
-  algorithm_config.energy_calculator_config.average_acceleration = config["average_acceleration"].as<double>();
-  algorithm_config.energy_calculator_config.propeller_radius = config["propeller_radius"].as<double>();
-  algorithm_config.energy_calculator_config.number_of_propellers = config["number_of_propellers"].as<int>();
   algorithm_config.energy_calculator_config.allowed_path_deviation = config["allowed_path_deviation"].as<double>();
+  algorithm_config.time_calculator_config.allowed_path_deviation = config["allowed_path_deviation"].as<double>();
+
+  algorithm_config.optimization_type = config["optimization_type"].as<std::string>();
+
+  if (algorithm_config.optimization_type == "energy") {
+    algorithm_config.energy_calculator_config.drone_mass = config["drone_mass"].as<double>();
+    algorithm_config.energy_calculator_config.drone_area = config["drone_area"].as<double>();
+    algorithm_config.energy_calculator_config.average_acceleration = config["average_acceleration"].as<double>();
+    algorithm_config.energy_calculator_config.propeller_radius = config["propeller_radius"].as<double>();
+    algorithm_config.energy_calculator_config.number_of_propellers = config["number_of_propellers"].as<int>();
+
+    auto battery_model_config = config["battery_model"];
+    algorithm_config.energy_calculator_config.battery_model.cell_capacity = battery_model_config["cell_capacity"].as<double>();
+    algorithm_config.energy_calculator_config.battery_model.number_of_cells = battery_model_config["number_of_cells"].as<int>();
+    algorithm_config.energy_calculator_config.battery_model.d0 = battery_model_config["d0"].as<double>();
+    algorithm_config.energy_calculator_config.battery_model.d1 = battery_model_config["d1"].as<double>();
+    algorithm_config.energy_calculator_config.battery_model.d2 = battery_model_config["d2"].as<double>();
+    algorithm_config.energy_calculator_config.battery_model.d3 = battery_model_config["d3"].as<double>();
+
+    auto best_speed_model_config = config["best_speed_model"];
+    algorithm_config.energy_calculator_config.best_speed_model.c0 = best_speed_model_config["c0"].as<double>();
+    algorithm_config.energy_calculator_config.best_speed_model.c1 = best_speed_model_config["c1"].as<double>();
+    algorithm_config.energy_calculator_config.best_speed_model.c2 = best_speed_model_config["c2"].as<double>();
+  } else if (algorithm_config.optimization_type == "time") {
+    auto time_model_config = config["time_model"];
+    algorithm_config.time_calculator_config.max_horizontal_speed = time_model_config["max_horizontal_speed"].as<double>();
+    algorithm_config.time_calculator_config.max_vertical_speed = time_model_config["max_vertical_speed"].as<double>();
+    algorithm_config.time_calculator_config.horizontal_acceleration = time_model_config["horizontal_acceleration"].as<double>();
+    algorithm_config.time_calculator_config.vertical_acceleration = time_model_config["vertical_acceleration"].as<double>();
+  }
+
   algorithm_config.number_of_rotations = config["number_of_rotations"].as<int>();
-
-  auto battery_model_config = config["battery_model"];
-  algorithm_config.energy_calculator_config.battery_model.cell_capacity = battery_model_config["cell_capacity"].as<double>();
-  algorithm_config.energy_calculator_config.battery_model.number_of_cells = battery_model_config["number_of_cells"].as<int>();
-  algorithm_config.energy_calculator_config.battery_model.d0 = battery_model_config["d0"].as<double>();
-  algorithm_config.energy_calculator_config.battery_model.d1 = battery_model_config["d1"].as<double>();
-  algorithm_config.energy_calculator_config.battery_model.d2 = battery_model_config["d2"].as<double>();
-  algorithm_config.energy_calculator_config.battery_model.d3 = battery_model_config["d3"].as<double>();
-
-  auto best_speed_model_config = config["best_speed_model"];
-  algorithm_config.energy_calculator_config.best_speed_model.c0 = best_speed_model_config["c0"].as<double>();
-  algorithm_config.energy_calculator_config.best_speed_model.c1 = best_speed_model_config["c1"].as<double>();
-  algorithm_config.energy_calculator_config.best_speed_model.c2 = best_speed_model_config["c2"].as<double>();
 
   algorithm_config.points_in_lat_lon = config["points_in_lat_lon"].as<bool>();
   if (algorithm_config.points_in_lat_lon)
@@ -401,7 +457,7 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
 
 [[maybe_unused]] mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config_t& algorithm_config,
                                                         const std::vector<MapPolygon> &search_areas,
-                                                        const EnergyCalculator& energy_calculator,
+                                                        std::shared_ptr<PathCostCalculator> cost_calculator,
                                                         const ShortestPathCalculator& shortest_path_calculator,
                                                         std::shared_ptr<loggers::SimpleLogger>& logger)
 {
@@ -472,7 +528,7 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
                                               0,
                                               algorithm_config.no_improvement_cycles_before_stop};
     solver_config.wall_distance = algorithm_config.sweeping_step / 2;
-    mstsp_solver::MstspSolver solver(solver_config, polygons_divided, energy_calculator, shortest_path_calculator);
+    mstsp_solver::MstspSolver solver(solver_config, polygons_divided, cost_calculator, shortest_path_calculator);
     solver.set_logger(logger);
 
     auto solver_res = solver.solve();
@@ -545,4 +601,3 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config)
   return polygons_decomposed;
 }
 //}
-

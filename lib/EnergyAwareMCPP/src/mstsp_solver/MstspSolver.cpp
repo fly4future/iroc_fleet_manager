@@ -2,6 +2,7 @@
 #include <utility>
 #include "EnergyAwareMCPP/mstsp_solver/Insertion.h"
 #include "EnergyAwareMCPP/algorithms.hpp"
+#include "EnergyAwareMCPP/PathCostCalculator.hpp"
 #include <algorithm>
 #include <list>
 
@@ -51,58 +52,52 @@ namespace mstsp_solver
 
   /* MstspSolver Constructor //{ */
 
-  MstspSolver::MstspSolver(SolverConfig config, const std::vector<MapPolygon>& decomposed_polygons, EnergyCalculator energy_calculator,
+  MstspSolver::MstspSolver(SolverConfig config, const std::vector<MapPolygon>& decomposed_polygons, std::shared_ptr<PathCostCalculator> cost_calculator,
                            ShortestPathCalculator shortest_path_calculator)
       : m_logger(std::make_shared<loggers::SimpleLogger>()),
         m_config(std::move(config)),
-        m_energy_calculator(std::move(energy_calculator)),
+        m_cost_calculator(std::move(cost_calculator)),
         m_shortest_path_calculator(std::move(shortest_path_calculator))
   {
 
     for (size_t i = 0; i < decomposed_polygons.size(); ++i)
     {
-      m_target_sets.emplace_back(i, decomposed_polygons[i], m_config.sweeping_step, m_config.wall_distance, m_energy_calculator, m_config.rotations_per_cell);
+      m_target_sets.emplace_back(i, decomposed_polygons[i], m_config.sweeping_step, m_config.wall_distance, m_cost_calculator, m_config.rotations_per_cell);
     }
   }
   //}
 
-  /* get_path_energy() //{ */
+  /* get_path_cost() //{ */
   
-  double MstspSolver::get_path_energy(const std::vector<Target>& path) const
+  double MstspSolver::get_path_cost(const std::vector<Target>& path) const
   {
     if (path.empty())
     {
       return 0;
     }
-    double energy = 0;
+    double cost = 0;
+    double acc = m_cost_calculator->get_acceleration();
 
     for (size_t i = 0; i + 1 < path.size(); ++i)
     {
-      energy += path[i].energy_consumption;
-      energy += m_energy_calculator.calculate_straight_line_energy(
-          0, m_energy_calculator.get_average_acceleration(), 0, -m_energy_calculator.get_average_acceleration(), path[i].end_point, path[i + 1].starting_point);
-      //            m_logger->log_warn("Energy between points: " + std::to_string(energy));
-      // TODO: think if really the shortest path calculation is needed. It works at least in O(N^2) but with caching.
-      //            auto path_between_polygons = m_shortest_path_calculator.shortest_path_between_points(path[i].end_point, path[i + 1].starting_point);
-      //            energy += m_energy_calculator.calculate_path_energy_consumption(path_between_polygons);
-    }
-    energy += path[path.size() - 1].energy_consumption;
-    auto a = m_energy_calculator.get_average_acceleration();
-    energy += m_energy_calculator.calculate_straight_line_energy(0, a, 0, -a, m_config.starting_point, path[0].starting_point);
-    energy += m_energy_calculator.calculate_straight_line_energy(0, a, 0, -a, path[path.size() - 1].end_point, m_config.starting_point);
+      cost += path[i].sweep_cost;
+      // calculation is simplified because it saves a lot of time
+      auto path_between_polygons = m_shortest_path_calculator.shortest_path_between_points(path[i].end_point, path[i + 1].starting_point);
+      double dist = 0;
+      for(size_t k=0; k+1 < path_between_polygons.first.size(); ++k) {
+          dist += distance_between_points(path_between_polygons.first[k], path_between_polygons.first[k+1]);
+      }
+      cost += m_cost_calculator->calculate_segment_cost(0, acc, 0, -acc, dist);
 
-    return energy;
+    }
+    cost += path.back().sweep_cost;
+    cost += m_cost_calculator->calculate_segment_cost(0, acc, 0, -acc, distance_between_points(m_config.starting_point, path[0].starting_point));
+    cost += m_cost_calculator->calculate_segment_cost(0, acc, 0, -acc, distance_between_points(path.back().end_point, m_config.starting_point));
+
+
+    return cost;
   }
   //}
-
- /* get_path_cost() //{ */
- 
-  double MstspSolver::get_path_cost(const std::vector<Target>& path) const
-  {
-    double energy = get_path_energy(path);
-    return energy;
-  }
- //}
 
  /* get_solution_cost() //{ */
  
