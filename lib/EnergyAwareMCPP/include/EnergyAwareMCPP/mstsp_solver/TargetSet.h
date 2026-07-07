@@ -18,20 +18,20 @@ namespace mstsp_solver {
         size_t index;
         MapPolygon polygon;
         std::vector<Target> targets;
-        std::shared_ptr<PathCostCalculator> cost_calculator;
+        const std::vector<std::shared_ptr<PathCostCalculator>>* cost_calculators;
         double sweeping_step;
         double m_wall_distance;
 
         TargetSet(size_t index, const MapPolygon &polygon, double sweeping_step, double wall_distance,
-            const std::shared_ptr<PathCostCalculator>& cost_calculator) :
-                TargetSet(index, polygon, sweeping_step, wall_distance, cost_calculator, std::vector<double>{0, M_PI}) {};
+                  const std::vector<std::shared_ptr<PathCostCalculator>>* cost_calculators) :
+                TargetSet(index, polygon, sweeping_step, wall_distance, cost_calculators, std::vector<double>{0, M_PI}) {};
 
         TargetSet(size_t index, const MapPolygon &polygon, double sweeping_step, double wall_distance,
-                  std::shared_ptr<PathCostCalculator> cost_calculator, const std::vector<double> &rotation_angles);
+                  const std::vector<std::shared_ptr<PathCostCalculator>>* cost_calculators, const std::vector<double> &rotation_angles);
 
 
         TargetSet(size_t index, const MapPolygon &polygon, double sweeping_step, double wall_distance,
-                  std::shared_ptr<PathCostCalculator> cost_calculator, size_t number_of_edges_rotations);
+                  const std::vector<std::shared_ptr<PathCostCalculator>>* cost_calculators, size_t number_of_edges_rotations);
 
     private:
         /*!

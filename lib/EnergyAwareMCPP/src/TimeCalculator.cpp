@@ -87,7 +87,7 @@ TimeCalculator::turning_properties_time_t TimeCalculator::calculate_turning_prop
     double d_x = m_config.allowed_path_deviation;
     double a_x = a_h * std::cos(phi_2);
     double a_y = a_h * std::sin(phi_2);
-
+    
     double dv_x = std::sqrt(2.0 * d_x * a_x);
     dv_x = std::min(dv_x, std::cos(M_PI_2 - phi) * v_r / 2.0);
 
@@ -120,8 +120,21 @@ double TimeCalculator::calculate_path_cost(const std::vector<point_heading_t<dou
 
     // STEP A: Pre-calculate the properties of all turns in the 2D (X,Y) plane.
     std::vector<turning_properties_time_t> turns;
-    turns.push_back({0.0, 0.0, 0.0, m_config.horizontal_acceleration, 0.0, 0.0}); // Start from rest
+    turns.push_back({0.0, m_config.horizontal_acceleration, 0.0, m_config.horizontal_acceleration, 0.0, 0.0}); // Start from rest
     for (size_t i = 1; i + 1 < filtered_path.size(); ++i) {
+        if (filtered_path[i+1].x == filtered_path[i].x && filtered_path[i+1].y == filtered_path[i].y) {
+            // This point is the start of a purely vertical segment.
+            // The drone must come to a complete horizontal stop.
+            // We treat this as a 180-degree turn to enforce a stop, but with zero time cost for the turn itself.
+            turns.push_back({0.0, -m_config.horizontal_acceleration, 0.0, m_config.horizontal_acceleration, 0.0, 0.0});
+            continue;
+        }
+        if (filtered_path[i-1].x == filtered_path[i].x && filtered_path[i-1].y == filtered_path[i].y) {
+            // This point is the end of a purely vertical segment.
+            // The drone starts moving horizontally from a standstill.
+            turns.push_back({0.0, -m_config.horizontal_acceleration, 0.0, m_config.horizontal_acceleration, 0.0, 0.0});
+            continue;
+        }
         double angle = EnergyCalculator::angle_between_points(
             {filtered_path[i-1].x, filtered_path[i-1].y},
             {filtered_path[i].x, filtered_path[i].y},
@@ -129,7 +142,7 @@ double TimeCalculator::calculate_path_cost(const std::vector<point_heading_t<dou
         );
         turns.push_back(calculate_turning_properties(angle));
     }
-    turns.push_back({0.0, -m_config.horizontal_acceleration, 0.0, 0.0, 0.0, 0.0}); // Stop at the end
+    turns.push_back({0.0, -m_config.horizontal_acceleration, 0.0, -m_config.horizontal_acceleration, 0.0, 0.0}); // Stop at the end
 
     // STEP B: Calculate the time for each segment.
     for (size_t i = 0; i + 1 < filtered_path.size(); ++i) {

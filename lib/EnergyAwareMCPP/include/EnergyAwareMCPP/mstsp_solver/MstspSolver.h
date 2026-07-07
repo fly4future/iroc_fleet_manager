@@ -66,8 +66,8 @@ namespace mstsp_solver {
 
     public:
         MstspSolver(SolverConfig config,
-                    const std::vector<MapPolygon>& decomposed_polygons,
-                    std::shared_ptr<PathCostCalculator> cost_calculator,
+                    const std::vector<MapPolygon> &decomposed_polygons,
+                    std::vector<std::shared_ptr<PathCostCalculator>> cost_calculators,
                     ShortestPathCalculator shortest_path_calculator);
 
         /*!
@@ -85,8 +85,8 @@ namespace mstsp_solver {
         std::shared_ptr<loggers::SimpleLogger> m_logger;
         std::vector<TargetSet> m_target_sets;
         const SolverConfig m_config;
-        std::shared_ptr<PathCostCalculator> m_cost_calculator;
-        ShortestPathCalculator m_shortest_path_calculator;
+        std::vector<std::shared_ptr<PathCostCalculator>> m_cost_calculators;
+        const ShortestPathCalculator m_shortest_path_calculator;
         double m_cost_constant = 0.0001;
 
         /*!
@@ -98,9 +98,10 @@ namespace mstsp_solver {
         /*!
          * Get the estimated cost of the path
          * @param path Sequence of targets, cost for which should be calculated
+         * @param uav_idx Index of the UAV for which the cost is calculated
          * @return Path cost
          */
-        double get_path_cost(const std::vector<Target> &path) const;
+        double get_path_cost(const std::vector<Target> &path, size_t uav_idx) const;
 
         /*!
          * @param solution Problem solution

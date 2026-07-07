@@ -20,12 +20,16 @@ struct hr_nfz_file_t {
     double max_altitude;
 };
 
+struct drone_spec_t {
+    std::string optimization_type; // "energy" nebo "time"
+    std::optional<energy_calculator_config_t> energy_config;
+    std::optional<time_calculator_config_t> time_config;
+    double max_single_path_cost; // Max limit pro drona (v Wh pro energii, v s pro čas)
+};
+
 // Struct defining full algorithm config in one place
 struct algorithm_config_t
 {
-    energy_calculator_config_t energy_calculator_config;
-    time_calculator_config_t time_calculator_config;
-    std::string optimization_type;
     int number_of_rotations;
     bool points_in_lat_lon;
     std::pair<double, double> lat_lon_origin;
@@ -41,7 +45,7 @@ struct algorithm_config_t
 
     int rotations_per_cell;
     int no_improvement_cycles_before_stop;
-    double max_single_path_energy;
+    std::vector<drone_spec_t> drones;
 };
 
 /* generate_with_constraints() //{ */
@@ -91,7 +95,7 @@ template <typename F>
  */
 mstsp_solver::final_solution_t solve_for_uavs(int n_uavs, const algorithm_config_t& algorithm_config,
                                               const std::vector<MapPolygon> &search_areas,
-                                              std::shared_ptr<PathCostCalculator> cost_calculator, const ShortestPathCalculator& shortest_path_calculator,
+                                              const std::vector<std::shared_ptr<PathCostCalculator>>& cost_calculators, const ShortestPathCalculator& shortest_path_calculator,
                                               std::shared_ptr<loggers::SimpleLogger>& logger);
 
 #endif //COVERAGE_PLANNER_HPP

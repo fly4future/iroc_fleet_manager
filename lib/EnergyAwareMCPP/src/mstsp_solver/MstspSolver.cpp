@@ -52,47 +52,47 @@ namespace mstsp_solver
 
   /* MstspSolver Constructor //{ */
 
-  MstspSolver::MstspSolver(SolverConfig config, const std::vector<MapPolygon>& decomposed_polygons, std::shared_ptr<PathCostCalculator> cost_calculator,
+  MstspSolver::MstspSolver(SolverConfig config, const std::vector<MapPolygon>& decomposed_polygons, std::vector<std::shared_ptr<PathCostCalculator>> cost_calculators,
                            ShortestPathCalculator shortest_path_calculator)
       : m_logger(std::make_shared<loggers::SimpleLogger>()),
         m_config(std::move(config)),
-        m_cost_calculator(std::move(cost_calculator)),
+        m_cost_calculators(std::move(cost_calculators)),
         m_shortest_path_calculator(std::move(shortest_path_calculator))
   {
 
     for (size_t i = 0; i < decomposed_polygons.size(); ++i)
     {
-      m_target_sets.emplace_back(i, decomposed_polygons[i], m_config.sweeping_step, m_config.wall_distance, m_cost_calculator, m_config.rotations_per_cell);
+      m_target_sets.emplace_back(i, decomposed_polygons[i], m_config.sweeping_step, m_config.wall_distance, &m_cost_calculators, m_config.rotations_per_cell);
     }
   }
   //}
 
   /* get_path_cost() //{ */
   
-  double MstspSolver::get_path_cost(const std::vector<Target>& path) const
+  double MstspSolver::get_path_cost(const std::vector<Target>& path, size_t uav_idx) const
   {
     if (path.empty())
     {
       return 0;
     }
     double cost = 0;
-    double acc = m_cost_calculator->get_acceleration();
+    double acc = m_cost_calculators[uav_idx]->get_acceleration();
 
     for (size_t i = 0; i + 1 < path.size(); ++i)
     {
-      cost += path[i].sweep_cost;
+      cost += path[i].drones_sweep_costs[uav_idx];
       // calculation is simplified because it saves a lot of time
       auto path_between_polygons = m_shortest_path_calculator.shortest_path_between_points(path[i].end_point, path[i + 1].starting_point);
       double dist = 0;
       for(size_t k=0; k+1 < path_between_polygons.first.size(); ++k) {
           dist += distance_between_points(path_between_polygons.first[k], path_between_polygons.first[k+1]);
       }
-      cost += m_cost_calculator->calculate_segment_cost(0, acc, 0, -acc, dist);
+      cost += m_cost_calculators[uav_idx]->calculate_segment_cost(0, acc, 0, -acc, dist);
 
     }
-    cost += path.back().sweep_cost;
-    cost += m_cost_calculator->calculate_segment_cost(0, acc, 0, -acc, distance_between_points(m_config.starting_point, path[0].starting_point));
-    cost += m_cost_calculator->calculate_segment_cost(0, acc, 0, -acc, distance_between_points(path.back().end_point, m_config.starting_point));
+    cost += path.back().drones_sweep_costs[uav_idx];
+    cost += m_cost_calculators[uav_idx]->calculate_segment_cost(0, acc, 0, -acc, distance_between_points(m_config.starting_point, path[0].starting_point));
+    cost += m_cost_calculators[uav_idx]->calculate_segment_cost(0, acc, 0, -acc, distance_between_points(path.back().end_point, m_config.starting_point));
 
 
     return cost;
@@ -106,9 +106,9 @@ namespace mstsp_solver
     double cost_sum = 0;
     double max_path_cost = 0;
 
-    for (const auto& uav_path : solution)
+    for (size_t uav_idx = 0; uav_idx < solution.size(); ++uav_idx)
     {
-      double path_cost = get_path_cost(uav_path);
+      double path_cost = get_path_cost(solution[uav_idx], uav_idx);
       cost_sum += path_cost;
       max_path_cost = std::max(max_path_cost, path_cost);
     }
@@ -148,7 +148,7 @@ namespace mstsp_solver
               //                            std::cout << "target_id: " << target_id << std::endl;
               std::vector<Target> current_route = current_solution[j];
               current_route.insert(current_route.begin() + static_cast<long>(k), target_sets[i].targets[target_id]);
-              double cost = get_path_cost(current_route);
+              double cost = get_path_cost(current_route, j);
               possible_insertions.push_back(Insertion{cost, i, target_id, j, k});
             }
           }
@@ -441,12 +441,12 @@ namespace mstsp_solver
       solution[index_a2].emplace(solution[index_a2].begin() + static_cast<long>(index_c2), target_to_move);
     }
     // Try to rotate the moved target and find the best rotation
-    double min_route_cost = get_path_cost(solution[index_a2]);
+    double min_route_cost = get_path_cost(solution[index_a2], index_a2);
     Target best_target = target_to_move;
     for (const auto& rotated_target : m_target_sets[target_to_move.target_set_index].targets)
     {
       solution[index_a2][index_c2] = rotated_target;
-      double route_cost = get_path_cost(solution[index_a2]);
+      double route_cost = get_path_cost(solution[index_a2], index_a2);
       if (route_cost < min_route_cost)
       {
         min_route_cost = route_cost;
@@ -609,13 +609,13 @@ namespace mstsp_solver
 
     size_t index_c1 = generate_random_number() % solution[index_a1].size();
 
-    double best_path_cost = get_path_cost(solution[index_a1]);
+    double best_path_cost = get_path_cost(solution[index_a1], index_a1);
     Target best_target = solution[index_a1][index_c1];
     const TargetSet& target_to_check = m_target_sets[best_target.target_set_index];
     for (const auto& target : target_to_check.targets)
     {
       solution[index_a1][index_c1] = target;
-      double path_cost = get_path_cost(solution[index_a1]);
+      double path_cost = get_path_cost(solution[index_a1], index_a1);
       if (path_cost < best_path_cost)
       {
         best_path_cost = path_cost;

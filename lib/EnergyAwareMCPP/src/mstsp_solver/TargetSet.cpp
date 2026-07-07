@@ -9,20 +9,19 @@ namespace mstsp_solver
 {
   /* TargetSet Constructor //{ */
 
-
-  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, std::shared_ptr<PathCostCalculator> cost_calculator,
+  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, const std::vector<std::shared_ptr<PathCostCalculator>>* cost_calculators,
                        const std::vector<double>& rotation_angles)
-      : index(index), polygon(polygon), cost_calculator(std::move(cost_calculator)), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
+      : index(index), polygon(polygon), cost_calculators(cost_calculators), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
   {
     set_rotation_angles(rotation_angles); // Note: sweep_alt is not available here, assuming 0. This might need adjustment.
   }
   //}
 
   /* TargetSet Constructor //{ */
-
-  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, std::shared_ptr<PathCostCalculator> cost_calculator,
+  
+  TargetSet::TargetSet(size_t index, const MapPolygon& polygon, double sweeping_step, double wall_distance, const std::vector<std::shared_ptr<PathCostCalculator>>* cost_calculators,
                        size_t number_of_edges_rotations)
-      : index(index), polygon(polygon), cost_calculator(std::move(cost_calculator)), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
+      : index(index), polygon(polygon), cost_calculators(cost_calculators), sweeping_step(sweeping_step), m_wall_distance{wall_distance}
   {
 
     auto thin_coverage = thin_polygon_coverage(polygon, sweeping_step, 4);
@@ -32,7 +31,15 @@ namespace mstsp_solver
       set_rotation_angles(polygon.get_n_longest_edges_rotation_angles(number_of_edges_rotations));
     } else
     {
-      targets.push_back(Target{true, 0.0, 0.0, thin_coverage[0], thin_coverage.back(), index, targets.size()});
+      Target target{true, 0.0, {}, thin_coverage[0], thin_coverage.back(), index, targets.size()};
+      target.drones_sweep_costs.resize(cost_calculators->size());
+      for (size_t uav_idx = 0; uav_idx < cost_calculators->size(); ++uav_idx) {
+          // Assuming thin_coverage is 2D, we need to create a 3D path for cost calculation
+          std::vector<point_heading_t<double>> path_3d;
+          for(const auto& p : thin_coverage) path_3d.emplace_back(p);
+          target.drones_sweep_costs[uav_idx] = (*cost_calculators)[uav_idx]->calculate_path_cost(path_3d);
+      }
+      targets.push_back(target);
     }
   }
   //}
@@ -51,9 +58,14 @@ namespace mstsp_solver
         point_heading_t<double> p_3d(p);
         path_with_z.push_back(p_3d);
     }
-    double path_cost = cost_calculator->calculate_path_cost(path_with_z);
-
-    targets.push_back(Target{up, angle, path_cost, sweeping_path[0], sweeping_path[sweeping_path.size() - 1], index, targets.size()});
+    
+    Target target{up, angle, {}, sweeping_path[0], sweeping_path.back(), index, targets.size()};
+    target.drones_sweep_costs.resize(cost_calculators->size());
+    for (size_t uav_idx = 0; uav_idx < cost_calculators->size(); ++uav_idx) {
+        target.drones_sweep_costs[uav_idx] = (*cost_calculators)[uav_idx]->calculate_path_cost(path_with_z);
+    }
+    
+    targets.push_back(target);
   }
   //}
 
