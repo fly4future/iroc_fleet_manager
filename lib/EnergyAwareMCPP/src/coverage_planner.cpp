@@ -302,6 +302,21 @@ bool algorithm_config_is_valid(const YAML::Node &config) {
                       << first_optimization_type << "'." << std::endl;
             return false;
         }
+
+        if (current_optimization_type == "energy") {
+            if (!config["air_density"]) {
+                std::cerr << "Error: 'air_density' is required when using 'energy' optimization." << std::endl;
+                return false;
+            }
+            if (!config["earth_gravity"]) {
+                std::cerr << "Error: 'earth_gravity' is required when using 'energy' optimization." << std::endl;
+                return false;
+            }
+            if (!config["propeller_efficiency"]) {
+                std::cerr << "Error: 'propeller_efficiency' is required when using 'energy' optimization." << std::endl;
+                return false;
+            }
+        }
     }
     return true;
 }
@@ -311,6 +326,11 @@ bool algorithm_config_is_valid(const YAML::Node &config) {
 
 algorithm_config_t parse_algorithm_config(const YAML::Node& config) {
     algorithm_config_t algorithm_config;
+
+    // Načtení globálních fyzikálních parametrů
+    const double air_density = config["air_density"] ? config["air_density"].as<double>() : 1.225;
+    const double earth_gravity = config["earth_gravity"] ? config["earth_gravity"].as<double>() : 9.81;
+    const double propeller_efficiency = config["propeller_efficiency"] ? config["propeller_efficiency"].as<double>() : 0.6;
 
     algorithm_config.number_of_drones = config["drones"].size();
     for (const auto& drone_node : config["drones"]) {
@@ -327,6 +347,10 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config) {
             energy_conf.propeller_radius = drone_node["propeller_radius"].as<double>();
             energy_conf.number_of_propellers = drone_node["number_of_propellers"].as<int>();
             auto battery_model_config = drone_node["battery_model"];
+            
+            energy_conf.air_density = air_density;
+            energy_conf.earth_gravity = earth_gravity;
+            energy_conf.propeller_efficiency = propeller_efficiency;
             energy_conf.battery_model = {battery_model_config["cell_capacity"].as<double>(), battery_model_config["number_of_cells"].as<int>(), battery_model_config["d0"].as<double>(), battery_model_config["d1"].as<double>(), battery_model_config["d2"].as<double>(), battery_model_config["d3"].as<double>()};
             auto best_speed_model_config = drone_node["best_speed_model"];
             energy_conf.best_speed_model = {best_speed_model_config["c0"].as<double>(), best_speed_model_config["c1"].as<double>(), best_speed_model_config["c2"].as<double>()};

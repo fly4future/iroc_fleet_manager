@@ -53,6 +53,9 @@ struct energy_calculator_config_t {
     double propeller_radius; // [m]
     int number_of_propellers;
     double allowed_path_deviation;
+    double earth_gravity; // [m/s^2]
+    double air_density; // [kg/m^3]
+    double propeller_efficiency;
 };
 
 
@@ -77,6 +80,9 @@ private:
      */
     [[nodiscard]] turning_properties_t calculate_turning_properties(double angle) const;
 
+    [[nodiscard]] double calculate_3d_segment_energy(const turning_properties_t& turn1, const turning_properties_t& turn2,
+                                                                         double s_3d, double delta_z) const;
+
 public:
 
     /*!
@@ -88,6 +94,16 @@ public:
      */
     [[nodiscard]] static double
     angle_between_points(std::pair<double, double> p0, std::pair<double, double> p1, std::pair<double, double> p2);
+
+    /*!
+     * Calculate the angle between segment (p1, p2) and segment (p2, p3) in 3D space
+     * @param p1: coordinates of a start point
+     * @param p2: coordinates of middle point
+     * @param p3: coordinates of the third point
+     * @return The angle in radians in range (0..PI)
+     */
+    [[nodiscard]] static double
+    angle_between_points_3d(const point_heading_t<double>& p0, const point_heading_t<double>& p1, const point_heading_t<double>& p2);
 
     /*!
      * Calculate the energy for moving on the straight line. The acceleration and deceleration times are encountered, but the

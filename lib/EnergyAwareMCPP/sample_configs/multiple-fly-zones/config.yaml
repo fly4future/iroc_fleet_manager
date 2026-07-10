@@ -2,9 +2,9 @@
   #   # Drone characteristics
   #   drone_mass: 3.2
   #   drone_area: 0.07
-  #   average_acceleration: 2.0
   #   propeller_radius: 0.19
   #   number_of_propellers: 4
+  #   average_acceleration: 2.0
   #   allowed_path_deviation: 2.0
   #   # Confuguration for the battery model
   #   battery_model:
@@ -23,6 +23,10 @@
   #     c2: 0.00053292
   #   max_single_path_cost: 1000000000  # Maximum energy os a single path [J]
 
+# Parameters for energy consumption calculation
+air_density: 1.225    # [kg/m^3]
+earth_gravity: 9.8    # [m/s^2, N/kg]
+propeller_efficiency: 0.391  
 
 drones:
   - optimization_type: "time"

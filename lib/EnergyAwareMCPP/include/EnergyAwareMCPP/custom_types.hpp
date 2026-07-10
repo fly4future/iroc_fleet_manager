@@ -28,6 +28,8 @@ struct point_heading_t {
 
     point_heading_t(T x, T y) : x{x}, y{y}, z{0}, heading{0} {};
 
+    point_heading_t(T x, T y, T z) : x{x}, y{y}, z{z}, heading{0} {};
+
     explicit point_heading_t(std::pair<T, T> p) : x{p.first}, y{p.second}, z{0}, heading{0} {};
     T x;
     T y;

@@ -1,26 +1,25 @@
 #include "EnergyAwareMCPP/EnergyCalculator.h"
 #include <cmath>
-#include <algorithm>
 #include <iostream>
 #include <memory>
 #include "EnergyAwareMCPP/utils.hpp"
 
-/* namespace() //{ */
 
 namespace
 {
   // NOTE: here PROPELLER_EFFICIENCY contains both motor and propeller efficiency combined.
   // The value is taken is the ratio of a real-world power consumption to a power consumption with ideal motor and propeller calculated by (5), obtained in
-  // experiments
-  // TODO: move these constants to a config file
-  const double AIR_DENSITY = 1.225;                    // [kg/m^3]
-  const double EARTH_GRAVITY = 9.8;                    //[m/s^2, N/kg]
-  const double PROPELLER_EFFICIENCY = 0.391;           // Usually from 0.5 to 0.7
   const double RANGE_POWER_CONSUMPTION_COEFF = 1.092;  // taken from (17), ratio of power consumption when maximizing the range to power consumption on hover
   const double MOTOR_EFFICIENCY = 1;                   // Efficiency of the motor (ratio of electric power converted to mechanical)
 
+  double distance_between_points_3d(const point_heading_t<double>& p1, const point_heading_t<double>& p2) {
+    return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2) + std::pow(p1.z - p2.z, 2));
+  }
+
+  double dot_product_3d(const point_heading_t<double>& v1, const point_heading_t<double>& v2) {
+      return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+  }
 }
-//}  // namespace
 
 /* angle_between_points() //{ */
 
@@ -37,6 +36,26 @@ double EnergyCalculator::angle_between_points(std::pair<double, double> p0, std:
 
   return std::acos((a + b - c) / std::sqrt(4 * a * b));
 }
+
+double EnergyCalculator::angle_between_points_3d(const point_heading_t<double>& p0, const point_heading_t<double>& p1, const point_heading_t<double>& p2)
+{
+    point_heading_t<double> v1, v2;
+    v1.x = p1.x - p0.x;
+    v1.y = p1.y - p0.y;
+    v1.z = p1.z - p0.z;
+
+    v2.x = p2.x - p1.x;
+    v2.y = p2.y - p1.y;
+    v2.z = p2.z - p1.z;
+
+    double dot = dot_product_3d(v1, v2);
+    double mag1 = distance_between_points_3d(p0, p1);
+    double mag2 = distance_between_points_3d(p1, p2);
+
+    if (mag1 == 0 || mag2 == 0) return M_PI; // Straight line if one segment has zero length
+
+    return std::acos(std::max(-1.0, std::min(1.0, dot / (mag1 * mag2))));
+}
 //}
 
 /* EnergyCalculator() //{ */
@@ -47,13 +66,13 @@ EnergyCalculator::EnergyCalculator(const energy_calculator_config_t& energy_calc
 
 
   // induced velocity at hover
-  double v_i_h = std::sqrt((config.drone_mass * EARTH_GRAVITY)
-                           / (2 * AIR_DENSITY * M_PI * config.propeller_radius * config.propeller_radius * config.number_of_propellers));  // (4)
+  double v_i_h = std::sqrt((config.drone_mass * config.earth_gravity)
+                           / (2 * config.air_density * M_PI * config.propeller_radius * config.propeller_radius * config.number_of_propellers));  // (4)
   //    std::cout << v_i_h << std::endl;
   // Power consumption on hover
   //  double P_h = (std::sqrt(config.number_of_propellers) * config.drone_mass * EARTH_GRAVITY * v_i_h) / (PROPELLER_EFFICIENCY); // (5)
-  P_h = std::sqrt(std::pow(config.drone_mass * EARTH_GRAVITY, 3))
-        / (PROPELLER_EFFICIENCY * config.propeller_radius * std::sqrt(2 * AIR_DENSITY * M_PI * config.number_of_propellers));
+  P_h = std::sqrt(std::pow(config.drone_mass * config.earth_gravity, 3))
+        / (config.propeller_efficiency * config.propeller_radius * std::sqrt(2 * config.air_density * M_PI * config.number_of_propellers));
 
   // Power consumption when maximizing the range
   P_r = P_h * RANGE_POWER_CONSUMPTION_COEFF;  // (17)
@@ -77,8 +96,8 @@ EnergyCalculator::EnergyCalculator(const energy_calculator_config_t& energy_calc
 
   v_r = v_i_h / v_r_inv;
 
-  m_logger->log_info("ENERGY CALCULATOR: Optimal speed: " + std::to_string(v_r) + "Time of flight: " + std::to_string(t_r)
-                     + " Hover power consumption: " + std::to_string(P_h) + " Optimal speed power consumption: " + std::to_string(P_r));
+  // m_logger->log_info("ENERGY CALCULATOR: Optimal speed: " + std::to_string(v_r) + "Time of flight: " + std::to_string(t_r)
+  //                    + " Hover power consumption: " + std::to_string(P_h) + " Optimal speed power consumption: " + std::to_string(P_r));
 }
 //}
 
@@ -223,6 +242,7 @@ double EnergyCalculator::calculate_short_line_energy(double v_in, double a_in, d
 
 /* calculate_path_energy_consumption() //{ */
 
+// Original function to calculate 2D path. It is not used anymore
 double EnergyCalculator::calculate_path_energy_consumption(const std::vector<std::pair<double, double>>& path) const
 {
   if (path.size() < 2)
@@ -264,13 +284,89 @@ double EnergyCalculator::calculate_path_energy_consumption(const std::vector<std
 
 /* calculate_path_cost() //{ */
 
-double EnergyCalculator::calculate_path_cost(const std::vector<point_heading_t<double>>& path) const {
-    std::vector<std::pair<double, double>> path_2d;
-    path_2d.reserve(path.size());
-    for (const auto& p : path) {
-        path_2d.emplace_back(p.x, p.y);
+double EnergyCalculator::calculate_path_cost(const std::vector<point_heading_t<double>>& path) const
+{
+    if (path.size() < 2) {
+        return 0;
     }
-    return calculate_path_energy_consumption(path_2d);
+
+    // 1. Filter duplicate points
+    std::vector<point_heading_t<double>> path_filtered;
+    path_filtered.reserve(path.size());
+    path_filtered.push_back(path[0]); // Add the first point
+    for (size_t i = 1; i < path.size(); ++i) {
+        if (distance_between_points_3d(path[i], path[i - 1]) > 1e-6) {
+            path_filtered.push_back(path[i]);
+        }
+    }
+
+    if (path_filtered.size() < 2) {
+        return 0;
+    }
+
+    // 2. Pre-calculate 3D turns
+    double total_energy = 0;
+    std::vector<turning_properties_t> turns;
+    turns.push_back({0, 0, 0, config.average_acceleration, config.drone_mass * std::pow(v_r, 2) / 2, 0.0}); // Start
+    for (size_t i = 1; i + 1 < path_filtered.size(); ++i) {
+        double angle_3d = angle_between_points_3d(path_filtered[i - 1], path_filtered[i], path_filtered[i + 1]);
+        turns.push_back(calculate_turning_properties(angle_3d));
+    }
+    turns.push_back({0, -config.average_acceleration, 0, 0, config.drone_mass * std::pow(v_r, 2) / 2, 0.0}); // End
+
+    // 3. Iterate over segments
+    for (size_t i = 0; i + 1 < path_filtered.size(); ++i) {
+        // m_logger->log_debug("Segment " + std::to_string(i) + ": from (" + std::to_string(path_filtered[i].x) + ", " + std::to_string(path_filtered[i].y) + ", " + std::to_string(path_filtered[i].z) + ") to (" + std::to_string(path_filtered[i+1].x) + ", " + std::to_string(path_filtered[i+1].y) + ", " + std::to_string(path_filtered[i+1].z) + ")");
+        // m_logger->log_debug(" -> Turn " + std::to_string(i) + " energy: " + std::to_string(turns[i].energy) + " J");
+        total_energy += turns[i].energy;
+
+        // Calculate the total 3D distance of the segment and the change in altitude
+        double s_3d = distance_between_points_3d(path_filtered[i], path_filtered[i+1]);
+        double delta_z = path_filtered[i+1].z - path_filtered[i].z;
+
+        double segment_energy = calculate_3d_segment_energy(turns[i], turns[i+1], s_3d, delta_z);
+        // m_logger->log_debug(" -> Segment " + std::to_string(i) + " energy: " + std::to_string(segment_energy) + " J");
+        total_energy += segment_energy;
+    }
+    return total_energy;
+}
+
+
+//}
+
+/* calculate_straight_line_energy_between_turns_3d() //{ */
+
+double EnergyCalculator::calculate_3d_segment_energy(const turning_properties_t& turn1, const turning_properties_t& turn2,
+                                                                         double s_3d, double delta_z) const
+{
+    // 1. Calculate distances and times for the slow acceleration/deceleration phases within the turning maneuvers.
+    double t_acc_slow = std::abs((turn1.v_after - turn1.d_vym) / turn1.a_after);
+    double s_acc_slow = turn1.d_vym * t_acc_slow + 0.5 * turn1.a_after * std::pow(t_acc_slow, 2);
+
+    double t_dec_slow = std::abs((turn2.v_before - turn2.d_vym) / turn2.a_before);
+    double s_dec_slow = turn2.v_before * t_dec_slow + 0.5 * turn2.a_before * std::pow(t_dec_slow, 2);
+
+    // Energy consumed during these slow phases
+    double slow_phases_energy = calculate_acceleration_energy(turn1.d_vym, turn1.v_after, t_acc_slow)
+                              + calculate_acceleration_energy(turn2.d_vym, turn2.v_before, t_dec_slow);
+
+    // 2. Calculate the energy for the main, "clear" straight flight section.
+    // Its length is the total 3D distance minus the distances consumed by the turning maneuvers.
+    double straight_segment_len = s_3d - s_acc_slow - s_dec_slow;
+    double E_propulsion_straight = 0;
+    if (straight_segment_len > 1e-6) {
+        // Use the original, more accurate function to calculate energy on the straight section
+        E_propulsion_straight = calculate_straight_line_energy(turn1.v_after, config.average_acceleration, turn2.v_before, -config.average_acceleration, straight_segment_len);
+    }
+    // m_logger->log_debug("    -> Propulsion energy + slow_phases_energy: " + std::to_string(E_propulsion_straight + slow_phases_energy) + " J for distance " + std::to_string(straight_segment_len) + " m");
+
+    // 3. Calculate the energy for the change in altitude (potential energy)
+    double E_potential_mech = config.drone_mass * config.earth_gravity * delta_z;
+    double E_potential_elec = (E_potential_mech > 0) ? E_potential_mech / config.propeller_efficiency : E_potential_mech * config.propeller_efficiency;
+    // m_logger->log_debug("    -> Potential energy (vert): " + std::to_string(E_potential_elec) + " J for height change " + std::to_string(delta_z) + " m");
+
+    // 4. The total energy is the sum of all components. Use std::max to ensure the result is not negative.
+    return std::max(0.0, slow_phases_energy + E_propulsion_straight + E_potential_elec);
 }
 
 //}
@@ -284,12 +380,21 @@ double EnergyCalculator::calculate_segment_cost(double v_in, double a_in, double
 
 /* calculate_acceleration_energy() //{ */
 
-double EnergyCalculator::calculate_acceleration_energy([[maybe_unused]] double v_in, [[maybe_unused]] double v_out, double time) const
+double EnergyCalculator::calculate_acceleration_energy(double v_in, double v_out, double time) const
 {
-  // For now, just find the average speed as an arithmetic average between v_in and v_out, which is wrong
-  // TODO: make this better
-  //    double avg_speed = (v_in + v_out) / 2;
-  double keeping_speed_energy = time * P_h;  //(P_h + avg_speed / v_r * (P_r - P_h));
-  return keeping_speed_energy;
+  // 1. Energy to keep the drone in the air and overcome air resistance.
+  // We use a linear interpolation of power between P_h (hover) and P_r (optimal speed)
+  // based on the average speed during acceleration.
+  double avg_speed = (v_in + v_out) / 2.0;
+  double propulsion_energy = time * (P_h + avg_speed / v_r * (P_r - P_h));
+
+  // 2. Energy required for the change in kinetic energy.
+  // This energy must be supplied by the motors, so we divide it by efficiency.
+  // When decelerating, this change is negative, but the drone does not recuperate energy.
+  // Instead, it dissipates it. We model this by adding the absolute change in kinetic energy.
+  double kinetic_energy_change = std::abs(0.5 * config.drone_mass * (v_out * v_out - v_in * v_in));
+  double kinetic_energy_electrical = kinetic_energy_change / config.propeller_efficiency;
+
+  return propulsion_energy + kinetic_energy_electrical;
 }
 //}
