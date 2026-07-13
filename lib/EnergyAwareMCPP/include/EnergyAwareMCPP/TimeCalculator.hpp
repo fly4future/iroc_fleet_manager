@@ -15,7 +15,7 @@ struct time_calculator_config_t {
 class TimeCalculator : public PathCostCalculator {
 private:
     time_calculator_config_t m_config;
-
+    
     // Helper struct to represent turning properties.
     struct turning_properties_time_t {
         double v_before; // Speed before the turn
@@ -26,9 +26,10 @@ private:
         double d_vym;    // Geometric displacement
     };
 
-    turning_properties_time_t calculate_turning_properties(double angle) const;
-    
-    double calculate_short_segment_time(double v_in, double a_in, double v_out, double a_out, double s) const;
+    turning_properties_time_t calculate_turning_properties(double angle, double v_r_effective) const;
+
+    double calculate_segment_time_generic(double v_in, double a_in, double v_out, double a_out, double s, double v_max) const;
+    double calculate_short_segment_time(double v_in, double a_in, double v_out, double a_out, double s, double v_max) const;
 
 public:
     explicit TimeCalculator(const time_calculator_config_t& config);
