@@ -96,8 +96,8 @@ EnergyCalculator::EnergyCalculator(const energy_calculator_config_t& energy_calc
 
   v_r = v_i_h / v_r_inv;
 
-  // m_logger->log_info("ENERGY CALCULATOR: Optimal speed: " + std::to_string(v_r) + "Time of flight: " + std::to_string(t_r)
-  //                    + " Hover power consumption: " + std::to_string(P_h) + " Optimal speed power consumption: " + std::to_string(P_r));
+  m_logger->log_info("ENERGY CALCULATOR: Optimal speed: " + std::to_string(v_r) + "Time of flight with maximum range: " + std::to_string(t_r)
+                     + " Hover power consumption: " + std::to_string(P_h) + " Optimal speed power consumption: " + std::to_string(P_r));
 }
 //}
 

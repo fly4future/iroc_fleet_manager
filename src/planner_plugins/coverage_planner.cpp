@@ -19,6 +19,12 @@ bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
   common_handlers_ = common_handlers;
   ros::Time::waitForValid();
 
+  YAML::Node algorithm_config_node = YAML::LoadFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
+  if (!algorithm_config_is_valid(algorithm_config_node)) {
+    ROS_ERROR("Algorithm config is not complete. Exiting...");
+    return false;
+  }
+
   /* load parameters */
   mrs_lib::ParamLoader param_loader(nh_, "CoveragePlanner");
 
@@ -102,14 +108,23 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
                                                 {"terminal_action", &terminal_action}
                                             });
   if (!success) {
-      result.success = false;
-      result.message = "Failure while parsing robot data, bad JSON request";
-      return std::make_tuple(result, mission_robots);
+    ROS_ERROR("Failure while parsing robot data, bad JSON request");
+    result.success = false;
+    result.message = "Failure while parsing robot data, bad JSON request";
+    return std::make_tuple(result, mission_robots);
   }
 
   if (robots.size() != min_horizontal_distances.size() || robots.size() != min_vertical_distances.size()) {
+    ROS_ERROR("The number of values in 'robots' differs from 'min_horizontal_distances' or 'min_vertical_distances'. Each robot should have its own specified minimum horizontal and vertical distances from other robots.");
     result.success = false;
     result.message = "The number of values in 'robots' differs from 'min_horizontal_distances' or 'min_vertical_distances'. Each robot should have its own specified minimum horizontal and vertical distances from other robots.";
+    return std::make_tuple(result, mission_robots);
+  }
+
+  if (robots.size() != planner_config_.drones.size()) {
+    ROS_ERROR("The number of drones in the mission JSON (coverage.json) does not match the number of drone definitions in the coverage planner config file (coverage_planner_config.yaml).");
+    result.success = false;
+    result.message = "The number of drones in the mission JSON does not match the number of drone definitions in the coverage planner configuration.";
     return std::make_tuple(result, mission_robots);
   }
 
@@ -179,34 +194,184 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   return std::make_tuple(result, mission_robots);
 }
 
+bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
+    // Navigate to the 'coverage_planner' sub-node
+    if (!root_node["fleet_manager"] || !root_node["fleet_manager"]["planners"] || !root_node["fleet_manager"]["planners"]["coverage_planner"]) {
+      ROS_ERROR_STREAM("The configuration file must contain the path 'fleet_manager.planners.coverage_planner'.");
+      return false;
+    }
+    const YAML::Node& config = root_node["fleet_manager"]["planners"]["coverage_planner"];
+
+    // Helper lambda for checking if a key exists
+    auto check_key = [&](const YAML::Node& node, const std::string& key) {
+      if (!node[key]) {
+        ROS_ERROR_STREAM("Missing required key '" << key << "' in the config file.");
+        return false;
+      }
+      return true;
+    };
+
+    // --- Global mission parameters ---
+    const std::vector<std::string> global_keys = {
+        "number_of_rotations", "points_in_lat_lon",
+        "sweeping_step", "decomposition_method", "min_sub_polygons_per_uav",
+        "rotations_per_cell", "no_improvement_cycles_before_stop", "drones"
+    };
+
+    for (const auto& key : global_keys) {
+        if (!check_key(config, key)) return false;
+    }
+
+    if (config["points_in_lat_lon"].as<bool>()) {
+        if (!check_key(config, "latitude_origin") || !check_key(config, "longitude_origin")) {
+          ROS_ERROR_STREAM("'latitude_origin' and 'longitude_origin' are required when 'points_in_lat_lon' is true.");
+          return false;
+        }
+    }
+
+    // --- Parameters for individual drones ---
+    if (!config["drones"] || !config["drones"].IsSequence() || config["drones"].size() == 0) {
+      ROS_ERROR_STREAM("'drones' array is missing, not a sequence, or is empty in the config file.");
+      return false;
+    }
+
+    const std::string first_optimization_type = config["drones"][0]["optimization_type"].as<std::string>();
+
+    for (const auto& drone_node : config["drones"]) {
+        if (!check_key(drone_node, "optimization_type") || !check_key(drone_node, "max_single_path_cost")) {
+          ROS_ERROR_STREAM("Each drone in 'drones' must have 'optimization_type' and 'max_single_path_cost'.");
+          return false;
+        }
+
+        const std::string current_optimization_type = drone_node["optimization_type"].as<std::string>();
+        if (current_optimization_type != first_optimization_type) {
+          ROS_ERROR_STREAM("All drones must have the same 'optimization_type'. Found '" << current_optimization_type
+                   << "' which is different from the first drone's type '" << first_optimization_type << "'.");
+          return false;
+        }
+
+
+        if (current_optimization_type == "energy") {
+            const std::vector<std::string> energy_keys = {
+                "drone_mass", "drone_area", "average_acceleration", "propeller_radius",
+                "number_of_propellers", "allowed_path_deviation", "battery_model", "best_speed_model"
+            };
+            for (const auto& key : energy_keys) {
+                if (!check_key(drone_node, key)) {
+                  ROS_ERROR_STREAM("Drone with 'energy' optimization is missing key '" << key << "'.");
+                  return false;
+                }
+            }
+            if (!check_key(drone_node["battery_model"], "cell_capacity") || !check_key(drone_node["battery_model"], "number_of_cells") ||
+            !check_key(drone_node["battery_model"], "d0") || !check_key(drone_node["battery_model"], "d1") ||
+            !check_key(drone_node["battery_model"], "d2") || !check_key(drone_node["battery_model"], "d3")) {
+            ROS_ERROR_STREAM("'battery_model' node is missing one or more required parameters (cell_capacity, number_of_cells, d0-d3).");
+            return false;
+          }
+            if (!check_key(drone_node["best_speed_model"], "c0") || !check_key(drone_node["best_speed_model"], "c1") ||
+              !check_key(drone_node["best_speed_model"], "c2")) {
+              ROS_ERROR_STREAM("'best_speed_model' node is missing one or more required parameters (c0-c2).");
+              return false;
+            }
+
+            // Check the global physical parameters required for the energy model
+            if (!check_key(config, "air_density") || !check_key(config, "earth_gravity") || !check_key(config, "propeller_efficiency")) {
+                 return false;
+            }
+
+        } else if (current_optimization_type == "time") {
+            const std::vector<std::string> time_keys = {
+                "max_horizontal_speed", "max_vertical_speed", "horizontal_acceleration",
+                "vertical_acceleration", "allowed_path_deviation"
+            };
+            for (const auto& key : time_keys) {
+                if (!check_key(drone_node, key)) {
+                  ROS_ERROR_STREAM("Drone with 'time' optimization is missing key '" << key << "'.");
+                  return false;
+                }
+            }
+        } else {
+          ROS_ERROR_STREAM("Unknown 'optimization_type': " << current_optimization_type << ". Use 'energy' or 'time'.");
+          return false;
+        }
+    }
+
+    return true;
+}
 
 algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const {
   const std::string yaml_prefix = "fleet_manager/planners/coverage_planner/";
   algorithm_config_t algorithm_config;
 
-  // Load basic drone parameters
-  param_loader.loadParam(yaml_prefix + "drone_mass", algorithm_config.energy_calculator_config.drone_mass);
-  param_loader.loadParam(yaml_prefix + "drone_area", algorithm_config.energy_calculator_config.drone_area);
-  param_loader.loadParam(yaml_prefix + "average_acceleration", algorithm_config.energy_calculator_config.average_acceleration);
-  param_loader.loadParam(yaml_prefix + "propeller_radius", algorithm_config.energy_calculator_config.propeller_radius);
-  param_loader.loadParam(yaml_prefix + "number_of_propellers", algorithm_config.energy_calculator_config.number_of_propellers);
-  param_loader.loadParam(yaml_prefix + "allowed_path_deviation", algorithm_config.energy_calculator_config.allowed_path_deviation);
+  double air_density = -1;
+  double earth_gravity = -1;
+  double propeller_efficiency = -1;
+
+  YAML::Node algorithm_config_node = YAML::LoadFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
+  YAML::Node drones_node = algorithm_config_node["fleet_manager"]["planners"]["coverage_planner"]["drones"];
+
+  algorithm_config.drones.reserve(drones_node.size());
+
+  algorithm_config.number_of_drones = drones_node.size();
+
+  for (size_t i = 0; i < drones_node.size(); ++i) {
+    YAML::Node drone = drones_node[i];
+    // DroneConfig drone_config;
+    // if (i == 0) optimization_type = drone["optimization_type"];
+    drone_spec_t drone_config;
+    drone_config.optimization_type = drone["optimization_type"].as<std::string>();
+
+    if (drone["optimization_type"].as<std::string>() == "energy") {
+      energy_calculator_config_t energy_params;
+
+      energy_params.drone_mass = drone["drone_mass"].as<double>();
+      energy_params.drone_area = drone["drone_area"].as<double>();
+      energy_params.propeller_radius = drone["propeller_radius"].as<double>();
+      energy_params.number_of_propellers = drone["number_of_propellers"].as<int>();
+
+      energy_params.average_acceleration = drone["average_acceleration"].as<double>();
+      energy_params.allowed_path_deviation = drone["allowed_path_deviation"].as<double>();
+
+      YAML::Node battery = drone["battery_model"];
+      energy_params.battery_model.cell_capacity = battery["cell_capacity"].as<double>();
+      energy_params.battery_model.number_of_cells = battery["number_of_cells"].as<int>();
+      energy_params.battery_model.d0 = battery["d0"].as<double>();
+      energy_params.battery_model.d1 = battery["d1"].as<double>();
+      energy_params.battery_model.d2 = battery["d2"].as<double>();
+      energy_params.battery_model.d3 = battery["d3"].as<double>();
+
+      YAML::Node speed = drone["best_speed_model"];
+      energy_params.best_speed_model.c0 = speed["c0"].as<double>();
+      energy_params.best_speed_model.c1 = speed["c1"].as<double>();
+      energy_params.best_speed_model.c2 = speed["c2"].as<double>();
+
+      if (air_density == -1 && earth_gravity == -1 && propeller_efficiency == -1) {
+        param_loader.loadParam(yaml_prefix + "air_density", air_density);
+        param_loader.loadParam(yaml_prefix + "earth_gravity", earth_gravity);
+        param_loader.loadParam(yaml_prefix + "propeller_efficiency", propeller_efficiency);
+      }
+      energy_params.air_density = air_density;
+      energy_params.earth_gravity = earth_gravity;
+      energy_params.propeller_efficiency = propeller_efficiency;
+      
+      drone_config.energy_config = energy_params;
+
+    } else if (drone["optimization_type"].as<std::string>() == "time") {
+      time_calculator_config_t time_params;
+      time_params.max_horizontal_speed = drone["max_horizontal_speed"].as<double>();
+      time_params.max_vertical_speed = drone["max_vertical_speed"].as<double>();
+      time_params.horizontal_acceleration = drone["horizontal_acceleration"].as<double>();
+      time_params.vertical_acceleration = drone["vertical_acceleration"].as<double>();
+      time_params.allowed_path_deviation = drone["allowed_path_deviation"].as<double>();
+      drone_config.time_config = time_params;
+    }
+
+    drone_config.max_single_path_cost = drone["max_single_path_cost"].as<double>();
+
+    algorithm_config.drones.push_back(drone_config);
+  }
+ 
   param_loader.loadParam(yaml_prefix + "number_of_rotations", algorithm_config.number_of_rotations);
-
-  // Load battery model parameters
-  const std::string battery_prefix = yaml_prefix + "battery_model/";
-  param_loader.loadParam(battery_prefix + "cell_capacity", algorithm_config.energy_calculator_config.battery_model.cell_capacity);
-  param_loader.loadParam(battery_prefix + "number_of_cells", algorithm_config.energy_calculator_config.battery_model.number_of_cells);
-  param_loader.loadParam(battery_prefix + "d0", algorithm_config.energy_calculator_config.battery_model.d0);
-  param_loader.loadParam(battery_prefix + "d1", algorithm_config.energy_calculator_config.battery_model.d1);
-  param_loader.loadParam(battery_prefix + "d2", algorithm_config.energy_calculator_config.battery_model.d2);
-  param_loader.loadParam(battery_prefix + "d3", algorithm_config.energy_calculator_config.battery_model.d3);
-
-  // Load speed model parameters
-  const std::string speed_prefix = yaml_prefix + "best_speed_model/";
-  param_loader.loadParam(speed_prefix + "c0", algorithm_config.energy_calculator_config.best_speed_model.c0);
-  param_loader.loadParam(speed_prefix + "c1", algorithm_config.energy_calculator_config.best_speed_model.c1);
-  param_loader.loadParam(speed_prefix + "c2", algorithm_config.energy_calculator_config.best_speed_model.c2);
 
   // Load coordinate system parameters
   param_loader.loadParam(yaml_prefix + "points_in_lat_lon", algorithm_config.points_in_lat_lon);
@@ -226,7 +391,6 @@ algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader 
   // Load optimization parameters
   param_loader.loadParam(yaml_prefix + "rotations_per_cell", algorithm_config.rotations_per_cell);
   param_loader.loadParam(yaml_prefix + "no_improvement_cycles_before_stop", algorithm_config.no_improvement_cycles_before_stop);
-  param_loader.loadParam(yaml_prefix + "max_single_path_energy", algorithm_config.max_single_path_energy);
 
   return algorithm_config;
 }
@@ -334,6 +498,7 @@ bool checkOverlap(TransitPath tp1, TransitPath tp2, double min_distance);
 double pointToSegmentDistance(custom_types::Point2D p, custom_types::Point2D s1, custom_types::Point2D s2);
 void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::coverage_paths_t& coverage_paths, const Graph& graph, double sweeping_height, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances);
 std::vector<iroc_mission_handler::Waypoint> pointVecToWaypointVec(std::vector<point_t> &points, double transit_path_height);
+std::vector<point_heading_t<double>> convertWaypointsToPointHeading(const std::vector<iroc_mission_handler::Waypoint>& iroc_waypoints);
 
 
 // Calculates the distance between a drone position and start and end of sweeping trajectory
@@ -474,8 +639,19 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
   // Create a logger to log everything directly into stdout
   auto shared_logger = std::make_shared<loggers::SimpleLogger>();
-  EnergyCalculator energy_calculator{planner_config_.energy_calculator_config, shared_logger};
-  std::cout << "Energy calculator created. Optimal speed: " << energy_calculator.get_optimal_speed() << std::endl;
+
+  std::vector<std::shared_ptr<PathCostCalculator>> cost_calculators;
+  for (const auto& spec : planner_config_.drones) {
+    if (spec.optimization_type == "energy" && spec.energy_config.has_value()) {
+      cost_calculators.push_back(std::make_shared<EnergyCalculator>(spec.energy_config.value(), shared_logger));
+    } else if (spec.optimization_type == "time" && spec.time_config.has_value()) {
+      cost_calculators.push_back(std::make_shared<TimeCalculator>(spec.time_config.value()));
+    } else {
+      ROS_ERROR("Unknown drone specification for optimization_type: %s", spec.optimization_type.c_str());
+      coverage_paths_t empty_path;
+      return empty_path;
+    }
+  }
 
 
   // Create one master polygon that contains ALL obstacles. This will be used for pathfinding between areas.
@@ -529,12 +705,8 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   try {
     planner_config_.start_pos.first  = mission.robots.at(0).global_position.x;
     planner_config_.start_pos.second = mission.robots.at(0).global_position.y;
-    auto f = [&](int n) {
-      return solve_for_uavs(n, planner_config_, search_areas, energy_calculator, shortest_path_calculator,
-                            shared_logger);
-    };
-    best_solution = generate_with_constraints(planner_config_.max_single_path_energy * 3600,
-                                              planner_config_.number_of_drones, f);
+
+    best_solution = solve_for_uavs(planner_config_.number_of_drones, planner_config_, search_areas, cost_calculators, shortest_path_calculator, shared_logger);
 
   } catch (const polygon_decomposition_error &e) {
     ROS_ERROR("Error while decomposing the polygon");
@@ -679,6 +851,19 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       point_t d2 = meters_to_gps_coordinates({coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y}, planner_config_.lat_lon_origin);
       coverage_paths.at(i).at(j).reference.position.x = d2.first;
       coverage_paths.at(i).at(j).reference.position.y = d2.second;
+    }
+  }
+
+  // Check if path is within cost constraints
+  for (int i = 0; i < planner_config_.number_of_drones; i++) {
+    double path_cost = cost_calculators.at(i)->calculate_path_cost(convertWaypointsToPointHeading(coverage_paths.at(i)));
+    double cost_limit = planner_config_.drones.at(i).max_single_path_cost;
+
+    if (path_cost > cost_limit) {
+      ROS_ERROR("Found solution for drone %d costs %.2f %s which exceeds the limit of %.2f %s. Try to increase the number of drones.", i, path_cost, (planner_config_.drones.at(0).optimization_type == "energy" ? "Joules" : "seconds"), cost_limit,
+        (planner_config_.drones.at(0).optimization_type == "energy" ? "Joules" : "seconds"));
+      coverage_paths_t empty_path;
+      return empty_path;
     }
   }
 
@@ -977,6 +1162,26 @@ std::vector<int> hungarianAlgorithm(const std::vector<std::vector<double>>& matr
     }
     return result;
 }
+
+std::vector<point_heading_t<double>> convertWaypointsToPointHeading(const std::vector<iroc_mission_handler::Waypoint>& iroc_waypoints)
+{
+    std::vector<point_heading_t<double>> path_for_calc;
+    path_for_calc.reserve(iroc_waypoints.size());
+
+    for (const auto& iroc_wp : iroc_waypoints) {
+        point_heading_t<double> new_point;
+        
+        new_point.x = iroc_wp.reference.position.x;
+        new_point.y = iroc_wp.reference.position.y;
+        new_point.z = iroc_wp.reference.position.z;
+        new_point.heading = iroc_wp.reference.heading;
+
+        path_for_calc.push_back(new_point);
+    }
+
+    return path_for_calc;
+}
+
 
 } // namespace coverage_planner
 

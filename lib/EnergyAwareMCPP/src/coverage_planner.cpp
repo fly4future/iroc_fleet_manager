@@ -149,8 +149,8 @@ int main(int argc, char *argv[]) {
             area = MapPolygon(fly_zone_points, no_fly_zones, hr_nfz_structs);
         }
 
-        // Odstranění vnějších no-fly zón pouze pro potřeby dekompozice a sweepování pro TUTO konkrétní oblast.
-        // ShortestPathCalculator si již načetl původní polygon se všemi zónami pro bezpečné přelety.
+        // Remove outer no-fly zones only for decomposition and sweeping for THIS specific area.
+        // ShortestPathCalculator already loaded the original polygon with all zones for safe overflights.
         std::vector<polygon_t> internal_nfz;
         for (const auto& nfz : area.no_fly_zone_polygons) {
             if (!nfz.empty() && is_point_in_polygon(nfz[0], area.fly_zone_polygon_points)) {
@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
         }
         area.no_fly_zone_polygons = internal_nfz;
 
-        // To samé pro HR NFZ - pro dekompozici ponecháme jen ty vnitřní.
+        // Do the same for HR NFZs - keep only the internal ones for decomposition.
         std::vector<HeightRestrictedNoFlyZone> internal_hr_nfz;
         for (const auto& hr_nfz : area.height_restricted_no_fly_zone_polygons) {
              if (!hr_nfz.polygon.empty() && is_point_in_polygon(hr_nfz.polygon[0], area.fly_zone_polygon_points)) {
@@ -282,6 +282,34 @@ void write_polygon_into_csv(const std::vector<point_heading_t<double>>& path, co
 /* algorithm_config_is_valid() //{ */
 
 bool algorithm_config_is_valid(const YAML::Node &config) {
+    // Helper lambda for checking if a key exists
+    auto check_key = [&](const YAML::Node& node, const std::string& key) {
+        if (!node[key]) {
+            std::cerr << "Error: Missing required key '" << key << "' in the config file." << std::endl;
+            return false;
+        }
+        return true;
+    };
+
+    // --- Global mission parameters ---
+    const std::vector<std::string> global_keys = {
+        "number_of_rotations", "points_in_lat_lon",
+        "sweeping_step", "decomposition_method", "min_sub_polygons_per_uav",
+        "rotations_per_cell", "no_improvement_cycles_before_stop", "drones"
+    };
+
+    for (const auto& key : global_keys) {
+        if (!check_key(config, key)) return false;
+    }
+
+    if (config["points_in_lat_lon"].as<bool>()) {
+        if (!check_key(config, "latitude_origin") || !check_key(config, "longitude_origin")) {
+            std::cerr << "Error: 'latitude_origin' and 'longitude_origin' are required when 'points_in_lat_lon' is true." << std::endl;
+            return false;
+        }
+    }
+
+    // --- Parameters for individual drones ---
     if (!config["drones"] || !config["drones"].IsSequence() || config["drones"].size() == 0) {
         std::cerr << "Error: 'drones' array is missing, not a sequence, or is empty in the config file." << std::endl;
         return false;
@@ -290,34 +318,64 @@ bool algorithm_config_is_valid(const YAML::Node &config) {
     const std::string first_optimization_type = config["drones"][0]["optimization_type"].as<std::string>();
 
     for (const auto& drone_node : config["drones"]) {
-        if (!drone_node["optimization_type"] || !drone_node["max_single_path_cost"]) {
+        if (!check_key(drone_node, "optimization_type") || !check_key(drone_node, "max_single_path_cost")) {
             std::cerr << "Error: Each drone in 'drones' must have 'optimization_type' and 'max_single_path_cost'." << std::endl;
             return false;
         }
 
         const std::string current_optimization_type = drone_node["optimization_type"].as<std::string>();
         if (current_optimization_type != first_optimization_type) {
-            std::cerr << "Error: All drones must have the same 'optimization_type'. Found '"
-                      << current_optimization_type << "' which is different from the first drone's type '"
-                      << first_optimization_type << "'." << std::endl;
+            std::cerr << "Error: All drones must have the same 'optimization_type'. Found '" << current_optimization_type
+                      << "' which is different from the first drone's type '" << first_optimization_type << "'." << std::endl;
             return false;
         }
 
+
         if (current_optimization_type == "energy") {
-            if (!config["air_density"]) {
-                std::cerr << "Error: 'air_density' is required when using 'energy' optimization." << std::endl;
+            const std::vector<std::string> energy_keys = {
+                "drone_mass", "drone_area", "average_acceleration", "propeller_radius",
+                "number_of_propellers", "allowed_path_deviation", "battery_model", "best_speed_model"
+            };
+            for (const auto& key : energy_keys) {
+                if (!check_key(drone_node, key)) {
+                    std::cerr << "Error: Drone with 'energy' optimization is missing key '" << key << "'." << std::endl;
+                    return false;
+                }
+            }
+            if (!check_key(drone_node["battery_model"], "cell_capacity") || !check_key(drone_node["battery_model"], "number_of_cells") ||
+                !check_key(drone_node["battery_model"], "d0") || !check_key(drone_node["battery_model"], "d1") ||
+                !check_key(drone_node["battery_model"], "d2") || !check_key(drone_node["battery_model"], "d3")) {
+                std::cerr << "Error: 'battery_model' node is missing one or more required parameters (cell_capacity, number_of_cells, d0-d3)." << std::endl;
                 return false;
             }
-            if (!config["earth_gravity"]) {
-                std::cerr << "Error: 'earth_gravity' is required when using 'energy' optimization." << std::endl;
+            if (!check_key(drone_node["best_speed_model"], "c0") || !check_key(drone_node["best_speed_model"], "c1") ||
+                !check_key(drone_node["best_speed_model"], "c2")) {
+                std::cerr << "Error: 'best_speed_model' node is missing one or more required parameters (c0-c2)." << std::endl;
                 return false;
             }
-            if (!config["propeller_efficiency"]) {
-                std::cerr << "Error: 'propeller_efficiency' is required when using 'energy' optimization." << std::endl;
-                return false;
+
+            // Check global physical parameters required for the energy model
+            if (!check_key(config, "air_density") || !check_key(config, "earth_gravity") || !check_key(config, "propeller_efficiency")) {
+                 return false;
             }
+
+        } else if (current_optimization_type == "time") {
+            const std::vector<std::string> time_keys = {
+                "max_horizontal_speed", "max_vertical_speed", "horizontal_acceleration",
+                "vertical_acceleration", "allowed_path_deviation"
+            };
+            for (const auto& key : time_keys) {
+                if (!check_key(drone_node, key)) {
+                    std::cerr << "Error: Drone with 'time' optimization is missing key '" << key << "'." << std::endl;
+                    return false;
+                }
+            }
+        } else {
+            std::cerr << "Error: Unknown 'optimization_type': " << current_optimization_type << ". Use 'energy' or 'time'." << std::endl;
+            return false;
         }
     }
+
     return true;
 }
 //}
@@ -327,7 +385,7 @@ bool algorithm_config_is_valid(const YAML::Node &config) {
 algorithm_config_t parse_algorithm_config(const YAML::Node& config) {
     algorithm_config_t algorithm_config;
 
-    // Načtení globálních fyzikálních parametrů
+    // Load global physical parameters
     const double air_density = config["air_density"] ? config["air_density"].as<double>() : 1.225;
     const double earth_gravity = config["earth_gravity"] ? config["earth_gravity"].as<double>() : 9.81;
     const double propeller_efficiency = config["propeller_efficiency"] ? config["propeller_efficiency"].as<double>() : 0.6;
@@ -361,7 +419,6 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config) {
             time_conf.max_horizontal_speed = drone_node["max_horizontal_speed"].as<double>();
             time_conf.max_vertical_speed = drone_node["max_vertical_speed"].as<double>();
             time_conf.horizontal_acceleration = drone_node["horizontal_acceleration"].as<double>();
-            // if (std::isnan(time_conf.horizontal_acceleration)) { std::cout << "[NAN alert v parse algorithm config] time_conf.horizontal_acceleration je NAN" << std::endl; }
             time_conf.vertical_acceleration = drone_node["vertical_acceleration"].as<double>();
             spec.time_config = time_conf;
         }

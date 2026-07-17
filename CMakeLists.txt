@@ -117,6 +117,7 @@ add_library(EnergyAwareMCPP
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/coverage_planner.cpp
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/MapPolygon.cpp
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/EnergyCalculator.cpp
+  ${ENERGY_AWARE_MCPP_SRC_DIR}/src/TimeCalculator.cpp
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/ShortestPathCalculator.cpp
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/algorithms.cpp
   ${ENERGY_AWARE_MCPP_SRC_DIR}/src/utils.cpp
