@@ -845,15 +845,6 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   
   resolveTransitHeights(tpgs, coverage_paths, graph, sweeping_height, min_horizontal_distances, min_vertical_distances);
 
-  // Covert coverage_paths to gps coordinates
-  for (int i = 0; i < drone_num; i++) {
-    for (int j = 0; j < coverage_paths.at(i).size(); j++) {
-      point_t d2 = meters_to_gps_coordinates({coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y}, planner_config_.lat_lon_origin);
-      coverage_paths.at(i).at(j).reference.position.x = d2.first;
-      coverage_paths.at(i).at(j).reference.position.y = d2.second;
-    }
-  }
-
   // Check if path is within cost constraints
   for (int i = 0; i < planner_config_.number_of_drones; i++) {
     double path_cost = cost_calculators.at(i)->calculate_path_cost(convertWaypointsToPointHeading(coverage_paths.at(i)));
@@ -864,6 +855,15 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
         (planner_config_.drones.at(0).optimization_type == "energy" ? "Joules" : "seconds"));
       coverage_paths_t empty_path;
       return empty_path;
+    }
+  }
+
+  // Covert coverage_paths to gps coordinates
+  for (int i = 0; i < drone_num; i++) {
+    for (int j = 0; j < coverage_paths.at(i).size(); j++) {
+      point_t d2 = meters_to_gps_coordinates({coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y}, planner_config_.lat_lon_origin);
+      coverage_paths.at(i).at(j).reference.position.x = d2.first;
+      coverage_paths.at(i).at(j).reference.position.y = d2.second;
     }
   }
 
