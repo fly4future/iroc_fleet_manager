@@ -251,6 +251,12 @@ void IROCFleetManager::initialize() {
              std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Response> response) { return uploadFleetMissionCallback(request, response); },
       rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
 
+  ss_unload_fleet_mission_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::UnloadFleetMissionSrv>(
+      node_, "~/unload_fleet_mission_svc_out",
+      [this](std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Request>  request,
+             std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Response> response) { return unloadFleetMissionCallback(request, response); },
+      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+
   // // | ------------------ action server methods ----------------- |
 
   action_server_ptr_ = rclcpp_action::create_server<Mission>(
@@ -1366,8 +1372,10 @@ std::map<std::string, result_t> IROCFleetManager::uploadRobotMissions(const std:
   return robot_results;
 }
 
-void IROCFleetManager::rollbackUpload(const std::vector<std::string> &succeeded_robots) {
+std::map<std::string, result_t> IROCFleetManager::rollbackUpload(const std::vector<std::string> &succeeded_robots) {
   std::scoped_lock lck(fleet_mission_handlers_.mtx);
+
+  std::map<std::string, result_t> rollback_results;
 
   for (const auto &robot_name : succeeded_robots) {
     auto *h = findRobotHandler(robot_name, fleet_mission_handlers_);
@@ -1380,11 +1388,14 @@ void IROCFleetManager::rollbackUpload(const std::vector<std::string> &succeeded_
     const auto resp     = callService<iroc_mission_handler::srv::UnloadMissionSrv>(h->sc_unload_mission, req);
     h->is_upload_staged = false;
 
+    rollback_results[robot_name] = resp;
+
     if (!resp.success) {
       // TODO consider retrying or marking the robot as needing manual intervention for cleanup
-      RCLCPP_WARN(node_->get_logger(), " Rollback failed for robot '%s': %s", robot_name.c_str(), resp.message.c_str());
+      RCLCPP_ERROR(node_->get_logger(), " Rollback failed for robot '%s': %s", robot_name.c_str(), resp.message.c_str());
     }
   }
+  return rollback_results;
 }
 
 bool IROCFleetManager::uploadFleetMissionCallback(const std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Request>  &request,
@@ -1460,6 +1471,75 @@ bool IROCFleetManager::uploadFleetMissionCallback(const std::shared_ptr<iroc_fle
   response->message       = "Mission uploaded to all robots successfully";
   response->robot_results = robot_results_msg;
   RCLCPP_INFO(node_->get_logger(), " Mission uploaded successfully to %zu robots.", mission_robots.size());
+  return true;
+}
+
+bool IROCFleetManager::unloadFleetMissionCallback(const std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Request> & /*request*/,
+                                                  const std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Response> &response) {
+  RCLCPP_INFO(node_->get_logger(), " Received unload fleet mission request.");
+
+  {
+    const auto state = fleet_state_.load();
+    if (state == fleet_mission_state_t::EXECUTING || state == fleet_mission_state_t::PAUSED) {
+      response->success = false;
+      response->message = "Fleet mission is executing, cannot unload";
+      RCLCPP_WARN(node_->get_logger(), " Unload rejected: %s", response->message.c_str());
+      return true;
+    }
+
+    if (state != fleet_mission_state_t::STAGED) {
+      response->success = false;
+      response->message = "No staged mission to unload";
+      RCLCPP_WARN(node_->get_logger(), " Unload rejected: %s", response->message.c_str());
+      return true;
+    }
+  }
+
+  std::vector<std::string> robots_to_unload;
+  robots_to_unload.reserve(staged_mission_robots_.size());
+  {
+    std::scoped_lock lk(staged_mission_mtx_);
+    for (const auto &robot_goal : staged_mission_robots_) {
+      robots_to_unload.push_back(robot_goal.name);
+    }
+  }
+  auto rollback_results = rollbackUpload(robots_to_unload);
+
+  std::vector<iroc_mission_handler::msg::MissionResult> robot_results_msg;
+  for (const auto &[name, res] : rollback_results) {
+    iroc_mission_handler::msg::MissionResult mission_result;
+    mission_result.name    = name;
+    mission_result.success = res.success;
+    mission_result.message = res.message;
+    robot_results_msg.emplace_back(mission_result);
+  }
+  response->robot_results = robot_results_msg;
+
+  if (std::all_of(rollback_results.begin(), rollback_results.end(), [](const auto &pair) { return pair.second.success; })) {
+    {
+      std::scoped_lock lk(staged_mission_mtx_);
+      staged_mission_robots_.clear();
+      staged_mission_uuid_.clear();
+    }
+    updateFleetState(fleet_mission_state_t::IDLE);
+
+    response->success = true;
+    response->message = "Mission unloaded from all robots successfully";
+    RCLCPP_INFO(node_->get_logger(), " ission unloaded successfully from all robots.");
+  } else {
+    std::scoped_lock lk(staged_mission_mtx_);
+    for (const auto &[name, _] : rollback_results) {
+      auto it = std::find_if(staged_mission_robots_.begin(), staged_mission_robots_.end(), [&name](const auto &robot_goal) { return robot_goal.name == name; });
+      if (it != staged_mission_robots_.end()) {
+        staged_mission_robots_.erase(it);
+      }
+    }
+
+    response->success = false;
+    response->message = "Mission unload failed on one or more robots";
+    RCLCPP_WARN(node_->get_logger(), "Unload failed on one or more robots.");
+  }
+
   return true;
 }
 
