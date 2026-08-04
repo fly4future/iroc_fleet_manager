@@ -1,0 +1,19 @@
+#pragma once
+#include <cstdint>
+
+#undef X_ENUM_NAME
+#undef X_ENUM_BASE_TYPE
+#undef X_ENUM_SEQ
+
+#define X_ENUM_NAME fleet_mission_state_t
+#define X_ENUM_BASE_TYPE uint8_t
+#define X_ENUM_SEQ (IDLE)(STAGED)(EXECUTING)(PAUSED)
+
+namespace iroc_fleet_manager
+{
+
+#include <mrs_robot_diagnostics/enums/helpers/enum_macros.hpp>
+
+DEFINE_ENUM_WITH_CONVERSIONS(X_ENUM_NAME, X_ENUM_BASE_TYPE, X_ENUM_SEQ)
+
+} // namespace iroc_fleet_manager

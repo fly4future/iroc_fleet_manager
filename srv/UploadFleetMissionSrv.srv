@@ -1,0 +1,7 @@
+string type
+string details
+string uuid
+---
+bool success
+string message
+iroc_mission_handler/MissionResult[] robot_results

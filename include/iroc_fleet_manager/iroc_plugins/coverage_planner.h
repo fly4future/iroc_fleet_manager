@@ -1,5 +1,4 @@
 #include <iroc_fleet_manager/planner.h>
-#include <ros/package.h>
 
 #include <mrs_lib/param_loader.h>
 #include <string>
@@ -15,10 +14,9 @@
 #include <EnergyAwareMCPP/mstsp_solver/SolverConfig.h>
 #include <EnergyAwareMCPP/utils.hpp>
 
-#include <iroc_fleet_manager/CoverageMission.h>
-#include <iroc_fleet_manager/CoverageMissionRobot.h>
+#include <iroc_fleet_manager/msg/coverage_mission.hpp>
 #include <iroc_fleet_manager/utils/conversions.h>
-#include <mrs_msgs/Point2D.h>
+#include <mrs_msgs/msg/point2_d.hpp>
 
 namespace iroc_fleet_manager
 {
@@ -31,29 +29,35 @@ namespace coverage_planner
 
 class CoveragePlanner : public iroc_fleet_manager::planners::Planner {
 public:
-  bool initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
+  bool initialize(const rclcpp::Node::SharedPtr node, const std::string &name, const std::string &name_space,
                   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) override;
-
   bool activate(void) override;
   void deactivate(void) override;
-  std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> createGoal(const std::string &goal) const override;
+  std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> createGoal(const std::string &goal) const override;
 
   std::string name_;
 
   // Additional type for coverage planner
-  typedef std::vector<std::vector<iroc_mission_handler::Waypoint>> coverage_paths_t;
+  typedef std::vector<std::vector<iroc_mission_handler::msg::Waypoint>> coverage_paths_t;
+  rclcpp::Node::SharedPtr                                               node_;
+  rclcpp::Clock::SharedPtr                                              clock_;
+
+  rclcpp::CallbackGroup::SharedPtr cbkgrp_subs_;
+  rclcpp::CallbackGroup::SharedPtr cbkgrp_ss_;
+  rclcpp::CallbackGroup::SharedPtr cbkgrp_timers_;
 
 private:
   bool is_initialized_ = false;
   bool is_active_      = false;
 
-  mutable algorithm_config_t planner_config_;
+  mutable algorithm_config_t                            planner_config_;
   std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers_;
 
   bool algorithm_config_is_valid(const YAML::Node &config);
   algorithm_config_t parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const;
 
   coverage_paths_t getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2DLatLon>> &search_areas, const std::vector<std::vector<custom_types::Point2DLatLon>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2DLatLon>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const;
+
 };
 
 } // namespace coverage_planner

@@ -10,7 +10,7 @@ fleet_manager:
     planner_names: [
       "WaypointPlanner",
       "CoveragePlanner",
-      "AutonomyTestPlanner",
+      # "AutonomyTestPlanner",
     ]
 
     # define "running instances" of plugins, there can be more than one for each
@@ -22,9 +22,9 @@ fleet_manager:
       address: "iroc_fleet_manager/CoveragePlanner" 
       name_space: "coverage_planner" 
 
-    AutonomyTestPlanner:
-      address: "iroc_fleet_manager/AutonomyTestPlanner" 
-      name_space: "autonomy_test_planner" 
+    # AutonomyTestPlanner:
+    #   address: "iroc_fleet_manager/AutonomyTestPlanner" 
+    #   name_space: "autonomy_test_planner" 
 
     # rate to update the common handlers
     update_timer_rate: 1 # [Hz]

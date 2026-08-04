@@ -1,4 +1,5 @@
 #include <iroc_fleet_manager/iroc_plugins/coverage_planner.h>
+#include "ament_index_cpp/get_package_share_directory.hpp"
 
 namespace iroc_fleet_manager
 {
@@ -9,15 +10,17 @@ namespace planners
 namespace coverage_planner
 {
 
-bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::string &name, const std::string &name_space,
+bool CoveragePlanner::initialize(const rclcpp::Node::SharedPtr node, const std::string &name, const std::string &name_space,
                                  std::shared_ptr<iroc_fleet_manager::CommonHandlers_t> common_handlers) {
+  node_  = node;
+  clock_ = node->get_clock();
 
-  // nh_ will behave just like normal NodeHandle
-  ros::NodeHandle nh_(parent_nh, name_space);
+  cbkgrp_subs_   = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_ss_     = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbkgrp_timers_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   name_            = name;
   common_handlers_ = common_handlers;
-  ros::Time::waitForValid();
 
   YAML::Node algorithm_config_node = YAML::LoadFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
   if (!algorithm_config_is_valid(algorithm_config_node)) {
@@ -26,21 +29,22 @@ bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
   }
 
   /* load parameters */
-  mrs_lib::ParamLoader param_loader(nh_, "CoveragePlanner");
+  mrs_lib::ParamLoader param_loader(node_, "CoveragePlanner");
 
-  param_loader.addYamlFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
+  std::string package_path = ament_index_cpp::get_package_share_directory("iroc_fleet_manager");
+  param_loader.addYamlFile(package_path + "/config/coverage_planner_config.yaml");
 
   planner_config_ = parse_algorithm_config(param_loader);
 
   if (!param_loader.loadedSuccessfully()) {
-    ROS_ERROR("[%s]: could not load all parameters!", name_.c_str());
+    RCLCPP_ERROR(node_->get_logger(), "Could not load all parameters!");
     is_initialized_ = false;
     return true;
   }
 
   // | ----------------------- finish init ---------------------- |
 
-  ROS_INFO("[%s]: initialized under the name '%s', namespace '%s' and action ", name_.c_str(), name.c_str(), name_space.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: initialized under the name '%s', namespace '%s'", name_.c_str(), name.c_str(), name_space.c_str());
 
   is_initialized_ = true;
   return true;
@@ -48,7 +52,7 @@ bool CoveragePlanner::initialize(const ros::NodeHandle &parent_nh, const std::st
 
 bool CoveragePlanner::activate(void) {
 
-  ROS_INFO("[%s]: activated", name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: activated", name_.c_str());
 
   is_active_ = true;
 
@@ -59,22 +63,21 @@ void CoveragePlanner::deactivate(void) {
 
   is_active_ = false;
 
-  ROS_INFO("[%s]: deactivated", name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "[%s]: deactivated", name_.c_str());
 }
 
-std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePlanner::createGoal(const std::string &goal) const {
+std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> CoveragePlanner::createGoal(const std::string &goal) const {
   // Goal to be filled
-  std::vector<iroc_mission_handler::MissionGoal> mission_robots;
-  ROS_INFO("[CoveragePlanner] Received goal :%s ",
-           goal.c_str()); // to remove
+  std::vector<iroc_mission_handler::msg::MissionGoal> mission_robots;
+  RCLCPP_INFO(node_->get_logger(), "[%s]: creating goal from the received request", name_.c_str());
 
   // Custom messages used in the coverage planner
-  std::vector<iroc_fleet_manager::CoverageMissionRobot> robots_msg;
-  std::vector<mrs_msgs::Point2D> search_area_msg;
-  mrs_msgs::Point2D latlon_origin_msg;
+  std::vector<iroc_fleet_manager::msg::CoverageMissionRobot> robots_msg;
+  std::vector<mrs_msgs::msg::Point2D>                        search_area_msg;
+  mrs_msgs::msg::Point2D                                     latlon_origin_msg;
 
   result_t result;
-  json json_msg;
+  json     json_msg;
 
   // Parsing JSON and creating robots JSON for post processing
   result = parseJson(goal, json_msg);
@@ -85,20 +88,21 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     return std::make_tuple(result, mission_robots);
   }
 
-  using HRNoFlyZone = std::pair<std::vector<custom_types::Point2DLatLon>, double>;
-  std::vector<std::vector<custom_types::Point2DLatLon>> search_areas;
-  std::vector<std::vector<custom_types::Point2DLatLon>> no_fly_zones;
+  RCLCPP_INFO(node_->get_logger(), "[%s]: received goal: %s", name_.c_str(), goal.c_str());
+
+  using HRNoFlyZone = std::pair<std::vector<iroc_common::custom_types::Point2DLatLon>, double>;
+  std::vector<std::vector<iroc_common::custom_types::Point2DLatLon>> search_areas;
+  std::vector<std::vector<iroc_common::custom_types::Point2DLatLon>> no_fly_zones;
   std::vector<HRNoFlyZone> hr_no_fly_zones;
   std::vector<double> min_horizontal_distances;
   std::vector<double> min_vertical_distances;
   json robots;
-  int frame_id;
+  // int frame_id;
   int height;
   int height_id;
   int terminal_action;
-  
 
-  bool success = utils::parseVars(json_msg, {
+  bool success = iroc_common::utils::parseVars(json_msg, {
                                                 {"search_areas", &search_areas},
                                                 {"min_horizontal_distances", &min_horizontal_distances},
                                                 {"min_vertical_distances", &min_vertical_distances},
@@ -108,11 +112,29 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
                                                 {"terminal_action", &terminal_action}
                                             });
   if (!success) {
-    ROS_ERROR("Failure while parsing robot data, bad JSON request");
+    RCLCPP_ERROR("Failure while parsing robot data, bad JSON request");
     result.success = false;
     result.message = "Failure while parsing robot data, bad JSON request";
     return std::make_tuple(result, mission_robots);
   }
+
+  // Check if not empty
+  if (robots.empty()) {
+    result.success = false;
+    result.message = "Received empty robots list, aborting mission.";
+    RCLCPP_WARN(node_->get_logger(), " Received empty robots list, aborting mission.");
+    return std::make_tuple(result, mission_robots);
+  }
+
+  if (search_area.empty()) {
+    result.success = false;
+    result.message = "Received empty search area, aborting mission.";
+    RCLCPP_WARN(node_->get_logger(), " Received empty search area, aborting mission.");
+    return std::make_tuple(result, mission_robots);
+  }
+
+  // TODO: podívat se, na co to tady je - asi to smazat
+  search_area_msg = toRosMsg<mrs_msgs::msg::Point2D>(search_areas);
 
   if (robots.size() != min_horizontal_distances.size() || robots.size() != min_vertical_distances.size()) {
     ROS_ERROR("The number of values in 'robots' differs from 'min_horizontal_distances' or 'min_vertical_distances'. Each robot should have its own specified minimum horizontal and vertical distances from other robots.");
@@ -129,21 +151,21 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   }
 
   // parsing optional parameters
-  success = utils::parseVars(json_msg, {{"no_fly_zones", &no_fly_zones}});
-  success = utils::parseVars(json_msg, {{"hr_no_fly_zones", &hr_no_fly_zones}});
+  success = iroc_common::utils::parseVars(json_msg, {{"no_fly_zones", &no_fly_zones}});
+  success = iroc_common::utils::parseVars(json_msg, {{"hr_no_fly_zones", &hr_no_fly_zones}});
   
   // Extract robots
   robots_msg.reserve(robots.size());
   for (const auto &robot : robots) {
-    iroc_fleet_manager::CoverageMissionRobot robot_msg;
-    std::string name;
+    iroc_fleet_manager::msg::CoverageMissionRobot robot_msg;
+    std::string                                   name;
 
     name = robot.get<std::string>();
 
     bool isRobotInFleet = common_handlers_->handlers->robots_map.count(name);
 
     if (!isRobotInFleet) {
-      ROS_WARN("[CoveragePlanner] Robot %s not within the fleet", name.c_str());
+      RCLCPP_WARN_STREAM(node_->get_logger(), "Robot " << name << " not within the fleet");
       std::stringstream ss;
       ss << name << " not found in the fleet!";
       result.message = ss.str();
@@ -152,7 +174,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     }
 
     robot_msg.name            = name;
-    robot_msg.frame_id        = iroc_mission_handler::MissionGoal::FRAME_ID_LATLON;
+    robot_msg.frame_id        = iroc_mission_handler::msg::MissionGoal::FRAME_ID_LATLON;
     robot_msg.height_id       = height_id;
     robot_msg.height          = height;
     robot_msg.terminal_action = terminal_action;
@@ -168,18 +190,18 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
   // For simplicity taking the first origin, but we could also validate if all
   // of the origins are consistent
 
-  latlon_origin_msg.x = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->safety_area.origin_x;
-  latlon_origin_msg.y = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->safety_area.origin_y;
+  latlon_origin_msg.x = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->world_origin.x;
+  latlon_origin_msg.y = common_handlers_->handlers->robots_map[robots_msg.at(0).name].safety_area_info->world_origin.y;
 
-  iroc_fleet_manager::CoverageMission mission;
+  iroc_fleet_manager::msg::CoverageMission mission;
   mission.robots        = robots_msg;
   mission.latlon_origin = latlon_origin_msg;
 
   auto paths = getCoveragePaths(mission, search_areas, no_fly_zones, hr_no_fly_zones, min_horizontal_distances, min_vertical_distances);
 
   // Filling the mission_robots vector with the generated paths
-  for (int it = 0; it < mission.robots.size(); it++) {
-    iroc_mission_handler::MissionGoal robot;
+  for (size_t it = 0; it < mission.robots.size(); it++) {
+    iroc_mission_handler::msg::MissionGoal robot;
     robot.name            = mission.robots[it].name;
     robot.points          = paths[it];
     robot.terminal_action = mission.robots[it].terminal_action;
@@ -188,7 +210,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::MissionGoal>> CoveragePla
     mission_robots.push_back(robot);
   }
 
-  ROS_INFO("[CoveragePlanner] Goal created successfully!");
+  RCLCPP_INFO(node_->get_logger(), "[%s]: Goal created successfully!", name_.c_str());
   result.success = true;
   result.message = "Goal created successfully";
   return std::make_tuple(result, mission_robots);
@@ -300,7 +322,7 @@ bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
 }
 
 algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const {
-  const std::string yaml_prefix = "fleet_manager/planners/coverage_planner/";
+  const std::string  yaml_prefix = "fleet_manager/planners/coverage_planner/";
   algorithm_config_t algorithm_config;
 
   double air_density = -1;
@@ -394,7 +416,6 @@ algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader 
 
   return algorithm_config;
 }
-
 
 struct TransitPath
 {
@@ -537,7 +558,7 @@ bool is_inside(const point_t& p, const std::vector<point_t>& polygon) {
     return (intersections % 2) == 1;
 }
 
-CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2DLatLon>> &search_areas_arg, const std::vector<std::vector<custom_types::Point2DLatLon>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2DLatLon>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const {
+CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_fleet_manager::msg::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2DLatLon>> &search_areas_arg, const std::vector<std::vector<custom_types::Point2DLatLon>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2DLatLon>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const {
 
   std::vector<polygon_t> fly_zones;
   std::vector<polygon_t> no_fly_zones;
@@ -1189,5 +1210,5 @@ std::vector<point_heading_t<double>> convertWaypointsToPointHeading(const std::v
 
 } // namespace iroc_fleet_manager
 
-#include <pluginlib/class_list_macros.h>
+#include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(iroc_fleet_manager::planners::coverage_planner::CoveragePlanner, iroc_fleet_manager::planners::Planner);
