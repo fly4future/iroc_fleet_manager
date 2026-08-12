@@ -5,7 +5,7 @@
 #ifndef THESIS_TRAJECTORY_GENERATOR_SOLVERCONFIG_H
 #define THESIS_TRAJECTORY_GENERATOR_SOLVERCONFIG_H
 
-#include "EnergyAwareMCPP/utils.hpp"
+#include "utils.hpp"
 #include <vector>
 
 namespace mstsp_solver {

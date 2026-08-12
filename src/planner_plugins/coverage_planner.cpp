@@ -1,4 +1,6 @@
 #include <iroc_fleet_manager/iroc_plugins/coverage_planner.h>
+#include <iroc_fleet_manager/utils/json_var_parser.h>
+#include <mrs_msgs/msg/reference.hpp>
 #include "ament_index_cpp/get_package_share_directory.hpp"
 
 namespace iroc_fleet_manager
@@ -22,16 +24,16 @@ bool CoveragePlanner::initialize(const rclcpp::Node::SharedPtr node, const std::
   name_            = name;
   common_handlers_ = common_handlers;
 
-  YAML::Node algorithm_config_node = YAML::LoadFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
+  std::string package_path = ament_index_cpp::get_package_share_directory("iroc_fleet_manager");
+  YAML::Node algorithm_config_node = YAML::LoadFile(package_path + "/config/coverage_planner_config.yaml");
   if (!algorithm_config_is_valid(algorithm_config_node)) {
-    ROS_ERROR("Algorithm config is not complete. Exiting...");
+    RCLCPP_ERROR(node_->get_logger(), "Algorithm config is not complete. Exiting...");
     return false;
   }
 
   /* load parameters */
   mrs_lib::ParamLoader param_loader(node_, "CoveragePlanner");
 
-  std::string package_path = ament_index_cpp::get_package_share_directory("iroc_fleet_manager");
   param_loader.addYamlFile(package_path + "/config/coverage_planner_config.yaml");
 
   planner_config_ = parse_algorithm_config(param_loader);
@@ -73,7 +75,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
 
   // Custom messages used in the coverage planner
   std::vector<iroc_fleet_manager::msg::CoverageMissionRobot> robots_msg;
-  std::vector<mrs_msgs::msg::Point2D>                        search_area_msg;
   mrs_msgs::msg::Point2D                                     latlon_origin_msg;
 
   result_t result;
@@ -90,9 +91,9 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
 
   RCLCPP_INFO(node_->get_logger(), "[%s]: received goal: %s", name_.c_str(), goal.c_str());
 
-  using HRNoFlyZone = std::pair<std::vector<iroc_common::custom_types::Point2DLatLon>, double>;
-  std::vector<std::vector<iroc_common::custom_types::Point2DLatLon>> search_areas;
-  std::vector<std::vector<iroc_common::custom_types::Point2DLatLon>> no_fly_zones;
+  using HRNoFlyZone = std::pair<std::vector<iroc_fleet_manager::custom_types::Point2DLatLon>, double>;
+  std::vector<std::vector<iroc_fleet_manager::custom_types::Point2DLatLon>> search_areas;
+  std::vector<std::vector<iroc_fleet_manager::custom_types::Point2DLatLon>> no_fly_zones;
   std::vector<HRNoFlyZone> hr_no_fly_zones;
   std::vector<double> min_horizontal_distances;
   std::vector<double> min_vertical_distances;
@@ -102,7 +103,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
   int height_id;
   int terminal_action;
 
-  bool success = iroc_common::utils::parseVars(json_msg, {
+  bool success = iroc_fleet_manager::utils::parseVars(json_msg, {
                                                 {"search_areas", &search_areas},
                                                 {"min_horizontal_distances", &min_horizontal_distances},
                                                 {"min_vertical_distances", &min_vertical_distances},
@@ -112,7 +113,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
                                                 {"terminal_action", &terminal_action}
                                             });
   if (!success) {
-    RCLCPP_ERROR("Failure while parsing robot data, bad JSON request");
+    RCLCPP_ERROR(node_->get_logger(), "Failure while parsing robot data, bad JSON request");
     result.success = false;
     result.message = "Failure while parsing robot data, bad JSON request";
     return std::make_tuple(result, mission_robots);
@@ -126,33 +127,30 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
     return std::make_tuple(result, mission_robots);
   }
 
-  if (search_area.empty()) {
+  if (search_areas.empty()) {
     result.success = false;
     result.message = "Received empty search area, aborting mission.";
     RCLCPP_WARN(node_->get_logger(), " Received empty search area, aborting mission.");
     return std::make_tuple(result, mission_robots);
   }
 
-  // TODO: podívat se, na co to tady je - asi to smazat
-  search_area_msg = toRosMsg<mrs_msgs::msg::Point2D>(search_areas);
-
   if (robots.size() != min_horizontal_distances.size() || robots.size() != min_vertical_distances.size()) {
-    ROS_ERROR("The number of values in 'robots' differs from 'min_horizontal_distances' or 'min_vertical_distances'. Each robot should have its own specified minimum horizontal and vertical distances from other robots.");
+    RCLCPP_ERROR(node_->get_logger(), "The number of values in 'robots' differs from 'min_horizontal_distances' or 'min_vertical_distances'. Each robot should have its own specified minimum horizontal and vertical distances from other robots.");
     result.success = false;
     result.message = "The number of values in 'robots' differs from 'min_horizontal_distances' or 'min_vertical_distances'. Each robot should have its own specified minimum horizontal and vertical distances from other robots.";
     return std::make_tuple(result, mission_robots);
   }
 
   if (robots.size() != planner_config_.drones.size()) {
-    ROS_ERROR("The number of drones in the mission JSON (coverage.json) does not match the number of drone definitions in the coverage planner config file (coverage_planner_config.yaml).");
+    RCLCPP_ERROR(node_->get_logger(), "The number of drones in the mission JSON (coverage.json) does not match the number of drone definitions in the coverage planner config file (coverage_planner_config.yaml).");
     result.success = false;
     result.message = "The number of drones in the mission JSON does not match the number of drone definitions in the coverage planner configuration.";
     return std::make_tuple(result, mission_robots);
   }
 
   // parsing optional parameters
-  success = iroc_common::utils::parseVars(json_msg, {{"no_fly_zones", &no_fly_zones}});
-  success = iroc_common::utils::parseVars(json_msg, {{"hr_no_fly_zones", &hr_no_fly_zones}});
+  success = iroc_fleet_manager::utils::parseVars(json_msg, {{"no_fly_zones", &no_fly_zones}});
+  success = iroc_fleet_manager::utils::parseVars(json_msg, {{"hr_no_fly_zones", &hr_no_fly_zones}});
   
   // Extract robots
   robots_msg.reserve(robots.size());
@@ -219,7 +217,7 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
 bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
     // Navigate to the 'coverage_planner' sub-node
     if (!root_node["fleet_manager"] || !root_node["fleet_manager"]["planners"] || !root_node["fleet_manager"]["planners"]["coverage_planner"]) {
-      ROS_ERROR_STREAM("The configuration file must contain the path 'fleet_manager.planners.coverage_planner'.");
+      RCLCPP_ERROR_STREAM(node_->get_logger(), "The configuration file must contain the path 'fleet_manager.planners.coverage_planner'.");
       return false;
     }
     const YAML::Node& config = root_node["fleet_manager"]["planners"]["coverage_planner"];
@@ -227,7 +225,7 @@ bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
     // Helper lambda for checking if a key exists
     auto check_key = [&](const YAML::Node& node, const std::string& key) {
       if (!node[key]) {
-        ROS_ERROR_STREAM("Missing required key '" << key << "' in the config file.");
+        RCLCPP_ERROR_STREAM(node_->get_logger(), "Missing required key '" << key << "' in the config file.");
         return false;
       }
       return true;
@@ -246,14 +244,14 @@ bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
 
     if (config["points_in_lat_lon"].as<bool>()) {
         if (!check_key(config, "latitude_origin") || !check_key(config, "longitude_origin")) {
-          ROS_ERROR_STREAM("'latitude_origin' and 'longitude_origin' are required when 'points_in_lat_lon' is true.");
+          RCLCPP_ERROR_STREAM(node_->get_logger(), "'latitude_origin' and 'longitude_origin' are required when 'points_in_lat_lon' is true.");
           return false;
         }
     }
 
     // --- Parameters for individual drones ---
     if (!config["drones"] || !config["drones"].IsSequence() || config["drones"].size() == 0) {
-      ROS_ERROR_STREAM("'drones' array is missing, not a sequence, or is empty in the config file.");
+      RCLCPP_ERROR_STREAM(node_->get_logger(), "'drones' array is missing, not a sequence, or is empty in the config file.");
       return false;
     }
 
@@ -261,13 +259,13 @@ bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
 
     for (const auto& drone_node : config["drones"]) {
         if (!check_key(drone_node, "optimization_type") || !check_key(drone_node, "max_single_path_cost")) {
-          ROS_ERROR_STREAM("Each drone in 'drones' must have 'optimization_type' and 'max_single_path_cost'.");
+          RCLCPP_ERROR_STREAM(node_->get_logger(), "Each drone in 'drones' must have 'optimization_type' and 'max_single_path_cost'.");
           return false;
         }
 
         const std::string current_optimization_type = drone_node["optimization_type"].as<std::string>();
         if (current_optimization_type != first_optimization_type) {
-          ROS_ERROR_STREAM("All drones must have the same 'optimization_type'. Found '" << current_optimization_type
+          RCLCPP_ERROR_STREAM(node_->get_logger(), "All drones must have the same 'optimization_type'. Found '" << current_optimization_type
                    << "' which is different from the first drone's type '" << first_optimization_type << "'.");
           return false;
         }
@@ -280,19 +278,19 @@ bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
             };
             for (const auto& key : energy_keys) {
                 if (!check_key(drone_node, key)) {
-                  ROS_ERROR_STREAM("Drone with 'energy' optimization is missing key '" << key << "'.");
+                  RCLCPP_ERROR_STREAM(node_->get_logger(), "Drone with 'energy' optimization is missing key '" << key << "'.");
                   return false;
                 }
             }
             if (!check_key(drone_node["battery_model"], "cell_capacity") || !check_key(drone_node["battery_model"], "number_of_cells") ||
             !check_key(drone_node["battery_model"], "d0") || !check_key(drone_node["battery_model"], "d1") ||
             !check_key(drone_node["battery_model"], "d2") || !check_key(drone_node["battery_model"], "d3")) {
-            ROS_ERROR_STREAM("'battery_model' node is missing one or more required parameters (cell_capacity, number_of_cells, d0-d3).");
+            RCLCPP_ERROR_STREAM(node_->get_logger(), "'battery_model' node is missing one or more required parameters (cell_capacity, number_of_cells, d0-d3).");
             return false;
           }
             if (!check_key(drone_node["best_speed_model"], "c0") || !check_key(drone_node["best_speed_model"], "c1") ||
               !check_key(drone_node["best_speed_model"], "c2")) {
-              ROS_ERROR_STREAM("'best_speed_model' node is missing one or more required parameters (c0-c2).");
+              RCLCPP_ERROR_STREAM(node_->get_logger(), "'best_speed_model' node is missing one or more required parameters (c0-c2).");
               return false;
             }
 
@@ -308,12 +306,12 @@ bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
             };
             for (const auto& key : time_keys) {
                 if (!check_key(drone_node, key)) {
-                  ROS_ERROR_STREAM("Drone with 'time' optimization is missing key '" << key << "'.");
+                  RCLCPP_ERROR_STREAM(node_->get_logger(), "Drone with 'time' optimization is missing key '" << key << "'.");
                   return false;
                 }
             }
         } else {
-          ROS_ERROR_STREAM("Unknown 'optimization_type': " << current_optimization_type << ". Use 'energy' or 'time'.");
+          RCLCPP_ERROR_STREAM(node_->get_logger(), "Unknown 'optimization_type': " << current_optimization_type << ". Use 'energy' or 'time'.");
           return false;
         }
     }
@@ -329,7 +327,8 @@ algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader 
   double earth_gravity = -1;
   double propeller_efficiency = -1;
 
-  YAML::Node algorithm_config_node = YAML::LoadFile(ros::package::getPath("iroc_fleet_manager") + "/config/coverage_planner_config.yaml");
+  std::string package_path = ament_index_cpp::get_package_share_directory("iroc_fleet_manager");
+  YAML::Node algorithm_config_node = YAML::LoadFile(package_path + "/config/coverage_planner_config.yaml");
   YAML::Node drones_node = algorithm_config_node["fleet_manager"]["planners"]["coverage_planner"]["drones"];
 
   algorithm_config.drones.reserve(drones_node.size());
@@ -518,8 +517,8 @@ bool checkOverlap2(TransitPathGroup &tpg1, TransitPathGroup &tpg2, double min_di
 bool checkOverlap(TransitPath tp1, TransitPath tp2, double min_distance);
 double pointToSegmentDistance(custom_types::Point2D p, custom_types::Point2D s1, custom_types::Point2D s2);
 void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::coverage_paths_t& coverage_paths, const Graph& graph, double sweeping_height, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances);
-std::vector<iroc_mission_handler::Waypoint> pointVecToWaypointVec(std::vector<point_t> &points, double transit_path_height);
-std::vector<point_heading_t<double>> convertWaypointsToPointHeading(const std::vector<iroc_mission_handler::Waypoint>& iroc_waypoints);
+std::vector<iroc_mission_handler::msg::Waypoint> pointVecToWaypointVec(std::vector<point_t> &points, double transit_path_height);
+std::vector<point_heading_t<double>> convertWaypointsToPointHeading(const std::vector<iroc_mission_handler::msg::Waypoint>& iroc_waypoints);
 
 
 // Calculates the distance between a drone position and start and end of sweeping trajectory
@@ -527,11 +526,11 @@ double droneToSweepingDistance(point_t drone_pos, point_t start, point_t end, Sh
 {
   double distance = 0;
   std::vector<point_t> path_to_start = shortest_path_calculator.shortest_path_between_points({drone_pos.first, drone_pos.second}, {start.first, start.second}).first;
-  for (int i = 1; i < path_to_start.size(); i++) {
+  for (unsigned int i = 1; i < path_to_start.size(); i++) {
     distance += std::sqrt(pow(path_to_start.at(i-1).first - path_to_start.at(i).first, 2) + pow(path_to_start.at(i-1).second - path_to_start.at(i).second, 2));
   }
   std::vector<point_t> path_to_end = shortest_path_calculator.shortest_path_between_points({drone_pos.first, drone_pos.second}, {end.first, end.second}).first;
-  for (int i = 1; i < path_to_end.size(); i++) {
+  for (unsigned int i = 1; i < path_to_end.size(); i++) {
     distance += std::sqrt(pow(path_to_end.at(i-1).first - path_to_end.at(i).first, 2) + pow(path_to_end.at(i-1).second - path_to_end.at(i).second, 2));
   }
   return distance;
@@ -644,7 +643,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       }
 
       if (overlap) {
-        ROS_ERROR("Polygon edges of Fly zones, No-fly zones and Height restricted no-fly zones must not overlap.");
+        RCLCPP_ERROR(node_->get_logger(), "Polygon edges of Fly zones, No-fly zones and Height restricted no-fly zones must not overlap.");
         return coverage_paths_empty;
       }
     }
@@ -668,7 +667,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     } else if (spec.optimization_type == "time" && spec.time_config.has_value()) {
       cost_calculators.push_back(std::make_shared<TimeCalculator>(spec.time_config.value()));
     } else {
-      ROS_ERROR("Unknown drone specification for optimization_type: %s", spec.optimization_type.c_str());
+      RCLCPP_ERROR(node_->get_logger(), "Unknown drone specification for optimization_type: %s", spec.optimization_type.c_str());
       coverage_paths_t empty_path;
       return empty_path;
     }
@@ -700,7 +699,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       if (!nfz.empty() && is_point_in_polygon(nfz[0], area.fly_zone_polygon_points)) {
         internal_nfz.push_back(nfz);
       } else {
-        ROS_WARN("A no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
+        RCLCPP_WARN(node_->get_logger(), "A no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
       }
     }
     area.no_fly_zone_polygons = internal_nfz;
@@ -711,7 +710,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
       if (!hr_nfz.polygon.empty() && is_point_in_polygon(hr_nfz.polygon[0], area.fly_zone_polygon_points)) {
         internal_hr_nfz.push_back(hr_nfz);
       } else {
-        ROS_WARN("A height restricted no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
+        RCLCPP_WARN(node_->get_logger(), "A height restricted no-fly zone is outside the fly zone. It will be ignored for sweeping but kept for transit paths.");
       }
     }
     area.height_restricted_no_fly_zone_polygons = internal_hr_nfz;
@@ -730,31 +729,31 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     best_solution = solve_for_uavs(planner_config_.number_of_drones, planner_config_, search_areas, cost_calculators, shortest_path_calculator, shared_logger);
 
   } catch (const polygon_decomposition_error &e) {
-    ROS_ERROR("Error while decomposing the polygon");
+    RCLCPP_ERROR(node_->get_logger(), "Error while decomposing the polygon");
     return coverage_paths_tmp;
   } catch (const std::runtime_error &e) {
-    ROS_ERROR("Error while decomposing the polygon: %s", e.what());
+    RCLCPP_ERROR(node_->get_logger(), "Error while decomposing the polygon: %s", e.what());
     return coverage_paths_tmp;
   }
 
 
   // Save genrated path to coverage_paths_tmp excluding some points
-  for (int d = 0; d < best_solution.paths.size(); d++) {
+  for (unsigned int d = 0; d < best_solution.paths.size(); d++) {
 
     best_solution.paths.at(d).erase(best_solution.paths.at(d).begin());
     best_solution.paths.at(d).pop_back();
-    std::vector<iroc_mission_handler::Waypoint> coverage_path;
+    std::vector<iroc_mission_handler::msg::Waypoint> coverage_path;
 
     for (auto &p : best_solution.paths.at(d)) {   //  drone_path
 
-      mrs_msgs::Reference point;
+      mrs_msgs::msg::Reference point;
       // Fill the reference point
       point.position.x = p.x;
       point.position.y = p.y;
       point.position.z = p.z;
       point.heading    = 0.0;
 
-      iroc_mission_handler::Waypoint waypoint;
+      iroc_mission_handler::msg::Waypoint waypoint;
       waypoint.reference = point;
       coverage_path.push_back(waypoint);
     }
@@ -801,7 +800,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     double current_transit_path_height = path_res.second;
     path_from_start.pop_back();
 
-    std::vector<iroc_mission_handler::Waypoint> path_from_start_waypoints = pointVecToWaypointVec(path_from_start, current_transit_path_height);
+    std::vector<iroc_mission_handler::msg::Waypoint> path_from_start_waypoints = pointVecToWaypointVec(path_from_start, current_transit_path_height);
     coverage_paths.at(i).insert(coverage_paths.at(i).begin(), path_from_start_waypoints.begin(), path_from_start_waypoints.end());    
 
     // Calculates the path from the end of sweeping path to drone's end position. If the direct route is obstructed by no-fly zones, shortest_path_calculator() finds a route around them.
@@ -810,12 +809,12 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     std::vector<point_t> path_to_end = path_res.first;
     current_transit_path_height = path_res.second;
     path_to_end.erase(path_to_end.begin());
-    std::vector<iroc_mission_handler::Waypoint> path_to_end_waypoints = pointVecToWaypointVec(path_to_end, current_transit_path_height);
+    std::vector<iroc_mission_handler::msg::Waypoint> path_to_end_waypoints = pointVecToWaypointVec(path_to_end, current_transit_path_height);
     coverage_paths.at(i).insert(coverage_paths.at(i).end(), path_to_end_waypoints.begin(), path_to_end_waypoints.end());
     
 
     // Fill the TransitPathGroupStruct
-    for (int j = 1; j < coverage_paths.at(i).size(); j++) {
+    for (unsigned int j = 1; j < coverage_paths.at(i).size(); j++) {
       custom_types::Point2D current_point = custom_types::Point2D(coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y);
       custom_types::Point2D prev_point = custom_types::Point2D(coverage_paths.at(i).at(j-1).reference.position.x, coverage_paths.at(i).at(j-1).reference.position.y);
 
@@ -841,8 +840,8 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
   // Fill the transit_paths_under vector.
   tpgs.transit_paths_under.insert(tpgs.transit_paths_under.end(), tpgs.transit_path_groups.size(), std::vector<int>());
-  for (int i = 0; i < tpgs.transit_path_groups.size(); i++) {
-    for (int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
+  for (unsigned int i = 0; i < tpgs.transit_path_groups.size(); i++) {
+    for (unsigned int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
       if (tpgs.transit_path_groups.at(i)->drone_idx == tpgs.transit_path_groups.at(j)->drone_idx) continue; 
 
       int r = horizontalAndVerticalTPGIntersection(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), std::max(min_horizontal_distances.at(tpgs.transit_path_groups.at(i)->drone_idx), min_horizontal_distances.at(tpgs.transit_path_groups.at(j)->drone_idx)));
@@ -856,8 +855,8 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
   
   // Graph is created. In this graph vertexes are transit path groups and edges mean that two transit path groups overlap
   Graph graph = Graph(tpgs.transit_path_groups.size());
-  for (int i = 0; i < tpgs.transit_path_groups.size(); i++) {
-    for (int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
+  for (unsigned int i = 0; i < tpgs.transit_path_groups.size(); i++) {
+    for (unsigned int j = i+1; j < tpgs.transit_path_groups.size(); j++) {
       if (tpgs.transit_path_groups.at(i)->drone_idx != tpgs.transit_path_groups.at(j)->drone_idx && checkOverlap2(*tpgs.transit_path_groups.at(i), *tpgs.transit_path_groups.at(j), std::max(min_horizontal_distances.at(tpgs.transit_path_groups.at(i)->drone_idx), min_horizontal_distances.at(tpgs.transit_path_groups.at(j)->drone_idx)))) {
         graph.addEdge(i, j);
       }
@@ -872,7 +871,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     double cost_limit = planner_config_.drones.at(i).max_single_path_cost;
 
     if (path_cost > cost_limit) {
-      ROS_ERROR("Found solution for drone %d costs %.2f %s which exceeds the limit of %.2f %s. Try to increase the number of drones.", i, path_cost, (planner_config_.drones.at(0).optimization_type == "energy" ? "Joules" : "seconds"), cost_limit,
+      RCLCPP_ERROR(node_->get_logger(), "Found solution for drone %d costs %.2f %s which exceeds the limit of %.2f %s. Try to increase the number of drones.", i, path_cost, (planner_config_.drones.at(0).optimization_type == "energy" ? "Joules" : "seconds"), cost_limit,
         (planner_config_.drones.at(0).optimization_type == "energy" ? "Joules" : "seconds"));
       coverage_paths_t empty_path;
       return empty_path;
@@ -881,7 +880,7 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
   // Covert coverage_paths to gps coordinates
   for (int i = 0; i < drone_num; i++) {
-    for (int j = 0; j < coverage_paths.at(i).size(); j++) {
+    for (unsigned int j = 0; j < coverage_paths.at(i).size(); j++) {
       point_t d2 = meters_to_gps_coordinates({coverage_paths.at(i).at(j).reference.position.x, coverage_paths.at(i).at(j).reference.position.y}, planner_config_.lat_lon_origin);
       coverage_paths.at(i).at(j).reference.position.x = d2.first;
       coverage_paths.at(i).at(j).reference.position.y = d2.second;
@@ -895,11 +894,11 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
 
 
 
-std::vector<iroc_mission_handler::Waypoint> pointVecToWaypointVec(std::vector<point_t> &points, double transit_path_height)
+std::vector<iroc_mission_handler::msg::Waypoint> pointVecToWaypointVec(std::vector<point_t> &points, double transit_path_height)
 {
-  std::vector<iroc_mission_handler::Waypoint> waypoint_vec;
+  std::vector<iroc_mission_handler::msg::Waypoint> waypoint_vec;
   for (point_t &p : points) {
-    iroc_mission_handler::Waypoint waypoint;
+    iroc_mission_handler::msg::Waypoint waypoint;
     waypoint.reference.position.x = p.first;
     waypoint.reference.position.y = p.second;
     waypoint.reference.position.z = transit_path_height;
@@ -1077,12 +1076,12 @@ void resolveTransitHeights(TransitPathGroupsStruct& tpgs, CoveragePlanner::cover
       
       // If the transit path group ovelaps sweeping path, then the possible_height is set above it
       if (possible_height == sweeping_height) {
-        for (int k = 0; k < coverage_paths.size(); k++) {
-          if (k == tpgs.transit_path_groups.at(v)->drone_idx) continue;
+        for (unsigned int k = 0; k < coverage_paths.size(); k++) {
+          if ((int)k == tpgs.transit_path_groups.at(v)->drone_idx) continue;
 
-          for (int j = 1; j < coverage_paths.at(k).size(); j++) {
-            iroc_mission_handler::Waypoint current_point = coverage_paths.at(k).at(j);
-            iroc_mission_handler::Waypoint prev_point = coverage_paths.at(k).at(j-1);
+          for (unsigned int j = 1; j < coverage_paths.at(k).size(); j++) {
+            iroc_mission_handler::msg::Waypoint current_point = coverage_paths.at(k).at(j);
+            iroc_mission_handler::msg::Waypoint prev_point = coverage_paths.at(k).at(j-1);
 
             if (current_point.reference.position.z == sweeping_height && prev_point.reference.position.z == sweeping_height) {
               TransitPath tp = TransitPath(current_point.reference.position.x, current_point.reference.position.y, prev_point.reference.position.x, prev_point.reference.position.y);
@@ -1184,7 +1183,7 @@ std::vector<int> hungarianAlgorithm(const std::vector<std::vector<double>>& matr
     return result;
 }
 
-std::vector<point_heading_t<double>> convertWaypointsToPointHeading(const std::vector<iroc_mission_handler::Waypoint>& iroc_waypoints)
+std::vector<point_heading_t<double>> convertWaypointsToPointHeading(const std::vector<iroc_mission_handler::msg::Waypoint>& iroc_waypoints)
 {
     std::vector<point_heading_t<double>> path_for_calc;
     path_for_calc.reserve(iroc_waypoints.size());

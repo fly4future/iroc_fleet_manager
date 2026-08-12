@@ -12,7 +12,7 @@
 #include "custom_types.hpp"
 #include "utils.hpp"
 #include <memory>
-#include <EnergyAwareMCPP/SimpleLogger.h>
+#include <SimpleLogger.h>
 #include <optional>
 
 

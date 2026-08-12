@@ -5,7 +5,7 @@
 #ifndef THESIS_TRAJECTORY_GENERATOR_TARGET_H
 #define THESIS_TRAJECTORY_GENERATOR_TARGET_H
 
-#include "EnergyAwareMCPP/utils.hpp"
+#include "utils.hpp"
 
 namespace mstsp_solver {
     struct Target {

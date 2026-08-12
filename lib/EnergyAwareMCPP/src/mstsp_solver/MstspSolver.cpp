@@ -1,8 +1,8 @@
-#include "EnergyAwareMCPP/mstsp_solver/MstspSolver.h"
+#include "mstsp_solver/MstspSolver.h"
 #include <utility>
-#include "EnergyAwareMCPP/mstsp_solver/Insertion.h"
-#include "EnergyAwareMCPP/algorithms.hpp"
-#include "EnergyAwareMCPP/PathCostCalculator.hpp"
+#include "mstsp_solver/Insertion.h"
+#include "algorithms.hpp"
+#include "PathCostCalculator.hpp"
 #include <algorithm>
 #include <list>
 

@@ -2,8 +2,8 @@
 #define COVERAGE_PLANNER_HPP
 
 #include "MapPolygon.hpp"
-#include "EnergyAwareMCPP/TimeCalculator.hpp"
-#include "EnergyAwareMCPP/EnergyCalculator.h"
+#include "TimeCalculator.hpp"
+#include "EnergyCalculator.h"
 #include "algorithms.hpp"
 #include "ShortestPathCalculator.hpp"
 #include "mstsp_solver/SolverConfig.h"
@@ -11,8 +11,8 @@
 #include <yaml-cpp/yaml.h>
 #include <iostream>
 #include <fstream>
-#include "EnergyAwareMCPP/SimpleLogger.h"
-#include "EnergyAwareMCPP/utils.hpp"
+#include "SimpleLogger.h"
+#include "utils.hpp"
 #include <iomanip>
 
 struct hr_nfz_file_t {

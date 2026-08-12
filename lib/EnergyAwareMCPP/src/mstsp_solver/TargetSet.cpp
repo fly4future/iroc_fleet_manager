@@ -1,9 +1,9 @@
-#include "EnergyAwareMCPP/mstsp_solver/TargetSet.h"
-#include "EnergyAwareMCPP/algorithms.hpp"
+#include "mstsp_solver/TargetSet.h"
+#include "algorithms.hpp"
 #include <iostream>
 #include <algorithm>
 #include <utility>
-#include "EnergyAwareMCPP/PathCostCalculator.hpp"
+#include "PathCostCalculator.hpp"
 
 namespace mstsp_solver
 {

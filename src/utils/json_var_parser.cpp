@@ -1,5 +1,5 @@
 #include "iroc_fleet_manager/utils/json_var_parser.h"
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 namespace iroc_fleet_manager
 {
@@ -56,7 +56,7 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
   const auto &var_name = var.first;
 
   if (!js.contains(var_name)) {
-    ROS_ERROR_STREAM_THROTTLE(1.0, "[Var-parser]: JSON doesn't have the expected member \"" << var_name << "\".");
+    RCLCPP_ERROR(rclcpp::get_logger("iroc_fleet_manager::utils::json_var_parser"), "[Var-parser]: JSON doesn't have the expected member '%s'.", var_name.data());
     return false;
   }
 
@@ -69,11 +69,11 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
           *var_out = convertFromJson<T>(js.at(var_name));
         }
         catch (json::exception &e) {
-          ROS_WARN_STREAM("[Var-parser]: Cannot parse member \"" << var_name << "\" (value: " << js.at(var_name) << ") as custom type: " << e.what());
+          RCLCPP_WARN(rclcpp::get_logger("iroc_fleet_manager::utils::json_var_parser"), "[Var-parser]: Cannot parse member '%s' (value: %s) as custom type: %s", var_name.data(), js.at(var_name).dump().c_str(), e.what());
           success = false;
         }
         catch (std::exception &e) {
-          ROS_WARN_STREAM("[Var-parser]: Cannot parse member \"" << var_name << "\" - " << e.what());
+          RCLCPP_WARN(rclcpp::get_logger("iroc_fleet_manager::utils::json_var_parser"), "[Var-parser]: Cannot parse member '%s' - %s", var_name.data(), e.what());
           success = false;
         }
       },
@@ -82,15 +82,6 @@ bool parseVar(const json &js, std::pair<std::string_view, parseable_t> &var) {
 }
 
 bool parseVars(const json &js, std::vector<std::pair<std::string_view, parseable_t>> &&vars) {
-  // for (auto &var : vars) {
-  //   if (!parseVar(js, var)) {
-  //     ROS_WARN("parseVars: Could not load parameter %s", var.first);
-  //     // return false;
-  //     continue;
-  //   }
-  // }
-  // return true;
-
   for (auto &var : vars)
     if (!parseVar(js, var))
       return false;

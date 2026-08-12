@@ -4,12 +4,12 @@
 #include "SolverConfig.h"
 #include "TargetSet.h"
 #include <vector>
-#include "EnergyAwareMCPP/MapPolygon.hpp"
+#include "MapPolygon.hpp"
 #include "Target.h"
-#include "EnergyAwareMCPP/ShortestPathCalculator.hpp"
-#include "EnergyAwareMCPP/custom_types.hpp"
-#include "EnergyAwareMCPP/PathCostCalculator.hpp"
-#include <EnergyAwareMCPP/SimpleLogger.h>
+#include "ShortestPathCalculator.hpp"
+#include "custom_types.hpp"
+#include "PathCostCalculator.hpp"
+#include <SimpleLogger.h>
 
 struct metaheuristic_application_error : public std::runtime_error {
     using runtime_error::runtime_error;

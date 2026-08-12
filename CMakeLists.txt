@@ -131,6 +131,7 @@ target_link_libraries(IrocFleetManager_IrocFleetManager
 
 add_library(IROCFleetManager SHARED
   src/fleet_manager.cpp
+  src/utils/json_var_parser.cpp
 )
 
 target_link_libraries(IROCFleetManager
@@ -195,8 +196,8 @@ add_library(EnergyAwareMCPP SHARED
 
 target_include_directories(EnergyAwareMCPP
   PUBLIC
-  $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
+    $<BUILD_INTERFACE:${ENERGY_AWARE_MCPP_SRC_DIR}/include/EnergyAwareMCPP>
+    $<INSTALL_INTERFACE:include/${PROJECT_NAME}/EnergyAwareMCPP>
 )
 
 ament_target_dependencies(EnergyAwareMCPP PUBLIC mrs_msgs)

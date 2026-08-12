@@ -4,7 +4,7 @@
 
 #include <utility>
 #include <vector>
-#include "EnergyAwareMCPP/SimpleLogger.h"
+#include "SimpleLogger.h"
 #include <memory>
 #include "PathCostCalculator.hpp"
 

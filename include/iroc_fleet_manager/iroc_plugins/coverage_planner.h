@@ -1,4 +1,5 @@
 #include <iroc_fleet_manager/planner.h>
+#include <iroc_fleet_manager/utils/json_var_parser.h>
 
 #include <mrs_lib/param_loader.h>
 #include <string>
@@ -56,7 +57,7 @@ private:
   bool algorithm_config_is_valid(const YAML::Node &config);
   algorithm_config_t parse_algorithm_config(mrs_lib::ParamLoader &param_loader) const;
 
-  coverage_paths_t getCoveragePaths(const iroc_fleet_manager::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2DLatLon>> &search_areas, const std::vector<std::vector<custom_types::Point2DLatLon>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2DLatLon>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const;
+  coverage_paths_t getCoveragePaths(const iroc_fleet_manager::msg::CoverageMission &mission, const std::vector<std::vector<custom_types::Point2DLatLon>> &search_areas_arg, const std::vector<std::vector<custom_types::Point2DLatLon>> &no_fly_zones_arg, const std::vector<std::pair<std::vector<custom_types::Point2DLatLon>, double>> &hr_no_fly_zones_arg, std::vector<double> min_horizontal_distances, std::vector<double> min_vertical_distances) const;
 
 };
 

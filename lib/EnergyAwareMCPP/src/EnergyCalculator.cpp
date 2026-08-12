@@ -1,8 +1,8 @@
-#include "EnergyAwareMCPP/EnergyCalculator.h"
+#include "EnergyCalculator.h"
 #include <cmath>
 #include <iostream>
 #include <memory>
-#include "EnergyAwareMCPP/utils.hpp"
+#include "utils.hpp"
 
 
 namespace

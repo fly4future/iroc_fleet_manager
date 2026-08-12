@@ -1,6 +1,6 @@
-#include "EnergyAwareMCPP/TimeCalculator.hpp"
-#include "EnergyAwareMCPP/utils.hpp"
-#include "EnergyAwareMCPP/EnergyCalculator.h" // For access to static helper methods like angle_between_points
+#include "TimeCalculator.hpp"
+#include "utils.hpp"
+#include "EnergyCalculator.h" // For access to static helper methods like angle_between_points
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>

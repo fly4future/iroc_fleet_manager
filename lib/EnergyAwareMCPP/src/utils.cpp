@@ -1,4 +1,4 @@
-#include "EnergyAwareMCPP/utils.hpp"
+#include "utils.hpp"
 #include <vector>
 #include <cmath>
 #include <iostream>

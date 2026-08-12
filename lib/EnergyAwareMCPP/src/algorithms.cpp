@@ -1,7 +1,7 @@
-#include "EnergyAwareMCPP/algorithms.hpp"
+#include "algorithms.hpp"
 #include <algorithm>
-#include <EnergyAwareMCPP/utils.hpp>
-#include "EnergyAwareMCPP/custom_types.hpp"
+#include <utils.hpp>
+#include "custom_types.hpp"
 #include <cmath>
 
 

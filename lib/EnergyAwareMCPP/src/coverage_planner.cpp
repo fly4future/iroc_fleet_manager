@@ -1,19 +1,20 @@
 /* include and declarations //{ */
 
-#include "EnergyAwareMCPP/PathCostCalculator.hpp"
-#include "EnergyAwareMCPP/MapPolygon.hpp"
-#include "EnergyAwareMCPP/EnergyCalculator.h"
-#include "EnergyAwareMCPP/algorithms.hpp"
-#include "EnergyAwareMCPP/ShortestPathCalculator.hpp"
-#include "EnergyAwareMCPP/mstsp_solver/SolverConfig.h"
-#include "EnergyAwareMCPP/mstsp_solver/MstspSolver.h"
+#include "PathCostCalculator.hpp"
+#include "MapPolygon.hpp"
+#include "EnergyCalculator.h"
+#include "TimeCalculator.hpp"
+#include "algorithms.hpp"
+#include "ShortestPathCalculator.hpp"
+#include "mstsp_solver/SolverConfig.h"
+#include "mstsp_solver/MstspSolver.h"
 #include <yaml-cpp/yaml.h>
 #include <iostream>
 #include <fstream>
-#include "EnergyAwareMCPP/SimpleLogger.h"
-#include "EnergyAwareMCPP/utils.hpp"
+#include "SimpleLogger.h"
+#include "utils.hpp"
 #include <iomanip>
-#include <EnergyAwareMCPP/coverage_planner.hpp>
+#include <coverage_planner.hpp>
 
 
 /*!
