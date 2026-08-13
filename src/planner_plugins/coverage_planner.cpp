@@ -1,5 +1,6 @@
 #include <iroc_fleet_manager/iroc_plugins/coverage_planner.h>
 #include <iroc_fleet_manager/utils/json_var_parser.h>
+#include <iroc_fleet_manager/utils/ros_helpers.h>
 #include <mrs_msgs/msg/reference.hpp>
 #include "ament_index_cpp/get_package_share_directory.hpp"
 
@@ -196,6 +197,48 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
   mission.latlon_origin = latlon_origin_msg;
 
   auto paths = getCoveragePaths(mission, search_areas, no_fly_zones, hr_no_fly_zones, min_horizontal_distances, min_vertical_distances);
+
+  if (paths.empty()) {
+    result.success = false;
+    result.message = "Coverage path planning failed.";
+    RCLCPP_ERROR(node_->get_logger(), "Coverage path planning failed, aborting mission creation.");
+    return std::make_tuple(result, mission_robots);
+  }
+
+  // If the trajectory was optimized by time, set the speed and acceleration parameters from config file to drones
+  if (!planner_config_.drones.empty() && planner_config_.drones.at(0).optimization_type == "time") {
+    for (size_t i = 0; i < mission.robots.size(); ++i) {
+      const auto &robot = mission.robots.at(i);
+      const auto &time_cfg = planner_config_.drones.at(i).time_config.value();
+
+      // Try to switch the UAV to the 'medium' profile (best-effort).
+      if (!iroc_fleet_manager::utils::switchProfile(node_, robot.name, "medium")) {
+        RCLCPP_WARN(node_->get_logger(),
+                    "Switch to profile 'medium' failed for drone %s; continuing with current constraints.",
+                    robot.name.c_str());
+      }
+
+      const bool ok = iroc_fleet_manager::utils::setCustomValuesForMedium(
+          node_,
+          robot.name,
+          time_cfg.max_horizontal_speed,
+          time_cfg.horizontal_acceleration,
+          time_cfg.max_vertical_speed,
+          time_cfg.vertical_acceleration,
+          time_cfg.max_vertical_speed,
+          time_cfg.vertical_acceleration);
+
+      if (!ok) {
+        RCLCPP_WARN(node_->get_logger(),
+                    "Failed to set time-optimized constraints for drone %s.",
+                    robot.name.c_str());
+      } else {
+        RCLCPP_INFO(node_->get_logger(),
+                    "Time-optimized constraints set for drone %s.",
+                    robot.name.c_str());
+      }
+    }
+  }
 
   // Filling the mission_robots vector with the generated paths
   for (size_t it = 0; it < mission.robots.size(); it++) {

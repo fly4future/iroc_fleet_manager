@@ -107,6 +107,7 @@ target_sources(IrocFleetManager_IrocFleetManager
     "include/iroc_fleet_manager/planner.h"
     "include/iroc_fleet_manager/common_handlers.h"
     "include/iroc_fleet_manager/utils/conversions.h"
+    "include/iroc_fleet_manager/utils/ros_helpers.h"
 )
 
 target_link_libraries(IrocFleetManager_IrocFleetManager
@@ -132,6 +133,7 @@ target_link_libraries(IrocFleetManager_IrocFleetManager
 add_library(IROCFleetManager SHARED
   src/fleet_manager.cpp
   src/utils/json_var_parser.cpp
+  src/utils/ros_helpers.cpp
 )
 
 target_link_libraries(IROCFleetManager
