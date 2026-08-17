@@ -775,6 +775,16 @@ CoveragePlanner::coverage_paths_t CoveragePlanner::getCoveragePaths(const iroc_f
     return coverage_paths_tmp;
   }
 
+  for (size_t i = 0; i < best_solution.paths.size(); ++i) {
+    if (best_solution.paths.at(i).size() <= 2) {
+      RCLCPP_ERROR(node_->get_logger(),
+        "Solver planned a trajectory for drone %zu with %zu waypoints; a trajectory should contain at least 3 waypoints. "
+        "This can occur if the drone's speed is set too low or it consumes too much energy, causing the solver to assign "
+        "most of the work to other drones. Keep in mind that the solver minimizes the maximum cost (energy or time) of coverage trajectories.",
+        i, best_solution.paths.at(i).size());
+      return coverage_paths_tmp;
+    }
+  }
 
   // Save genrated path to coverage_paths_tmp excluding some points
   for (unsigned int d = 0; d < best_solution.paths.size(); d++) {
