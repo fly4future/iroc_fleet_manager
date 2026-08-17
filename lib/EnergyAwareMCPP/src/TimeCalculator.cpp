@@ -5,7 +5,12 @@
 #include <algorithm>
 #include <stdexcept>
 
-TimeCalculator::TimeCalculator(const time_calculator_config_t& config) : m_config(config) {}
+TimeCalculator::TimeCalculator(const time_calculator_config_t& config) : m_config(config) {
+    max_horizontal_speed = m_config.max_speed;
+    max_vertical_speed = m_config.max_speed;
+    horizontal_acceleration = m_config.max_acceleration;
+    vertical_acceleration = m_config.max_acceleration;
+}
 
 double TimeCalculator::calculate_segment_cost(double v_in, double a_in, double v_out, double a_out, double s) const {
     return calculate_horizontal_segment_time(v_in, a_in, v_out, a_out, s);
@@ -30,12 +35,12 @@ double TimeCalculator::calculate_segment_time_generic(double v_in, double a_in, 
 
 // Calculates time for a horizontal segment by calling the generic implementation.
 double TimeCalculator::calculate_horizontal_segment_time(double v_in, double a_in, double v_out, double a_out, double s) const {
-    return calculate_segment_time_generic(v_in, a_in, v_out, a_out, s, m_config.max_horizontal_speed);
+    return calculate_segment_time_generic(v_in, a_in, v_out, a_out, s, max_horizontal_speed);
 }
 
 // Calculates time for a vertical segment by calling the generic implementation.
 double TimeCalculator::calculate_vertical_segment_time(double v_in, double a_in, double v_out, double a_out, double s) const {
-    return calculate_segment_time_generic(v_in, a_in, v_out, a_out, s, m_config.max_vertical_speed);
+    return calculate_segment_time_generic(v_in, a_in, v_out, a_out, s, max_vertical_speed);
 }
 
 // Handles cases where the segment is too short to reach max speed.
@@ -55,7 +60,7 @@ double TimeCalculator::calculate_short_segment_time(double v_in, double a_in, do
 // Calculates turning properties based on physics from the original EnergyCalculator.
 TimeCalculator::turning_properties_time_t TimeCalculator::calculate_turning_properties(double angle, double v_r_effective) const {
     angle = std::abs(angle);
-    double a_h = m_config.horizontal_acceleration;
+    double a_h = m_config.max_acceleration;
 
     // For a 180-degree turn, assume the drone can maintain speed.
     if (std::abs(angle * 180.0 / M_PI - 180.0) < 1.0) {
@@ -100,12 +105,12 @@ double TimeCalculator::calculate_path_cost(const std::vector<point_heading_t<dou
 
     // STEP A: Pre-calculate the properties of all 3D turns in the path.
     std::vector<turning_properties_time_t> turns;
-    turns.push_back({0.0, m_config.horizontal_acceleration, 0.0, m_config.horizontal_acceleration, 0.0, 0.0}); // Start from rest
+    turns.push_back({0.0, horizontal_acceleration, 0.0, horizontal_acceleration, 0.0, 0.0}); // Start from rest
     for (size_t i = 1; i + 1 < filtered_path.size(); ++i) {
         // Calculate effective max speed for the turn based on the 3D geometry of incoming and outgoing segments
         auto calc_effective_v_max = [&](const point_heading_t<double>& p_start, const point_heading_t<double>& p_end) {
             double d_3d = std::sqrt(std::pow(p_end.x - p_start.x, 2) + std::pow(p_end.y - p_start.y, 2) + std::pow(p_end.z - p_start.z, 2));
-            if (d_3d < 1e-6) return m_config.max_horizontal_speed;
+            if (d_3d < 1e-6) return max_horizontal_speed;
 
             double d_horiz = std::sqrt(std::pow(p_end.x - p_start.x, 2) + std::pow(p_end.y - p_start.y, 2));
             double d_vert = std::abs(p_end.z - p_start.z);
@@ -113,8 +118,8 @@ double TimeCalculator::calculate_path_cost(const std::vector<point_heading_t<dou
             double ratio_horiz = d_horiz / d_3d;
             double ratio_vert = d_vert / d_3d;
 
-            double v_lim_h = (ratio_horiz > 1e-6) ? m_config.max_horizontal_speed / ratio_horiz : std::numeric_limits<double>::max();
-            double v_lim_v = (ratio_vert > 1e-6) ? m_config.max_vertical_speed / ratio_vert : std::numeric_limits<double>::max();
+            double v_lim_h = (ratio_horiz > 1e-6) ? max_horizontal_speed / ratio_horiz : std::numeric_limits<double>::max();
+            double v_lim_v = (ratio_vert > 1e-6) ? max_vertical_speed / ratio_vert : std::numeric_limits<double>::max();
 
             return std::min(v_lim_h, v_lim_v);
         };
@@ -129,7 +134,7 @@ double TimeCalculator::calculate_path_cost(const std::vector<point_heading_t<dou
         turns.push_back(turn_props);
     }
 
-    turns.push_back({0.0, -m_config.horizontal_acceleration, 0.0, -m_config.horizontal_acceleration, 0.0, 0.0}); // Stop at the end
+    turns.push_back({0.0, -horizontal_acceleration, 0.0, -horizontal_acceleration, 0.0, 0.0}); // Stop at the end
 
     // STEP B: Calculate the time for each segment, considering decoupled horizontal and vertical motion.
     for (size_t i = 0; i + 1 < filtered_path.size(); ++i) {
@@ -164,10 +169,10 @@ double TimeCalculator::calculate_path_cost(const std::vector<point_heading_t<dou
 
             if (s_acc_slow + s_dec_slow < horiz_dist) {
                 double slow_acc_time = t_acc_slow + t_dec_slow;
-                double straight_time = calculate_horizontal_segment_time(v_after_comp, m_config.horizontal_acceleration, v_before_comp, -m_config.horizontal_acceleration, horiz_dist - s_acc_slow - s_dec_slow);
+                double straight_time = calculate_horizontal_segment_time(v_after_comp, horizontal_acceleration, v_before_comp, -horizontal_acceleration, horiz_dist - s_acc_slow - s_dec_slow);
                 segment_horiz_time = slow_acc_time + straight_time;
             } else {
-                segment_horiz_time = calculate_short_segment_time(d_vym_comp1, turn1.a_after, d_vym_comp2, turn2.a_before, horiz_dist, m_config.max_horizontal_speed);
+                segment_horiz_time = calculate_short_segment_time(d_vym_comp1, turn1.a_after, d_vym_comp2, turn2.a_before, horiz_dist, max_horizontal_speed);
             }
         }
 
@@ -185,10 +190,10 @@ double TimeCalculator::calculate_path_cost(const std::vector<point_heading_t<dou
 
             if (s_acc_slow + s_dec_slow < vert_dist) {
                 double slow_acc_time = t_acc_slow + t_dec_slow;
-                double straight_time = calculate_vertical_segment_time(v_after_comp, m_config.vertical_acceleration, v_before_comp, -m_config.vertical_acceleration, vert_dist - s_acc_slow - s_dec_slow);
+                double straight_time = calculate_vertical_segment_time(v_after_comp, vertical_acceleration, v_before_comp, -vertical_acceleration, vert_dist - s_acc_slow - s_dec_slow);
                 segment_vert_time = slow_acc_time + straight_time;
             } else {
-                segment_vert_time = calculate_short_segment_time(d_vym_comp1, turn1.a_after, d_vym_comp2, turn2.a_before, vert_dist, m_config.max_vertical_speed);
+                segment_vert_time = calculate_short_segment_time(d_vym_comp1, turn1.a_after, d_vym_comp2, turn2.a_before, vert_dist, max_vertical_speed);
             }
         }
 

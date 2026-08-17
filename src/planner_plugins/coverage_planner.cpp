@@ -99,7 +99,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
   std::vector<double> min_horizontal_distances;
   std::vector<double> min_vertical_distances;
   json robots;
-  // int frame_id;
   int height;
   int height_id;
   int terminal_action;
@@ -221,12 +220,12 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
       const bool ok = iroc_fleet_manager::utils::setCustomValuesForMedium(
           node_,
           robot.name,
-          time_cfg.max_horizontal_speed,
-          time_cfg.horizontal_acceleration,
-          time_cfg.max_vertical_speed,
-          time_cfg.vertical_acceleration,
-          time_cfg.max_vertical_speed,
-          time_cfg.vertical_acceleration);
+          time_cfg.max_speed,
+          time_cfg.max_acceleration,
+          time_cfg.max_speed,
+          time_cfg.max_acceleration,
+          time_cfg.max_speed,
+          time_cfg.max_acceleration);
 
       if (!ok) {
         RCLCPP_WARN(node_->get_logger(),
@@ -344,8 +343,7 @@ bool CoveragePlanner::algorithm_config_is_valid(const YAML::Node &root_node) {
 
         } else if (current_optimization_type == "time") {
             const std::vector<std::string> time_keys = {
-                "max_horizontal_speed", "max_vertical_speed", "horizontal_acceleration",
-                "vertical_acceleration", "allowed_path_deviation"
+                "max_speed", "max_acceleration", "allowed_path_deviation"
             };
             for (const auto& key : time_keys) {
                 if (!check_key(drone_node, key)) {
@@ -422,10 +420,8 @@ algorithm_config_t CoveragePlanner::parse_algorithm_config(mrs_lib::ParamLoader 
 
     } else if (drone["optimization_type"].as<std::string>() == "time") {
       time_calculator_config_t time_params;
-      time_params.max_horizontal_speed = drone["max_horizontal_speed"].as<double>();
-      time_params.max_vertical_speed = drone["max_vertical_speed"].as<double>();
-      time_params.horizontal_acceleration = drone["horizontal_acceleration"].as<double>();
-      time_params.vertical_acceleration = drone["vertical_acceleration"].as<double>();
+      time_params.max_speed = drone["max_speed"].as<double>();
+      time_params.max_acceleration = drone["max_acceleration"].as<double>();
       time_params.allowed_path_deviation = drone["allowed_path_deviation"].as<double>();
       drone_config.time_config = time_params;
     }

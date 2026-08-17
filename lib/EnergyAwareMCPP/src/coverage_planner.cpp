@@ -417,10 +417,8 @@ algorithm_config_t parse_algorithm_config(const YAML::Node& config) {
         } else if (spec.optimization_type == "time") {
             time_calculator_config_t time_conf;
             time_conf.allowed_path_deviation = drone_node["allowed_path_deviation"].as<double>();
-            time_conf.max_horizontal_speed = drone_node["max_horizontal_speed"].as<double>();
-            time_conf.max_vertical_speed = drone_node["max_vertical_speed"].as<double>();
-            time_conf.horizontal_acceleration = drone_node["horizontal_acceleration"].as<double>();
-            time_conf.vertical_acceleration = drone_node["vertical_acceleration"].as<double>();
+            time_conf.max_speed = drone_node["max_speed"].as<double>();
+            time_conf.max_acceleration = drone_node["max_acceleration"].as<double>();
             spec.time_config = time_conf;
         }
         algorithm_config.drones.push_back(spec);

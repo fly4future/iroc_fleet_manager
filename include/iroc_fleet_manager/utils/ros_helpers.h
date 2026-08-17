@@ -1,4 +1,4 @@
-// ROS helper declarations
+// Lightweight ROS helper declarations
 //
 // These functions provide small convenience wrappers to call common
 // MRS/ROS services used by the fleet manager. They are intentionally

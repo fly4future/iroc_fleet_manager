@@ -5,10 +5,8 @@
 #include "custom_types.hpp" // For point_heading_t
 
 struct time_calculator_config_t {
-    double max_horizontal_speed;       // [m/s] (corresponds to v_r in the energy model)
-    double max_vertical_speed;         // [m/s] (maximum ascent/descent speed)
-    double horizontal_acceleration;     // [m/s^2] (average horizontal acceleration)
-    double vertical_acceleration;       // [m/s^2] (average vertical acceleration)
+    double max_speed;                   // [m/s] (corresponds to v_r in the energy model)
+    double max_acceleration;            // [m/s^2] (maximum horizontal acceleration)
     double allowed_path_deviation;      // [m] (allowed deviation in turns for speed calculation)
 };
 
@@ -25,6 +23,11 @@ private:
         double time;     // Time spent in the turn
         double d_vym;    // Geometric displacement
     };
+
+    double max_horizontal_speed;       // [m/s] (corresponds to v_r in the energy model)
+    double max_vertical_speed;         // [m/s] (maximum ascent/descent speed)
+    double horizontal_acceleration;     // [m/s^2] (average horizontal acceleration)
+    double vertical_acceleration;       // [m/s^2] (average vertical acceleration)
 
     turning_properties_time_t calculate_turning_properties(double angle, double v_r_effective) const;
 
@@ -43,8 +46,8 @@ public:
     double calculate_horizontal_segment_time(double v_in, double a_in, double v_out, double a_out, double s) const;
     double calculate_vertical_segment_time(double v_in, double a_in, double v_out, double a_out, double s) const;
 
-    double get_max_speed() const override { return m_config.max_horizontal_speed; }
-    double get_acceleration() const override { return m_config.horizontal_acceleration; }
+    double get_max_speed() const override { return max_horizontal_speed; }
+    double get_acceleration() const override { return horizontal_acceleration; }
 };
 
 #endif // TIME_CALCULATOR_HPP
