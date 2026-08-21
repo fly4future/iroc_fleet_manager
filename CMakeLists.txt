@@ -78,6 +78,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetSafetyBorderSrv.srv"
   "srv/GetObstaclesSrv.srv"
   "srv/GetMissionPointsSrv.srv"
+  "srv/UnloadFleetMissionSrv.srv"
   "srv/UploadFleetMissionSrv.srv"
   "action/ExecuteMission.action"
   DEPENDENCIES

@@ -34,6 +34,8 @@
 #include <iroc_fleet_manager/srv/get_safety_border_srv.hpp>
 #include <iroc_fleet_manager/srv/get_world_origin_srv.hpp>
 #include <iroc_fleet_manager/srv/upload_fleet_mission_srv.hpp>
+#include <iroc_fleet_manager/srv/unload_fleet_mission_srv.hpp>
+
 #include <iroc_mission_handler/srv/upload_mission_srv.hpp>
 #include <iroc_mission_handler/srv/unload_mission_srv.hpp>
 
@@ -112,24 +114,24 @@ private:
   rclcpp::Clock::SharedPtr clock_;
 
   rclcpp::CallbackGroup::SharedPtr cbkgrp_subs_;   ///< Callback group for subscribers.
-  rclcpp::CallbackGroup::SharedPtr cbkgrp_ss_;      ///< Callback group for service servers.
-  rclcpp::CallbackGroup::SharedPtr cbkgrp_sc_;      ///< Callback group for service clients.
-  rclcpp::CallbackGroup::SharedPtr cbkgrp_timers_;  ///< Callback group for timers.
-  rclcpp::CallbackGroup::SharedPtr cbkgrp_action_;  ///< Callback group for action server/clients.
+  rclcpp::CallbackGroup::SharedPtr cbkgrp_ss_;     ///< Callback group for service servers.
+  rclcpp::CallbackGroup::SharedPtr cbkgrp_sc_;     ///< Callback group for service clients.
+  rclcpp::CallbackGroup::SharedPtr cbkgrp_timers_; ///< Callback group for timers.
+  rclcpp::CallbackGroup::SharedPtr cbkgrp_action_; ///< Callback group for action server/clients.
 
   // | ----------------------- Timers ----------------------- |
 
   std::shared_ptr<TimerType> timer_main_;
   /** \brief Monitors fleet mission execution; checks for robot failures and handles completion. */
-  void                       timerMain();
+  void timerMain();
 
   std::shared_ptr<TimerType> timer_update_common_handlers_;
   /** \brief Updates shared CommonHandlers_t with latest sensor data from all robot subscribers. */
-  void                       timerUpdateCommonHandlers();
+  void timerUpdateCommonHandlers();
 
   std::shared_ptr<TimerType> timer_feedback_;
   /** \brief Broadcasts aggregated fleet feedback to action server clients (active in EXECUTING/PAUSED). */
-  void                       timerFeedback();
+  void timerFeedback();
 
   /** \brief Loads configuration, creates subscribers, service servers, timers, action server, and planners. */
   void initialize(void);
@@ -153,12 +155,13 @@ private:
 
   mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetMissionPointsSrv>   ss_get_mission_data_;
   mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::UploadFleetMissionSrv> ss_upload_fleet_mission_;
+  mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::UnloadFleetMissionSrv> ss_unload_fleet_mission_;
 
   // | ----------------------- Staged mission state ---------------------- |
 
-  std::mutex                                          staged_mission_mtx_;     ///< Guards staged mission fields: staged_mission_robots_ and staged_mission_uuid_.
-  std::vector<iroc_mission_handler::msg::MissionGoal> staged_mission_robots_;  ///< Per-robot goals for the staged mission.
-  std::string                                         staged_mission_uuid_;    ///< UUID of the staged mission.
+  std::mutex                                          staged_mission_mtx_; ///< Guards staged mission fields: staged_mission_robots_ and staged_mission_uuid_.
+  std::vector<iroc_mission_handler::msg::MissionGoal> staged_mission_robots_; ///< Per-robot goals for the staged mission.
+  std::string                                         staged_mission_uuid_;   ///< UUID of the staged mission.
 
   std::atomic<fleet_mission_state_t> fleet_state_{fleet_mission_state_t::IDLE}; ///< Current fleet state machine state.
 
@@ -213,8 +216,8 @@ private:
    */
   struct robot_topic_handlers_t
   {
-    std::recursive_mutex                    mtx;      ///< Guards access to the handlers vector.
-    std::vector<robot_diagnostics_topics_t> handlers; 
+    std::recursive_mutex                    mtx; ///< Guards access to the handlers vector.
+    std::vector<robot_diagnostics_topics_t> handlers;
   } robot_handlers_;
 
   CommonRobotHandlers_t common_robot_handlers_; ///< Latest cached robot data, shared with planners.
@@ -254,7 +257,7 @@ private:
     iroc_mission_handler::action::Mission::Result                              current_result;
     bool                                                                       got_result       = false;
     bool                                                                       is_upload_staged = false;
-    bool auto_activate = false;
+    bool                                                                       auto_activate    = false;
   };
 
   /**
@@ -262,13 +265,13 @@ private:
    */
   struct fleet_mission_handlers_t
   {
-    std::recursive_mutex                 mtx;      ///< Guards access to the handlers vector.
+    std::recursive_mutex                 mtx; ///< Guards access to the handlers vector.
     std::vector<robot_mission_handler_t> handlers;
   } fleet_mission_handlers_;
 
-  std::vector<std::string>             lost_robot_names_;      ///< Robots that dropped out during execution.
-  iroc_fleet_manager::msg::MissionGoal current_mission_goal_;  ///< The currently active or last processed mission goal.
-  std::mutex                           mission_goals_mtx_;     ///< Guards current_mission_goal_.
+  std::vector<std::string>             lost_robot_names_;     ///< Robots that dropped out during execution.
+  iroc_fleet_manager::msg::MissionGoal current_mission_goal_; ///< The currently active or last processed mission goal.
+  std::mutex                           mission_goals_mtx_;    ///< Guards current_mission_goal_.
 
   // | ----------------------- Action client callbacks ---------------------- |
 
@@ -290,13 +293,13 @@ private:
    * \brief Validates an incoming fleet mission goal.
    * Accepts if initialized, no other mission is active, and goal has details or a pre-staged mission exists.
    */
-  rclcpp_action::GoalResponse   handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const Mission::Goal> goal);
+  rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const Mission::Goal> goal);
 
   /**
    * \brief Executes the accepted fleet goal.
    * Fast-path: if STAGED, sends pre-staged goals with auto_activate. Slow-path: plans via processGoal(), then sends.
    */
-  void                          handle_accepted(const std::shared_ptr<GoalHandleMission> goal_handle);
+  void handle_accepted(const std::shared_ptr<GoalHandleMission> goal_handle);
 
   /** \brief Cancels the active fleet mission, aborting all robot action clients and transitioning to IDLE. */
   rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleMission> goal_handle);
@@ -400,6 +403,13 @@ private:
                                   const std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Response> &response);
 
   /**
+   * \brief Unloads the currently staged mission from all robots, restoring pre-upload state.
+   * Transitions fleet state back to IDLE. Returns success if all robots successfully unload.
+   */
+  bool unloadFleetMissionCallback(const std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Request>  &request,
+                                  const std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Response> &response);
+
+  /**
    * \brief Uploads per-robot missions synchronously via UploadMissionSrv service calls.
    * \return Map of robot_name -> result_t indicating per-robot upload success/failure.
    */
@@ -409,7 +419,7 @@ private:
    * \brief Unloads missions from robots that succeeded upload, restoring pre-upload state.
    * Called when a partial upload failure requires atomicity rollback.
    */
-  void rollbackUpload(const std::vector<std::string> &succeeded_robots);
+  std::map<std::string, result_t> rollbackUpload(const std::vector<std::string> &succeeded_robots);
 
   /** \brief Convenience wrapper around iroc_common::callService(). */
   template <typename ServiceType>
