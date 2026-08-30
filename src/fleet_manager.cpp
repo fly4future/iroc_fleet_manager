@@ -1188,6 +1188,14 @@ std::map<std::string, result_t> IROCFleetManager::sendRobotGoals(const std::vect
     mission_goal.robot_goal.terminal_action = robot.terminal_action;
     mission_goal.robot_goal.points          = robot.points;
 
+    mission_goal.robot_goal.override_constraints                = robot.override_constraints;
+    mission_goal.robot_goal.override_max_velocity_horizontal     = robot.override_max_velocity_horizontal;
+    mission_goal.robot_goal.override_max_acceleration_horizontal = robot.override_max_acceleration_horizontal;
+    mission_goal.robot_goal.override_max_jerk_horizontal         = robot.override_max_jerk_horizontal;
+    mission_goal.robot_goal.override_max_velocity_vertical       = robot.override_max_velocity_vertical;
+    mission_goal.robot_goal.override_max_acceleration_vertical   = robot.override_max_acceleration_vertical;
+    mission_goal.robot_goal.override_max_jerk_vertical           = robot.override_max_jerk_vertical;
+
     // Robot handler creation
     robot_mission_handler_t robot_handler;
     robot_handler.robot_name        = robot.name;

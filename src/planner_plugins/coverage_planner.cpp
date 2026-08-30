@@ -204,42 +204,15 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
     return std::make_tuple(result, mission_robots);
   }
 
-  // If the trajectory was optimized by time, set the speed and acceleration parameters from config file to drones
-  if (!planner_config_.drones.empty() && planner_config_.drones.at(0).optimization_type == "time") {
-    for (size_t i = 0; i < mission.robots.size(); ++i) {
-      const auto &robot = mission.robots.at(i);
-      const auto &time_cfg = planner_config_.drones.at(i).time_config.value();
+  // Jerk is not part of the per-drone YAML config (only max_speed/max_acceleration are), so a
+  // fixed value is used for the override
+  constexpr double kOverrideMaxJerk = 40.0;
 
-      // Try to switch the UAV to the 'medium' profile (best-effort).
-      if (!iroc_fleet_manager::utils::switchProfile(node_, robot.name, "medium")) {
-        RCLCPP_WARN(node_->get_logger(),
-                    "Switch to profile 'medium' failed for drone %s; continuing with current constraints.",
-                    robot.name.c_str());
-      }
+  const bool has_time_override = !planner_config_.drones.empty() && planner_config_.drones.at(0).optimization_type == "time";
 
-      const bool ok = iroc_fleet_manager::utils::setCustomValuesForMedium(
-          node_,
-          robot.name,
-          time_cfg.max_speed,
-          time_cfg.max_acceleration,
-          time_cfg.max_speed,
-          time_cfg.max_acceleration,
-          time_cfg.max_speed,
-          time_cfg.max_acceleration);
-
-      if (!ok) {
-        RCLCPP_WARN(node_->get_logger(),
-                    "Failed to set time-optimized constraints for drone %s.",
-                    robot.name.c_str());
-      } else {
-        RCLCPP_INFO(node_->get_logger(),
-                    "Time-optimized constraints set for drone %s.",
-                    robot.name.c_str());
-      }
-    }
-  }
-
-  // Filling the mission_robots vector with the generated paths
+  // Filling the mission_robots vector with the generated paths, optionally overriding the MRS
+  // trajectory generation constraints (https://ctu-mrs.github.io/docs/features/trajectory_generation/)
+  // for drones configured for time-optimized paths.
   for (size_t it = 0; it < mission.robots.size(); it++) {
     iroc_mission_handler::msg::MissionGoal robot;
     robot.name            = mission.robots[it].name;
@@ -247,6 +220,26 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
     robot.terminal_action = mission.robots[it].terminal_action;
     robot.height_id       = mission.robots[it].height_id;
     robot.frame_id        = mission.robots[it].frame_id;
+
+    if (has_time_override) {
+      const auto &time_cfg = planner_config_.drones.at(it).time_config.value();
+
+      // Switch to the 'fast' constraint profile (best-effort). The MRS trajectory generator uses
+      // the minimum of the active profile's limits and the override values below, so the active
+      // profile should not be more restrictive than the override.
+      if (!iroc_fleet_manager::utils::switchProfile(node_, robot.name, "fast")) {
+        RCLCPP_WARN(node_->get_logger(), "Switch to profile 'fast' failed for drone %s; continuing with current constraints.", robot.name.c_str());
+      }
+
+      robot.override_constraints                = true;
+      robot.override_max_velocity_horizontal     = time_cfg.max_speed;
+      robot.override_max_acceleration_horizontal = time_cfg.max_acceleration;
+      robot.override_max_jerk_horizontal         = kOverrideMaxJerk;
+      robot.override_max_velocity_vertical       = time_cfg.max_speed;
+      robot.override_max_acceleration_vertical   = time_cfg.max_acceleration;
+      robot.override_max_jerk_vertical           = kOverrideMaxJerk;
+    }
+
     mission_robots.push_back(robot);
   }
 

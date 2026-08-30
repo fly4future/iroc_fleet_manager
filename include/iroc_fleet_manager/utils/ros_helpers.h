@@ -24,17 +24,5 @@ bool switchProfile(const std::shared_ptr<rclcpp::Node> &node,
                    const std::string &uav_name,
                    const std::string &profile_name);
 
-// Set a small set of numeric parameters used by the 'medium' flight
-// profile. This wraps the ROS 2 `set_parameters` service and returns
-// true on success.
-bool setCustomValuesForMedium(const std::shared_ptr<rclcpp::Node> &node,
-                              const std::string &uav_name,
-                              double horiz_speed,
-                              double horiz_acc,
-                              double vert_asc_speed,
-                              double vert_asc_acc,
-                              double vert_desc_speed,
-                              double vert_desc_acc);
-
 }  // namespace utils
 }  // namespace iroc_fleet_manager
