@@ -207,6 +207,12 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
   // Jerk is not part of the per-drone YAML config (only max_speed/max_acceleration are), so a
   // fixed value is used for the override
   constexpr double kOverrideMaxJerk = 40.0;
+  constexpr double kMediumHorizontalSpeed        = 4.0;
+  constexpr double kMediumHorizontalAcceleration = 2.0;
+  constexpr double kMediumHorizontalJerk         = 40.0;
+  constexpr double kMediumVerticalSpeed          = 2.0;
+  constexpr double kMediumVerticalAcceleration   = 1.0;
+  constexpr double kMediumVerticalJerk           = 40.0;
 
   const bool has_time_override = !planner_config_.drones.empty() && planner_config_.drones.at(0).optimization_type == "time";
 
@@ -224,13 +230,6 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
     if (has_time_override) {
       const auto &time_cfg = planner_config_.drones.at(it).time_config.value();
 
-      // Switch to the 'fast' constraint profile (best-effort). The MRS trajectory generator uses
-      // the minimum of the active profile's limits and the override values below, so the active
-      // profile should not be more restrictive than the override.
-      if (!iroc_fleet_manager::utils::switchProfile(node_, robot.name, "fast")) {
-        RCLCPP_WARN(node_->get_logger(), "Switch to profile 'fast' failed for drone %s; continuing with current constraints.", robot.name.c_str());
-      }
-
       robot.override_constraints                = true;
       robot.override_max_velocity_horizontal     = time_cfg.max_speed;
       robot.override_max_acceleration_horizontal = time_cfg.max_acceleration;
@@ -238,6 +237,20 @@ std::tuple<result_t, std::vector<iroc_mission_handler::msg::MissionGoal>> Covera
       robot.override_max_velocity_vertical       = time_cfg.max_speed;
       robot.override_max_acceleration_vertical   = time_cfg.max_acceleration;
       robot.override_max_jerk_vertical           = kOverrideMaxJerk;
+
+      // The MRS trajectory generator uses the minimum of the active profile's limits and the
+      // override values, so switching to 'fast' is only needed when the override would otherwise
+      // be clamped by 'medium'.
+      const bool override_exceeds_medium = robot.override_max_velocity_horizontal > kMediumHorizontalSpeed ||
+                                            robot.override_max_acceleration_horizontal > kMediumHorizontalAcceleration ||
+                                            robot.override_max_jerk_horizontal > kMediumHorizontalJerk ||
+                                            robot.override_max_velocity_vertical > kMediumVerticalSpeed ||
+                                            robot.override_max_acceleration_vertical > kMediumVerticalAcceleration ||
+                                            robot.override_max_jerk_vertical > kMediumVerticalJerk;
+
+      if (override_exceeds_medium && !iroc_fleet_manager::utils::switchProfile(node_, robot.name, "fast")) {
+        RCLCPP_WARN(node_->get_logger(), "Switch to profile 'fast' failed for drone %s; continuing with current constraints.", robot.name.c_str());
+      }
     }
 
     mission_robots.push_back(robot);
