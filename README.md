@@ -133,7 +133,7 @@ All service servers are advertised under the node's private namespace (`~/`).
 | `~/upload_fleet_mission_svc_out` | `UploadFleetMissionSrv` | Upload and validate mission on all robots (synchronous, all-or-nothing). Transitions `IDLE` → `STAGED`. |
 | `~/change_fleet_mission_state_svc_out` | `ChangeFleetMissionStateSrv` | `TYPE_START` / `TYPE_PAUSE` / `TYPE_STOP` for the whole fleet. |
 | `~/change_robot_mission_state_svc_out` | `ChangeRobotMissionStateSrv` | `TYPE_START` / `TYPE_PAUSE` / `TYPE_STOP` for one robot. Does not affect fleet state. |
-| `~/get_mission_data_svc_out` | `GetMissionPointsSrv` | Returns current mission waypoints. Available only in `EXECUTING` or `PAUSED`. |
+| `~/get_mission_data_svc_out` | `GetMissionPointsSrv` | Returns current mission waypoints. Available in `STAGED`, `EXECUTING`, or `PAUSED`. |
 | `~/get_world_origin_svc_out` | `GetWorldOriginSrv` | Validates all robots share the same world origin; returns it. |
 | `~/get_safety_border_svc_out` | `GetSafetyBorderSrv` | Validates and returns safety border across fleet. |
 | `~/get_obstacles_svc_out` | `GetObstaclesSrv` | Validates and returns obstacles across fleet. |

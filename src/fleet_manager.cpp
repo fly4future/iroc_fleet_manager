@@ -836,7 +836,7 @@ bool IROCFleetManager::getMissionData([[maybe_unused]] const std::shared_ptr<iro
 
   {
     const auto state = fleet_state_.load();
-    if (state != fleet_mission_state_t::EXECUTING && state != fleet_mission_state_t::PAUSED) {
+    if (state != fleet_mission_state_t::EXECUTING && state != fleet_mission_state_t::PAUSED && state != fleet_mission_state_t::STAGED) {
       response->success = false;
       response->message = "No active mission.";
       return true;
