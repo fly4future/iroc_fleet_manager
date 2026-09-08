@@ -442,7 +442,7 @@ bool IROCFleetManager::changeFleetMissionStateCallback(const std::shared_ptr<iro
 
   RCLCPP_INFO(node_->get_logger(), " Received a fleet mission state change request (type=%u).", request->type);
 
-  if (current_goal_handle_->is_active()) {
+  if (current_goal_handle_ && current_goal_handle_->is_active()) {
     switch (request->type) {
       case Req::TYPE_START: {
         updateFleetState(fleet_mission_state_t::EXECUTING);
@@ -550,7 +550,7 @@ bool IROCFleetManager::changeRobotMissionStateCallback(const std::shared_ptr<iro
   }
 
   bool success = true;
-  if (current_goal_handle_->is_active()) {
+  if (current_goal_handle_ && current_goal_handle_->is_active()) {
     switch (request->type) {
       case Req::TYPE_START: {
         RCLCPP_INFO(node_->get_logger(), " Calling mission activation for robot '%s'.", request->robot_name.c_str());
@@ -1098,7 +1098,7 @@ void IROCFleetManager::actionPublishFeedback() {
     for (const auto &rh : fleet_mission_handlers_.handlers)
       robot_feedbacks.emplace_back(rh.current_feedback.robot_feedback);
 
-    if (current_goal_handle_->is_active()) {
+    if (current_goal_handle_ && current_goal_handle_->is_active()) {
       auto action_server_feedback = processAggregatedFeedbackInfo(robot_feedbacks);
       current_goal_handle_->publish_feedback(action_server_feedback);
     }
