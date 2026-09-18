@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
+#include <set>
 #include <tuple>
 
 namespace iroc_fleet_manager
@@ -297,21 +298,23 @@ void IROCFleetManager::timerMain() {
   std::scoped_lock lock(action_server_mutex_);
   bool             all_success     = false;
   bool             got_all_results = false;
-  bool             any_failure     = false;
+  std::string      failure_details;
   {
     {
       std::scoped_lock lock(fleet_mission_handlers_.mtx);
       // Check if any missions aborted early
-      any_failure = std::any_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
-                                [](const auto &handler) { return handler.got_result && !handler.current_result.robot_result.success; });
+      for (const auto &handler : fleet_mission_handlers_.handlers) {
+        if (handler.got_result && !handler.current_result.robot_result.success) {
+          failure_details += (failure_details.empty() ? "" : "; ") + handler.robot_name + ": " + handler.current_result.robot_result.message;
+        }
+      }
     }
 
-    if (any_failure) {
-      RCLCPP_WARN(node_->get_logger(), " Early failure detected, not all robots finished "
-                                       "successfully, aborting mission.");
+    if (!failure_details.empty()) {
+      RCLCPP_WARN(node_->get_logger(), " Early failure detected, not all robots finished successfully, aborting mission (%s).", failure_details.c_str());
       auto result           = std::make_shared<Mission::Result>();
       result->success       = false;
-      result->message       = "Early failure detected, aborting mission.";
+      result->message       = "Mission aborted, failure reported by robot(s): " + failure_details;
       result->robot_results = getRobotResults();
       current_goal_handle_->abort(result);
       updateFleetState(fleet_mission_state_t::IDLE);
@@ -335,7 +338,7 @@ void IROCFleetManager::timerMain() {
         RCLCPP_WARN(node_->get_logger(), " Not all robots finished successfully, finishing mission.");
         auto result           = std::make_shared<Mission::Result>();
         result->success       = false;
-        result->message       = "Early failure detected, aborting mission.";
+        result->message       = "Mission aborted, not all robots finished successfully: " + failure_details;
         result->robot_results = getRobotResults();
         current_goal_handle_->abort(result);
         updateFleetState(fleet_mission_state_t::IDLE);
@@ -1114,7 +1117,6 @@ void IROCFleetManager::actionPublishFeedback() {
  *
  */
 
-
 std::vector<iroc_mission_handler::msg::MissionResult> IROCFleetManager::getRobotResults() {
   // Get the robot results
   std::vector<iroc_mission_handler::msg::MissionResult> robot_results;
@@ -1589,32 +1591,52 @@ IROCFleetManager::processAggregatedFeedbackInfo(const std::vector<iroc_mission_h
  */
 
 std::tuple<std::string, std::string> IROCFleetManager::processFeedbackMsg() const {
+  using RobotMissionInfo = iroc_fleet_manager::msg::WaypointMissionInfo;
 
-  auto all_loaded = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
-                                [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "MISSION_LOADED"; });
+  // Robot mission equivalent states for the general mission state
+  static const std::set<std::string> loaded_states    = {"", "MISSION_LOADED"};
+  static const std::set<std::string> executing_states = {"TAKEOFF", "EXECUTING", "EXECUTING_SUBTASK"};
+  static const std::set<std::string> finishing_states = {"FINISHED"};
+  static const std::set<std::string> paused_states    = {"PAUSED", "PAUSED_DUE_TO_RC_MODE"};
 
-  if (all_loaded)
-    return std::make_tuple("All missions loaded", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_TRAJECTORIES_LOADED);
+  size_t n_loaded = 0, n_executing = 0, n_finishing = 0, n_paused = 0, n_idle = 0, n_unknown = 0;
+  for (const auto &handler : fleet_mission_handlers_.handlers) {
+    const auto &msg = handler.current_feedback.robot_feedback.message;
+    if (loaded_states.count(msg)) {
+      n_loaded++;
+    } else if (executing_states.count(msg)) {
+      n_executing++;
+    } else if (finishing_states.count(msg)) {
+      n_finishing++;
+    } else if (paused_states.count(msg)) {
+      n_paused++;
+    } else if (msg == "IDLE") {
+      n_idle++;
+    } else {
+      n_unknown++;
+    }
+  }
+  const size_t n_robots = fleet_mission_handlers_.handlers.size();
 
-  auto all_executing = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
-                                   [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "EXECUTING"; });
+  if (n_idle > 0)
+    return std::make_tuple("One robot is idle, check mission_manager", RobotMissionInfo::STATE_ERROR);
 
-  if (all_executing)
-    return std::make_tuple("Robots executing mission", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_EXECUTING);
+  if (n_unknown > 0)
+    return std::make_tuple("Not defined message", RobotMissionInfo::STATE_INVALID);
 
-  auto all_paused = std::all_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
-                                [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "PAUSED"; });
+  if (n_loaded == n_robots)
+    return std::make_tuple("All missions loaded", RobotMissionInfo::STATE_TRAJECTORIES_LOADED);
 
-  if (all_paused)
-    return std::make_tuple("All robots paused", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_PAUSED);
+  if (n_paused == n_robots)
+    return std::make_tuple("All robots paused", RobotMissionInfo::STATE_PAUSED);
 
-  auto any_idle = std::any_of(fleet_mission_handlers_.handlers.begin(), fleet_mission_handlers_.handlers.end(),
-                              [](const auto &handler) { return handler.current_feedback.robot_feedback.message == "IDLE"; });
+  if (n_finishing == n_robots)
+    return std::make_tuple("All robots reached their waypoints, finishing the mission", RobotMissionInfo::STATE_EXECUTING);
 
-  if (any_idle)
-    return std::make_tuple("One robot is idle, check mission_manager", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_ERROR);
+  if (n_paused > 0 && n_executing == 0)
+    return std::make_tuple("Robots paused", RobotMissionInfo::STATE_PAUSED);
 
-  return std::make_tuple("Not defined message", iroc_fleet_manager::msg::WaypointMissionInfo::STATE_INVALID);
+  return std::make_tuple("Robots executing mission", RobotMissionInfo::STATE_EXECUTING);
 }
 
 /*!
