@@ -1596,7 +1596,7 @@ std::tuple<std::string, std::string> IROCFleetManager::processFeedbackMsg() cons
   // Robot mission equivalent states for the general mission state
   static const std::set<std::string> loaded_states    = {"", "MISSION_LOADED"};
   static const std::set<std::string> executing_states = {"TAKEOFF", "EXECUTING", "EXECUTING_SUBTASK"};
-  static const std::set<std::string> finishing_states = {"FINISHED"};
+  static const std::set<std::string> finishing_states = {"FINISHED", "RTH", "LAND"};
   static const std::set<std::string> paused_states    = {"PAUSED", "PAUSED_DUE_TO_RC_MODE"};
 
   size_t n_loaded = 0, n_executing = 0, n_finishing = 0, n_paused = 0, n_idle = 0, n_unknown = 0;
@@ -1631,7 +1631,7 @@ std::tuple<std::string, std::string> IROCFleetManager::processFeedbackMsg() cons
     return std::make_tuple("All robots paused", RobotMissionInfo::STATE_PAUSED);
 
   if (n_finishing == n_robots)
-    return std::make_tuple("All robots reached their waypoints, finishing the mission", RobotMissionInfo::STATE_EXECUTING);
+    return std::make_tuple("Robots finishing the mission", RobotMissionInfo::STATE_EXECUTING);
 
   if (n_paused > 0 && n_executing == 0)
     return std::make_tuple("Robots paused", RobotMissionInfo::STATE_PAUSED);
