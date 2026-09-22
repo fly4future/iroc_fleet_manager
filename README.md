@@ -35,16 +35,35 @@ ROS 2 coordination layer between `iroc_bridge` (HTTP gateway) and per-robot `iro
 
 ## System Position
 
-```
-Web Client / UI
-      │ HTTP REST / WebSocket
-[iroc_bridge]
-      │ ROS Services + Actions
-[iroc_fleet_manager]   ← this node
-      │ ROS Actions + Services (per robot)
-[iroc_mission_handler] × N
-      │
-MRS UAV Core / Hardware
+```mermaid
+flowchart TB
+    UI["Web Client / UI"]
+
+    Bridge["iroc_bridge<br/>HTTP REST / WebSocket ↔ ROS"]
+
+    Fleet["iroc_fleet_manager<br/><i>Fleet-level coordination</i>"]
+
+    subgraph Robots["Robot-specific execution"]
+        direction TB
+        Handler1["iroc_mission_handler<br/>Robot 1"]
+        Handler2["iroc_mission_handler<br/>Robot 2"]
+        HandlerN["iroc_mission_handler<br/>Robot N"]
+    end
+
+    UAV1@{ shape: processes, label: "MRS UAV System<br/>Robot 1"}
+    UAV2@{ shape: processes, label: "MRS UAV System<br/>Robot 2"}
+    UAVN@{ shape: processes, label: "MRS UAV System<br/>Robot N"}
+
+    UI <-->|"HTTP REST / WebSocket"| Bridge
+    Bridge <-->|"ROS services + actions"| Fleet
+
+    Fleet <-->|"ROS services + actions"| Handler1
+    Fleet <-->|"ROS services + actions"| Handler2
+    Fleet <-->|"ROS services + actions"| HandlerN
+
+    Handler1 <-->|"ROS actions + services"| UAV1
+    Handler2 <-->|"ROS actions + services"| UAV2
+    HandlerN <-->|"ROS actions + services"| UAVN
 ```
 
 ---
@@ -55,31 +74,37 @@ Fleet state is tracked by a single `std::atomic<fleet_mission_state_t>`. The enu
 
 ### States
 
-| State | Description |
-|---|---|
-| `IDLE` | No mission loaded or executing |
-| `STAGED` | Mission uploaded and validated on all robots, awaiting start command |
-| `EXECUTING` | Mission active; `timerMain` monitors per-robot completion |
-| `PAUSED` | Mission suspended; `timerMain` is gated, feedback still published |
+| State       | Description                                                          |
+| ----------- | -------------------------------------------------------------------- |
+| `IDLE`      | No mission loaded or executing                                       |
+| `STAGED`    | Mission uploaded and validated on all robots, awaiting start command |
+| `EXECUTING` | Mission active; `timerMain` monitors per-robot completion            |
+| `PAUSED`    | Mission suspended; `timerMain` is gated, feedback still published    |
 
 ### Transitions
 
-```
-              POST /mission (upload)
-  IDLE ─────────────────────────────► STAGED
-   ▲                                     │
-   │                                     │ POST /mission/start (initial)
-   │                                     ▼
-   │                               EXECUTING ◄──────────────────┐
-   │                              /         \                    │
-   │    cancel / all robots done /     pause \                   │ resume
-   └────────────────────────────(IDLE)      PAUSED ─────────────┘
-                                               │
-                              POST /mission/stop (async cancels fired,
-                              timerMain detects completion → IDLE)
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+
+    IDLE --> STAGED: POST /mission<br/>(upload)
+
+    STAGED --> EXECUTING: POST /mission/start<br/>(initial)
+
+    EXECUTING --> PAUSED: pause
+    PAUSED --> EXECUTING: resume
+
+    EXECUTING --> IDLE: cancel
+    EXECUTING --> IDLE: all robots done
+
+    PAUSED --> STOPPING: POST /mission/stop
+    STOPPING --> IDLE: async cancellations completed<br/>timerMain detects completion
+
+    IDLE --> [*]
 ```
 
 **Revert rules:**
+
 - If ALL robots fail a pause call, the fleet state reverts from `PAUSED` to `EXECUTING`.
 - If ALL robots fail a resume call, the fleet state reverts from `EXECUTING` to `PAUSED`.
 
@@ -94,11 +119,11 @@ Fleet state is tracked by a single `std::atomic<fleet_mission_state_t>`. The enu
 
 #### Goal Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `type` | `string` | Planner name, e.g. `"WaypointPlanner"`. Empty string uses the pre-staged mission. |
-| `details` | `string` | JSON mission details (planner-specific payload) |
-| `uuid` | `string` | Client-side identifier for this mission |
+| Field     | Type     | Description                                                                       |
+| --------- | -------- | --------------------------------------------------------------------------------- |
+| `type`    | `string` | Planner name, e.g. `"WaypointPlanner"`. Empty string uses the pre-staged mission. |
+| `details` | `string` | JSON mission details (planner-specific payload)                                   |
+| `uuid`    | `string` | Client-side identifier for this mission                                           |
 
 #### Feedback
 
@@ -128,15 +153,15 @@ MissionResult[] robot_results   # per-robot: name, success, message
 
 All service servers are advertised under the node's private namespace (`~/`).
 
-| Topic | Type | Description |
-|---|---|---|
-| `~/upload_fleet_mission_svc_out` | `UploadFleetMissionSrv` | Upload and validate mission on all robots (synchronous, all-or-nothing). Transitions `IDLE` → `STAGED`. |
-| `~/change_fleet_mission_state_svc_out` | `ChangeFleetMissionStateSrv` | `TYPE_START` / `TYPE_PAUSE` / `TYPE_STOP` for the whole fleet. |
-| `~/change_robot_mission_state_svc_out` | `ChangeRobotMissionStateSrv` | `TYPE_START` / `TYPE_PAUSE` / `TYPE_STOP` for one robot. Does not affect fleet state. |
-| `~/get_mission_data_svc_out` | `GetMissionPointsSrv` | Returns current mission waypoints. Available in `STAGED`, `EXECUTING`, or `PAUSED`. |
-| `~/get_world_origin_svc_out` | `GetWorldOriginSrv` | Validates all robots share the same world origin; returns it. |
-| `~/get_safety_border_svc_out` | `GetSafetyBorderSrv` | Validates and returns safety border across fleet. |
-| `~/get_obstacles_svc_out` | `GetObstaclesSrv` | Validates and returns obstacles across fleet. |
+| Topic                                  | Type                         | Description                                                                                             |
+| -------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `~/upload_fleet_mission_svc_out`       | `UploadFleetMissionSrv`      | Upload and validate mission on all robots (synchronous, all-or-nothing). Transitions `IDLE` → `STAGED`. |
+| `~/change_fleet_mission_state_svc_out` | `ChangeFleetMissionStateSrv` | `TYPE_START` / `TYPE_PAUSE` / `TYPE_STOP` for the whole fleet.                                          |
+| `~/change_robot_mission_state_svc_out` | `ChangeRobotMissionStateSrv` | `TYPE_START` / `TYPE_PAUSE` / `TYPE_STOP` for one robot. Does not affect fleet state.                   |
+| `~/get_mission_data_svc_out`           | `GetMissionPointsSrv`        | Returns current mission waypoints. Available in `STAGED`, `EXECUTING`, or `PAUSED`.                     |
+| `~/get_world_origin_svc_out`           | `GetWorldOriginSrv`          | Validates all robots share the same world origin; returns it.                                           |
+| `~/get_safety_border_svc_out`          | `GetSafetyBorderSrv`         | Validates and returns safety border across fleet.                                                       |
+| `~/get_obstacles_svc_out`              | `GetObstaclesSrv`            | Validates and returns obstacles across fleet.                                                           |
 
 ---
 
@@ -144,12 +169,12 @@ All service servers are advertised under the node's private namespace (`~/`).
 
 Clients are connected on demand during `sendRobotGoals`.
 
-| Topic Pattern | Type | Purpose |
-|---|---|---|
-| `/{robot}/upload_mission_svc_in` | `UploadMissionSrv` | Stage mission on robot (trajectory generation + safety check) |
-| `/{robot}/unload_mission_svc_in` | `UnloadMissionSrv` | Roll back staged mission on upload failure |
-| `/{robot}/mission_activation_svc_in` | `std_srvs/Trigger` | Activate or resume robot mission |
-| `/{robot}/mission_pausing_svc_in` | `std_srvs/Trigger` | Pause robot mission |
+| Topic Pattern                        | Type               | Purpose                                                       |
+| ------------------------------------ | ------------------ | ------------------------------------------------------------- |
+| `/{robot}/upload_mission_svc_in`     | `UploadMissionSrv` | Stage mission on robot (trajectory generation + safety check) |
+| `/{robot}/unload_mission_svc_in`     | `UnloadMissionSrv` | Roll back staged mission on upload failure                    |
+| `/{robot}/mission_activation_svc_in` | `std_srvs/Trigger` | Activate or resume robot mission                              |
+| `/{robot}/mission_pausing_svc_in`    | `std_srvs/Trigger` | Pause robot mission                                           |
 
 ---
 
@@ -157,8 +182,8 @@ Clients are connected on demand during `sendRobotGoals`.
 
 Connected on demand.
 
-| Topic Pattern | Type | Purpose |
-|---|---|---|
+| Topic Pattern                       | Type                           | Purpose                                          |
+| ----------------------------------- | ------------------------------ | ------------------------------------------------ |
 | `/{robot}/action_client_mission_in` | `iroc_mission_handler/Mission` | Send mission goal to the robot's mission handler |
 
 ---
@@ -167,15 +192,15 @@ Connected on demand.
 
 Persistent subscriptions created for each robot at startup.
 
-| Topic Suffix | Type |
-|---|---|
-| `/{robot}/general_robot_info_in` | `mrs_msgs/GeneralRobotInfo` |
-| `/{robot}/state_estimation_info_in` | `mrs_msgs/StateEstimationInfo` |
-| `/{robot}/control_info_in` | `mrs_msgs/ControlInfo` |
-| `/{robot}/collision_avoidance_info_in` | `mrs_msgs/CollisionAvoidanceInfo` |
-| `/{robot}/uav_info_in` | `mrs_msgs/UavInfo` |
-| `/{robot}/system_health_info_in` | `mrs_msgs/SystemHealthInfo` |
-| `/{robot}/safety_area_info_in` | `mrs_msgs/SafetyAreaManagerDiagnostics` |
+| Topic Suffix                           | Type                                    |
+| -------------------------------------- | --------------------------------------- |
+| `/{robot}/general_robot_info_in`       | `mrs_msgs/GeneralRobotInfo`             |
+| `/{robot}/state_estimation_info_in`    | `mrs_msgs/StateEstimationInfo`          |
+| `/{robot}/control_info_in`             | `mrs_msgs/ControlInfo`                  |
+| `/{robot}/collision_avoidance_info_in` | `mrs_msgs/CollisionAvoidanceInfo`       |
+| `/{robot}/uav_info_in`                 | `mrs_msgs/UavInfo`                      |
+| `/{robot}/system_health_info_in`       | `mrs_msgs/SystemHealthInfo`             |
+| `/{robot}/safety_area_info_in`         | `mrs_msgs/SafetyAreaManagerDiagnostics` |
 
 ---
 
@@ -234,10 +259,10 @@ std::tuple<result_t, std::vector<MissionGoal>> createGoal(type, details_json, uu
 
 ### Built-in Planners
 
-| Name | Input | Output |
-|---|---|---|
-| `WaypointPlanner` | Per-robot waypoint list with `frame_id`, `height_id`, `terminal_action`, optional subtasks | `MissionGoal` per robot with waypoints passed through verbatim |
-| `CoveragePlanner` | Robot name list + polygon search area + flight height | Energy-optimised lawnmower paths via the EnergyAwareMCPP library |
+| Name              | Input                                                                                      | Output                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `WaypointPlanner` | Per-robot waypoint list with `frame_id`, `height_id`, `terminal_action`, optional subtasks | `MissionGoal` per robot with waypoints passed through verbatim   |
+| `CoveragePlanner` | Robot name list + polygon search area + flight height                                      | Energy-optimised lawnmower paths via the EnergyAwareMCPP library |
 
 ### Adding a Custom Planner
 
@@ -253,9 +278,9 @@ std::tuple<result_t, std::vector<MissionGoal>> createGoal(type, details_json, uu
 
 ```yaml
 fleet_manager:
-  main_timer_rate: 100.0      # [Hz] timerMain and timerUpdateCommonHandlers polling rate
-  feedback_timer_rate: 100.0  # [Hz] timerFeedback broadcast rate
-  no_message_timeout: 5.0     # [s] subscriber no-message warning threshold
+  main_timer_rate: 100.0 # [Hz] timerMain and timerUpdateCommonHandlers polling rate
+  feedback_timer_rate: 100.0 # [Hz] timerFeedback broadcast rate
+  no_message_timeout: 5.0 # [s] subscriber no-message warning threshold
 
   planners:
     planner_names: ["WaypointPlanner", "CoveragePlanner"]
@@ -269,9 +294,9 @@ fleet_manager:
       name_space: "coverage_planner"
 ```
 
-| Parameter | Type | Description |
-|---|---|---|
-| `main_timer_rate` | `double` (Hz) | Polling rate for `timerMain` (completion detection) and `timerUpdateCommonHandlers` (diagnostics refresh) |
-| `feedback_timer_rate` | `double` (Hz) | Rate at which `timerFeedback` publishes action feedback to the bridge |
-| `no_message_timeout` | `double` (s) | Duration after which a subscriber with no received messages emits a warning |
-| `planners.planner_names` | `string[]` | List of planner names to load at startup |
+| Parameter                | Type          | Description                                                                                               |
+| ------------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
+| `main_timer_rate`        | `double` (Hz) | Polling rate for `timerMain` (completion detection) and `timerUpdateCommonHandlers` (diagnostics refresh) |
+| `feedback_timer_rate`    | `double` (Hz) | Rate at which `timerFeedback` publishes action feedback to the bridge                                     |
+| `no_message_timeout`     | `double` (s)  | Duration after which a subscriber with no received messages emits a warning                               |
+| `planners.planner_names` | `string[]`    | List of planner names to load at startup                                                                  |
