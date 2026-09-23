@@ -41,7 +41,6 @@ set(DEPENDENCIES
   action_msgs
   mrs_msgs
   mrs_lib
-  mrs_robot_diagnostics
   iroc_mission_handler
   iroc_common
   pluginlib
@@ -143,7 +142,6 @@ target_link_libraries(IROCFleetManager
     rclcpp_components::component
     pluginlib::pluginlib
     mrs_lib::mrs_lib
-    mrs_robot_diagnostics::mrs_robot_diagnostics
     ${mrs_msgs_TARGETS}
 )
 
