@@ -77,15 +77,15 @@ def launch_setup(context, *args, **kwargs):
         dynamic_remappings.extend([
             # Topics (subs)
             (f"/{robot_name}/general_robot_info_in",
-             f"/{robot_name}/state_monitor/general_robot_info"),
+             f"/{robot_name}/diagnostics_manager/general_robot_info"),
             (f"/{robot_name}/state_estimation_info_in",
-             f"/{robot_name}/state_monitor/state_estimation_info"),
-            (f"/{robot_name}/control_info_in", f"/{robot_name}/state_monitor/control_info"),
+             f"/{robot_name}/diagnostics_manager/state_estimation_info"),
+            (f"/{robot_name}/control_info_in", f"/{robot_name}/diagnostics_manager/control_info"),
             (f"/{robot_name}/collision_avoidance_info_in",
-             f"/{robot_name}/state_monitor/collision_avoidance_info"),
-            (f"/{robot_name}/uav_info_in", f"/{robot_name}/state_monitor/uav_info"),
+             f"/{robot_name}/diagnostics_manager/collision_avoidance_info"),
+            (f"/{robot_name}/uav_info_in", f"/{robot_name}/diagnostics_manager/uav_info"),
             (f"/{robot_name}/system_health_info_in",
-             f"/{robot_name}/state_monitor/system_health_info"),
+             f"/{robot_name}/diagnostics_manager/system_health_info"),
             (f"/{robot_name}/safety_area_info_in",
              f"/{robot_name}/safety_area_manager/diagnostics"),
 
