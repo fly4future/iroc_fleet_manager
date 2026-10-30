@@ -214,49 +214,49 @@ void IROCFleetManager::initialize() {
       node_, "~/change_fleet_mission_state_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::ChangeFleetMissionStateSrv::Response> response) { changeFleetMissionStateCallback(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   ss_change_robot_mission_state_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv>(
       node_, "~/change_robot_mission_state_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::ChangeRobotMissionStateSrv::Response> response) { changeRobotMissionStateCallback(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   ss_get_world_origin_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetWorldOriginSrv>(
       node_, "~/get_world_origin_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::GetWorldOriginSrv::Response> response) { getWorldOriginCallback(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   ss_get_safety_border_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetSafetyBorderSrv>(
       node_, "~/get_safety_border_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::GetSafetyBorderSrv::Response> response) { getSafetyBorderCallback(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   ss_get_obstacles_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetObstaclesSrv>(
       node_, "~/get_obstacles_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::GetObstaclesSrv::Response> response) { getObstaclesCallback(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   ss_get_mission_data_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::GetMissionPointsSrv>(
       node_, "~/get_mission_data_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::GetMissionPointsSrv::Response> response) { getMissionData(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   ss_upload_fleet_mission_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::UploadFleetMissionSrv>(
       node_, "~/upload_fleet_mission_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::UploadFleetMissionSrv::Response> response) { return uploadFleetMissionCallback(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   ss_unload_fleet_mission_ = mrs_lib::ServiceServerHandler<iroc_fleet_manager::srv::UnloadFleetMissionSrv>(
       node_, "~/unload_fleet_mission_svc_out",
       [this](std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Request>  request,
              std::shared_ptr<iroc_fleet_manager::srv::UnloadFleetMissionSrv::Response> response) { return unloadFleetMissionCallback(request, response); },
-      rclcpp::SystemDefaultsQoS(), cbkgrp_ss_);
+      rclcpp::ServicesQoS(), cbkgrp_ss_);
 
   // // | ------------------ action server methods ----------------- |
 
